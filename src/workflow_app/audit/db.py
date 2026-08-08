@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS runs (
     finished_at TEXT,
     source_path TEXT NOT NULL,
     workbook_path TEXT NOT NULL,
-    rules_path TEXT NOT NULL
+    rules_path TEXT NOT NULL,
+    workbook_schema_path TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS stages (
@@ -52,14 +53,21 @@ class AuditStore:
             self._conn.close()
             self._conn = None
 
-    def record_run_started(self, run_id, source, workbook, rules):
+    def record_run_started(self, run_id, inputs):
         conn = self._connect()
         with conn:
             conn.execute(
-                "INSERT INTO runs (run_id, status, started_at,"
-                " source_path, workbook_path, rules_path)"
-                " VALUES (?, 'running', ?, ?, ?, ?)",
-                (run_id, _now(), str(source), str(workbook), str(rules)),
+                "INSERT INTO runs (run_id, status, started_at, source_path,"
+                " workbook_path, rules_path, workbook_schema_path)"
+                " VALUES (?, 'running', ?, ?, ?, ?, ?)",
+                (
+                    run_id,
+                    _now(),
+                    str(inputs.source),
+                    str(inputs.workbook),
+                    str(inputs.rules),
+                    str(inputs.workbook_schema),
+                ),
             )
 
     def record_run_finished(self, run_id, status):
@@ -92,8 +100,8 @@ class AuditStore:
         row = (
             self._connect()
             .execute(
-                "SELECT run_id, status, started_at, finished_at,"
-                " source_path, workbook_path, rules_path"
+                "SELECT run_id, status, started_at, finished_at, source_path,"
+                " workbook_path, rules_path, workbook_schema_path"
                 " FROM runs WHERE run_id = ?",
                 (run_id,),
             )
@@ -109,6 +117,7 @@ class AuditStore:
             "source_path",
             "workbook_path",
             "rules_path",
+            "workbook_schema_path",
         )
         return dict(zip(keys, row, strict=True))
 

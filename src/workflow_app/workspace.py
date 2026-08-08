@@ -14,6 +14,7 @@ class RunInputs:
     source: Path
     workbook: Path
     rules: Path
+    workbook_schema: Path
 
     def validate(self):
         if not self.source.is_dir():
@@ -22,6 +23,10 @@ class RunInputs:
             raise FileNotFoundError(f"workbook not found: {self.workbook}")
         if not self.rules.is_dir():
             raise FileNotFoundError(f"rules folder not found: {self.rules}")
+        if not self.workbook_schema.is_file():
+            raise FileNotFoundError(
+                f"workbook schema config not found: {self.workbook_schema}"
+            )
 
 
 SUBDIRS = (
@@ -66,6 +71,14 @@ class Workspace:
     @property
     def audit_db(self):
         return self.root / "state" / "audit.sqlite"
+
+    @property
+    def manifest_json(self):
+        return self.artifacts / "manifest.json"
+
+    @property
+    def workbook_schema_json(self):
+        return self.artifacts / "workbook_schema.json"
 
     @property
     def run_summary(self):

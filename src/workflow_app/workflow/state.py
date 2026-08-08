@@ -11,5 +11,7 @@ from typing import TypedDict
 class WorkflowState(TypedDict):
     run_id: str
     workspace_path: str
+    manifest_path: str | None
+    schema_path: str | None
     extraction_path: str | None
     phase: str

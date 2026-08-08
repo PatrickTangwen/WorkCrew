@@ -18,6 +18,8 @@ def run_args(inputs):
         str(inputs["workbook"]),
         "--rules",
         str(inputs["rules"]),
+        "--workbook-schema",
+        str(inputs["workbook_schema"]),
         "--runs-root",
         str(inputs["runs_root"]),
     ]
@@ -46,6 +48,13 @@ def test_missing_source_reports_error_and_nonzero_exit(inputs, capsys):
     exit_code = main(run_args(inputs))
     assert exit_code == 2
     assert "not found" in capsys.readouterr().err
+
+
+def test_malformed_schema_config_reports_error_and_nonzero_exit(inputs, capsys):
+    inputs["workbook_schema"].write_text("{not json")
+    exit_code = main(run_args(inputs))
+    assert exit_code == 2
+    assert "not valid JSON" in capsys.readouterr().err
 
 
 def test_missing_required_arguments_exit_nonzero(inputs, capsys):

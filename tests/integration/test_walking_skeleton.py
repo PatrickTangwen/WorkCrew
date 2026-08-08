@@ -29,7 +29,14 @@ EXPECTED_SUBDIRS = [
     "logs",
 ]
 
-EXPECTED_STAGES = ["INIT", "PREPARE_WORKSPACE", "CLAUDE_FILL", "FINALIZE"]
+EXPECTED_STAGES = [
+    "INIT",
+    "PREPARE_WORKSPACE",
+    "BUILD_MANIFEST",
+    "LOAD_SCHEMA",
+    "CLAUDE_FILL",
+    "FINALIZE",
+]
 
 
 def filler_fixture():
@@ -43,6 +50,7 @@ def start_run(inputs, fixture=None):
         source=inputs["source"],
         workbook=inputs["workbook"],
         rules=inputs["rules"],
+        workbook_schema=inputs["workbook_schema"],
         runs_root=inputs["runs_root"],
         runtimes={"filler": runtime},
     )
@@ -149,12 +157,47 @@ def test_stage_progress_lines_go_to_stderr(inputs, capsys):
     assert len(lines) >= len(EXPECTED_STAGES)
 
 
+def test_manifest_artifact_lists_all_copied_sources(inputs):
+    state = start_run(inputs)
+    workspace = workspace_of(inputs, state)
+
+    manifest = json.loads((workspace / "artifacts/manifest.json").read_text())
+    entries = {entry["path"]: entry for entry in manifest["files"]}
+
+    assert set(entries) == {"India 2008/Project_Brief.txt", "archive_notes.md"}
+    brief = entries["India 2008/Project_Brief.txt"]
+    assert brief["status"] == "ok"
+    assert brief["type"] == "txt"
+    assert len(brief["sha256"]) == 64
+    assert Path(state["manifest_path"]) == workspace / "artifacts/manifest.json"
+
+
+def test_validated_schema_is_stored_as_artifact(inputs):
+    state = start_run(inputs)
+    workspace = workspace_of(inputs, state)
+
+    stored = json.loads((workspace / "artifacts/workbook_schema.json").read_text())
+    sheet = stored["sheets"][0]
+    assert sheet["name"] == "7) Practicum Courses"
+    assert sheet["target"] is True
+    assert sheet["fields"]["Project ID*"]["required"] is True
+    assert Path(state["schema_path"]) == workspace / "artifacts/workbook_schema.json"
+
+
+def test_malformed_schema_config_fails_before_any_agent_runs(inputs):
+    inputs["workbook_schema"].write_text('{"sheets": []}')
+    with pytest.raises(ValueError, match="failed validation"):
+        start_run(inputs)
+    assert not inputs["runs_root"].exists()
+
+
 def test_missing_source_folder_fails_before_creating_a_run(inputs):
     with pytest.raises(FileNotFoundError):
         run_workflow(
             source=inputs["source"] / "does-not-exist",
             workbook=inputs["workbook"],
             rules=inputs["rules"],
+            workbook_schema=inputs["workbook_schema"],
             runs_root=inputs["runs_root"],
             runtimes={"filler": FakeAgentRuntime({"filler": filler_fixture()})},
         )
