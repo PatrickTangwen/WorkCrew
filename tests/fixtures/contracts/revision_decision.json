@@ -1,0 +1,16 @@
+{
+  "cell": "G12",
+  "action": "REBUT",
+  "original_value": "Healthcare",
+  "proposed_value": null,
+  "note_append": null,
+  "evidence": [
+    {
+      "source_file": "India 2008/Project_Brief.pdf",
+      "source_location": "page 4",
+      "evidence_text": "Primary activity: construction and staffing of a rural clinic.",
+      "evidence_type": "direct"
+    }
+  ],
+  "justification": "Source brief explicitly names clinic construction as the primary activity."
+}

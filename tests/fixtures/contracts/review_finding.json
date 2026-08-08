@@ -1,0 +1,17 @@
+{
+  "cell": "G12",
+  "verdict": "WARN",
+  "issue_type": "classification",
+  "current_value": "Healthcare",
+  "recommended_value": "Public Health",
+  "evidence": [
+    {
+      "source_file": "India 2008/Annual_Report.docx",
+      "source_location": "section 3",
+      "evidence_text": "Activities centered on population-level prevention programs.",
+      "evidence_type": "cross_reference"
+    }
+  ],
+  "reviewer_comment": "Narrative evidence describes population-level programs rather than clinical care.",
+  "missed_data": false
+}
