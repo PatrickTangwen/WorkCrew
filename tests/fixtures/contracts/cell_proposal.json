@@ -1,0 +1,19 @@
+{
+  "sheet": "7) Practicum Courses",
+  "row": 12,
+  "column_name": "Main Issue Area(s)",
+  "cell": "G12",
+  "value": "Healthcare",
+  "evidence": [
+    {
+      "source_file": "India 2008/Project_Brief.pdf",
+      "source_location": "page 2",
+      "evidence_text": "The project focused on community healthcare delivery.",
+      "evidence_type": "direct"
+    }
+  ],
+  "rules_applied": ["MAIN_ISSUE_AREA_STANDARDIZATION"],
+  "confidence": 0.93,
+  "status": "proposed",
+  "notes": null
+}
