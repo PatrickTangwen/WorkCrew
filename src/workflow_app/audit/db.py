@@ -88,12 +88,16 @@ class AuditStore:
             )
 
     def get_run(self, run_id):
-        row = self._connect().execute(
-            "SELECT run_id, status, started_at, finished_at,"
-            " source_path, workbook_path, rules_path"
-            " FROM runs WHERE run_id = ?",
-            (run_id,),
-        ).fetchone()
+        row = (
+            self._connect()
+            .execute(
+                "SELECT run_id, status, started_at, finished_at,"
+                " source_path, workbook_path, rules_path"
+                " FROM runs WHERE run_id = ?",
+                (run_id,),
+            )
+            .fetchone()
+        )
         if row is None:
             raise KeyError(f"run {run_id!r} not found in audit store")
         keys = (
@@ -108,10 +112,14 @@ class AuditStore:
         return dict(zip(keys, row, strict=True))
 
     def list_stages(self, run_id):
-        rows = self._connect().execute(
-            "SELECT stage, status, started_at, finished_at"
-            " FROM stages WHERE run_id = ? ORDER BY id",
-            (run_id,),
-        ).fetchall()
+        rows = (
+            self._connect()
+            .execute(
+                "SELECT stage, status, started_at, finished_at"
+                " FROM stages WHERE run_id = ? ORDER BY id",
+                (run_id,),
+            )
+            .fetchall()
+        )
         keys = ("stage", "status", "started_at", "finished_at")
         return [dict(zip(keys, row, strict=True)) for row in rows]

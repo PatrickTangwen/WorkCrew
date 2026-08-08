@@ -27,3 +27,6 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 88
+# Never reformat prose documents (ruff formats fenced code blocks in
+# markdown; project_plan_v3.md is an authoritative reference).
+extend-exclude = ["*.md"]
