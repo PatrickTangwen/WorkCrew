@@ -7,10 +7,12 @@ FakeAgentRuntime; live runtime adapters replace it in later tickets.
 
 import argparse
 import sys
+from pathlib import Path
 
 from workflow_app.progress import emit
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.workflow.engine import run_workflow
+from workflow_app.workspace import RunInputs
 
 # Degenerate walking-skeleton payload. Ticket #5 wires realistic fixture
 # flows through the fake pipeline; live runtimes land in #10.
@@ -45,12 +47,15 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
 
     emit("Using fake agent runtimes (live runtimes arrive in later tickets).")
+    inputs = RunInputs(
+        source=Path(args.source),
+        workbook=Path(args.workbook),
+        rules=Path(args.rules),
+        workbook_schema=Path(args.workbook_schema),
+    )
     try:
         run_workflow(
-            source=args.source,
-            workbook=args.workbook,
-            rules=args.rules,
-            workbook_schema=args.workbook_schema,
+            inputs=inputs,
             runs_root=args.runs_root,
             runtimes={"filler": FakeAgentRuntime(FAKE_OUTPUTS)},
         )

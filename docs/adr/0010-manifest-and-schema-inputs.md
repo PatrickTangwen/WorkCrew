@@ -36,3 +36,15 @@ image files are recorded `ok`; deeper readability is the agents' domain.
 
 `build_manifest` runs over `input/sources/` (the copied snapshot), so
 hashes describe exactly what agents can read during the run.
+
+### Plan-section-16 capture is staged; graph naming normalized
+
+`FieldSpec` does not yet represent formulas or existing values from the
+section 16 capture list. Both exist to protect cells during writes, so
+their representation lands with their consumer, the #4 mutation/
+allowlist layer, rather than being guessed here. Column headers are the
+field-dict keys. Relatedly: the section 30 node written "DISCOVER +
+BUILD_MANIFEST" is registered as `BUILD_MANIFEST` (discovery is its
+internal step), and state path fields are `str | None` because each is
+None until its producing node runs — section 30's `str` describes the
+steady state.
