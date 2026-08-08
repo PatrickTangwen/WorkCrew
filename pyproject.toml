@@ -1,0 +1,29 @@
+[project]
+name = "workflow-app"
+version = "0.1.0"
+description = "Local-first document-to-workbook workflow engine (Claude Code Filler + Codex Reviewer)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2",
+    "langgraph>=1.0",
+]
+
+[project.scripts]
+workflow = "workflow_app.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.12",
+]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
