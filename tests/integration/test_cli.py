@@ -9,24 +9,6 @@ import pytest
 from workflow_app.cli import main
 
 
-@pytest.fixture
-def inputs(tmp_path):
-    source = tmp_path / "source_documents"
-    source.mkdir()
-    (source / "brief.txt").write_text("A source document.")
-    workbook = tmp_path / "template.xlsx"
-    workbook.write_bytes(b"placeholder workbook bytes")
-    rules = tmp_path / "rules"
-    rules.mkdir()
-    (rules / "naming.md").write_text("Naming conventions.")
-    return {
-        "source": source,
-        "workbook": workbook,
-        "rules": rules,
-        "runs_root": tmp_path / "runs",
-    }
-
-
 def run_args(inputs):
     return [
         "run",

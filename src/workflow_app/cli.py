@@ -12,8 +12,8 @@ from workflow_app.progress import emit
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.workflow.engine import run_workflow
 
-# Minimal structured output replayed by the fake Filler until live
-# runtimes land (#10).
+# Degenerate walking-skeleton payload. Ticket #5 wires realistic fixture
+# flows through the fake pipeline; live runtimes land in #10.
 FAKE_OUTPUTS = {"filler": {"proposals": []}}
 
 

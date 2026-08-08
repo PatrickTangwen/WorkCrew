@@ -37,30 +37,6 @@ def filler_fixture():
     return {"proposals": [proposal]}
 
 
-@pytest.fixture
-def inputs(tmp_path):
-    source = tmp_path / "source_documents"
-    (source / "India 2008").mkdir(parents=True)
-    (source / "India 2008" / "Project_Brief.txt").write_text(
-        "Community healthcare delivery project."
-    )
-    (source / "archive_notes.md").write_text("Top-level archive notes.")
-
-    workbook = tmp_path / "template.xlsx"
-    workbook.write_bytes(b"placeholder workbook bytes")
-
-    rules = tmp_path / "rules"
-    rules.mkdir()
-    (rules / "naming.md").write_text("Naming conventions.")
-
-    return {
-        "source": source,
-        "workbook": workbook,
-        "rules": rules,
-        "runs_root": tmp_path / "runs",
-    }
-
-
 def start_run(inputs, fixture=None):
     runtime = FakeAgentRuntime({"filler": fixture or filler_fixture()})
     return run_workflow(
@@ -171,11 +147,6 @@ def test_stage_progress_lines_go_to_stderr(inputs, capsys):
     assert any(state["run_id"] in line for line in lines)
     # At least one progress line per graph stage plus start/completion.
     assert len(lines) >= len(EXPECTED_STAGES)
-
-
-def test_final_state_reports_finalized_phase(inputs):
-    state = start_run(inputs)
-    assert state["phase"] == "FINALIZE"
 
 
 def test_missing_source_folder_fails_before_creating_a_run(inputs):

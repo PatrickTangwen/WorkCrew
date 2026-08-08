@@ -8,6 +8,22 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+
+@dataclass(frozen=True)
+class RunInputs:
+    source: Path
+    workbook: Path
+    rules: Path
+
+    def validate(self):
+        if not self.source.is_dir():
+            raise FileNotFoundError(f"source folder not found: {self.source}")
+        if not self.workbook.is_file():
+            raise FileNotFoundError(f"workbook not found: {self.workbook}")
+        if not self.rules.is_dir():
+            raise FileNotFoundError(f"rules folder not found: {self.rules}")
+
+
 SUBDIRS = (
     "input/sources",
     "input/rules",
@@ -59,8 +75,7 @@ class Workspace:
         for subdir in SUBDIRS:
             (self.root / subdir).mkdir(parents=True, exist_ok=True)
 
-    def copy_inputs(self, source, workbook, rules):
-        source, workbook, rules = Path(source), Path(workbook), Path(rules)
-        shutil.copytree(source, self.input_sources, dirs_exist_ok=True)
-        shutil.copytree(rules, self.input_rules, dirs_exist_ok=True)
-        shutil.copy2(workbook, self.input_workbook / workbook.name)
+    def copy_inputs(self, inputs):
+        shutil.copytree(inputs.source, self.input_sources, dirs_exist_ok=True)
+        shutil.copytree(inputs.rules, self.input_rules, dirs_exist_ok=True)
+        shutil.copy2(inputs.workbook, self.input_workbook / inputs.workbook.name)

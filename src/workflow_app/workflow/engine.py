@@ -11,7 +11,7 @@ from pathlib import Path
 from workflow_app.audit.db import AuditStore
 from workflow_app.progress import emit
 from workflow_app.workflow.graph import build_graph
-from workflow_app.workspace import Workspace
+from workflow_app.workspace import RunInputs, Workspace
 
 
 def new_run_id():
@@ -19,20 +19,16 @@ def new_run_id():
 
 
 def run_workflow(source, workbook, rules, runs_root, runtimes):
-    source, workbook, rules = Path(source), Path(workbook), Path(rules)
-    if not source.is_dir():
-        raise FileNotFoundError(f"source folder not found: {source}")
-    if not workbook.is_file():
-        raise FileNotFoundError(f"workbook not found: {workbook}")
-    if not rules.is_dir():
-        raise FileNotFoundError(f"rules folder not found: {rules}")
+    inputs = RunInputs(Path(source), Path(workbook), Path(rules))
+    inputs.validate()
 
     run_id = new_run_id()
     workspace = Workspace(Path(runs_root) / run_id)
+    workspace.create_layout()
     audit = AuditStore(workspace.audit_db)
     emit(f"Starting run {run_id}...")
 
-    graph = build_graph(workspace, source, workbook, rules, runtimes, audit)
+    graph = build_graph(workspace, inputs, runtimes, audit)
     initial_state = {
         "run_id": run_id,
         "workspace_path": str(workspace.root),
