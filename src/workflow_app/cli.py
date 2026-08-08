@@ -29,6 +29,11 @@ def build_parser():
     run.add_argument("--workbook", required=True, help="target workbook file")
     run.add_argument("--rules", required=True, help="rule/reference files folder")
     run.add_argument(
+        "--workbook-schema",
+        required=True,
+        help="hand-authored workbook schema config (JSON)",
+    )
+    run.add_argument(
         "--runs-root",
         default="runs",
         help="directory holding per-run workspaces (default: ./runs)",
@@ -45,10 +50,11 @@ def main(argv=None):
             source=args.source,
             workbook=args.workbook,
             rules=args.rules,
+            workbook_schema=args.workbook_schema,
             runs_root=args.runs_root,
             runtimes={"filler": FakeAgentRuntime(FAKE_OUTPUTS)},
         )
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, ValueError) as exc:
         print(f"[workflow] Error: {exc}", file=sys.stderr)
         return 2
     return 0

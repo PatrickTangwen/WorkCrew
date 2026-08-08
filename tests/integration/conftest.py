@@ -1,4 +1,23 @@
+import json
+
 import pytest
+
+WORKBOOK_SCHEMA_CONFIG = {
+    "sheets": [
+        {
+            "name": "7) Practicum Courses",
+            "target": True,
+            "fields": {
+                "Project ID*": {"required": True, "type": "id", "writable": True},
+                "Main Issue Area(s)": {
+                    "type": "controlled_vocabulary",
+                    "values": ["Healthcare", "Education"],
+                    "writable": True,
+                },
+            },
+        }
+    ]
+}
 
 
 @pytest.fixture
@@ -17,9 +36,13 @@ def inputs(tmp_path):
     rules.mkdir()
     (rules / "naming.md").write_text("Naming conventions.")
 
+    workbook_schema = tmp_path / "workbook_schema.json"
+    workbook_schema.write_text(json.dumps(WORKBOOK_SCHEMA_CONFIG))
+
     return {
         "source": source,
         "workbook": workbook,
         "rules": rules,
+        "workbook_schema": workbook_schema,
         "runs_root": tmp_path / "runs",
     }

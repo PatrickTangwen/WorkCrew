@@ -10,6 +10,7 @@ from pathlib import Path
 
 from workflow_app.audit.db import AuditStore
 from workflow_app.progress import emit
+from workflow_app.workbook.schema import load_workbook_schema
 from workflow_app.workflow.graph import build_graph
 from workflow_app.workspace import RunInputs, Workspace
 
@@ -18,9 +19,12 @@ def new_run_id():
     return f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
 
-def run_workflow(source, workbook, rules, runs_root, runtimes):
-    inputs = RunInputs(Path(source), Path(workbook), Path(rules))
+def run_workflow(source, workbook, rules, workbook_schema, runs_root, runtimes):
+    inputs = RunInputs(Path(source), Path(workbook), Path(rules), Path(workbook_schema))
     inputs.validate()
+    # Fail fast on a malformed config — before the workspace exists and
+    # long before any agent could be invoked (ticket #3).
+    schema = load_workbook_schema(inputs.workbook_schema)
 
     run_id = new_run_id()
     workspace = Workspace(Path(runs_root) / run_id)
@@ -28,10 +32,12 @@ def run_workflow(source, workbook, rules, runs_root, runtimes):
     audit = AuditStore(workspace.audit_db)
     emit(f"Starting run {run_id}...")
 
-    graph = build_graph(workspace, inputs, runtimes, audit)
+    graph = build_graph(workspace, inputs, schema, runtimes, audit)
     initial_state = {
         "run_id": run_id,
         "workspace_path": str(workspace.root),
+        "manifest_path": None,
+        "schema_path": None,
         "extraction_path": None,
         "phase": "",
     }
