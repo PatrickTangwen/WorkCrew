@@ -12,6 +12,7 @@ import pytest
 
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.workflow.engine import run_workflow
+from workflow_app.workspace import RunInputs
 
 CONTRACT_FIXTURES = Path(__file__).parent.parent / "fixtures" / "contracts"
 
@@ -44,13 +45,21 @@ def filler_fixture():
     return {"proposals": [proposal]}
 
 
+def run_inputs(inputs, **overrides):
+    values = {
+        "source": inputs["source"],
+        "workbook": inputs["workbook"],
+        "rules": inputs["rules"],
+        "workbook_schema": inputs["workbook_schema"],
+        **overrides,
+    }
+    return RunInputs(**values)
+
+
 def start_run(inputs, fixture=None):
     runtime = FakeAgentRuntime({"filler": fixture or filler_fixture()})
     return run_workflow(
-        source=inputs["source"],
-        workbook=inputs["workbook"],
-        rules=inputs["rules"],
-        workbook_schema=inputs["workbook_schema"],
+        inputs=run_inputs(inputs),
         runs_root=inputs["runs_root"],
         runtimes={"filler": runtime},
     )
@@ -194,10 +203,7 @@ def test_malformed_schema_config_fails_before_any_agent_runs(inputs):
 def test_missing_source_folder_fails_before_creating_a_run(inputs):
     with pytest.raises(FileNotFoundError):
         run_workflow(
-            source=inputs["source"] / "does-not-exist",
-            workbook=inputs["workbook"],
-            rules=inputs["rules"],
-            workbook_schema=inputs["workbook_schema"],
+            inputs=run_inputs(inputs, source=inputs["source"] / "does-not-exist"),
             runs_root=inputs["runs_root"],
             runtimes={"filler": FakeAgentRuntime({"filler": filler_fixture()})},
         )

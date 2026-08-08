@@ -14,10 +14,11 @@ from langgraph.graph import END, START, StateGraph
 from workflow_app.ingestion.manifest import build_manifest
 from workflow_app.progress import emit
 from workflow_app.runtimes.base import AgentRequest
+from workflow_app.workbook.schema import load_workbook_schema
 from workflow_app.workflow.state import WorkflowState
 
 
-def build_graph(workspace, inputs, schema, runtimes, audit):
+def build_graph(workspace, inputs, runtimes, audit):
     def stage(name, body):
         def node(state):
             audit.record_stage_started(state["run_id"], name)
@@ -42,9 +43,10 @@ def build_graph(workspace, inputs, schema, runtimes, audit):
         return {"manifest_path": str(workspace.manifest_json)}
 
     def load_schema(state):
-        # The engine validated the hand-authored config before the run
-        # started; this node stores the canonical form as an artifact.
+        # The engine already validated the config as a fail-fast gate;
+        # this node loads it again and stores the canonical form.
         emit("Loading workbook schema...")
+        schema = load_workbook_schema(inputs.workbook_schema)
         workspace.workbook_schema_json.write_text(schema.model_dump_json(indent=2))
         return {"schema_path": str(workspace.workbook_schema_json)}
 

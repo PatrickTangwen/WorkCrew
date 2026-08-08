@@ -1,8 +1,9 @@
 """LangGraph workflow state (plan section 30).
 
 State stores file paths and plain values only — never in-memory objects.
-Ticket #2 carries the walking-skeleton subset of the full state shape;
-later tickets add fields as their producing nodes land.
+This is a subset of the plan's full state shape; later tickets add
+fields as their producing nodes land. Path fields are None until their
+producing node has run.
 """
 
 from typing import TypedDict
