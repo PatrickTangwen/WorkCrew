@@ -15,7 +15,7 @@ from workflow_app.runtimes.base import AgentRequest
 from workflow_app.workflow.state import WorkflowState
 
 
-def build_graph(workspace, source, workbook, rules, runtimes, audit):
+def build_graph(workspace, inputs, runtimes, audit):
     def stage(name, body):
         def node(state):
             audit.record_stage_started(state["run_id"], name)
@@ -27,12 +27,13 @@ def build_graph(workspace, source, workbook, rules, runtimes, audit):
 
     def init(state):
         emit(f"Registering run {state['run_id']} in the audit store...")
-        audit.record_run_started(state["run_id"], source, workbook, rules)
+        audit.record_run_started(
+            state["run_id"], inputs.source, inputs.workbook, inputs.rules
+        )
 
     def prepare_workspace(state):
-        emit("Preparing workspace and copying inputs...")
-        workspace.create_layout()
-        workspace.copy_inputs(source, workbook, rules)
+        emit("Copying inputs into the workspace...")
+        workspace.copy_inputs(inputs)
 
     def claude_fill(state):
         emit("Starting Filler...")
@@ -40,6 +41,8 @@ def build_graph(workspace, source, workbook, rules, runtimes, audit):
         result = runtimes["filler"].run(request)
         if result.status != "ok":
             raise RuntimeError(f"Filler runtime failed: {result.error}")
+        # Raw agent output only; contract + rule validation happens in the
+        # VALIDATE node (guardrail 49.11), which lands with ticket #5.
         extraction_path = workspace.filler_outputs / "extraction.json"
         extraction_path.write_text(json.dumps(result.output, indent=2))
         emit("Filler complete.")

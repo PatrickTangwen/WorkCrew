@@ -40,8 +40,9 @@ class AuditStore:
         self._conn = None
 
     def _connect(self):
+        # The workspace layout (including the parent state/ directory) is
+        # created by the engine before the graph runs.
         if self._conn is None:
-            self._db_path.parent.mkdir(parents=True, exist_ok=True)
             self._conn = sqlite3.connect(self._db_path)
             self._conn.executescript(SCHEMA)
         return self._conn

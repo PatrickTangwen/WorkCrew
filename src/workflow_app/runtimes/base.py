@@ -5,19 +5,18 @@ and status, and map failures. They contain no business workflow logic.
 """
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 
 @dataclass(frozen=True)
 class AgentRequest:
     role: str
     workspace_path: str
-    prompt: str = ""
 
 
 @dataclass(frozen=True)
 class AgentResult:
-    status: str  # "ok" | "error"
+    status: Literal["ok", "error"]
     output: dict | None = None
     error: str | None = None
 
