@@ -1,0 +1,2107 @@
+{
+  "benchmark": "kleister-charity",
+  "sheet": "Charity Reports",
+  "seed": 20260809,
+  "rows": [
+    {
+      "row": 2,
+      "folder": "0b23543e6d16b0696d837fca7cc7f47f",
+      "document": "0b23543e6d16b0696d837fca7cc7f47f/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A2",
+          "expected_value": "CHA-214015",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B2",
+          "expected_value": "The_Parachute_Regimental_Association",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C2",
+          "expected_value": "214015",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D2",
+          "expected_value": "2017-12-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E2",
+          "expected_value": "CIRCULAR_ROAD_SOUTH",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F2",
+          "expected_value": "COLCHESTER",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G2",
+          "expected_value": "CO2_7UT",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H2",
+          "expected_value": "119092.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I2",
+          "expected_value": "144760.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J2",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 3,
+      "folder": "0c88611d64745bdf05eb2ba8d372e27b",
+      "document": "0c88611d64745bdf05eb2ba8d372e27b/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A3",
+          "expected_value": "CHA-1104168",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B3",
+          "expected_value": "Sutton_Family_Church",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C3",
+          "expected_value": "1104168",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D3",
+          "expected_value": "2013-12-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E3",
+          "expected_value": null,
+          "status": "blank"
+        },
+        "Post Town": {
+          "cell": "F3",
+          "expected_value": null,
+          "status": "blank"
+        },
+        "Postcode": {
+          "cell": "G3",
+          "expected_value": null,
+          "status": "blank"
+        },
+        "Annual Income GBP": {
+          "cell": "H3",
+          "expected_value": "143120.55",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I3",
+          "expected_value": "108294.79",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J3",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 4,
+      "folder": "1101955977993e5e7ed3d0b36a1bd97e",
+      "document": "1101955977993e5e7ed3d0b36a1bd97e/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A4",
+          "expected_value": "CHA-1102299",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B4",
+          "expected_value": "Somerset_Unit_For_Radiotherapy_Equipment",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C4",
+          "expected_value": "1102299",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D4",
+          "expected_value": "2016-12-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E4",
+          "expected_value": "44_CALDER_CRESCENT",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F4",
+          "expected_value": "TAUNTON",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G4",
+          "expected_value": "TA1_2NH",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H4",
+          "expected_value": "299545.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I4",
+          "expected_value": "71774.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J4",
+          "expected_value": "Medium",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 5,
+      "folder": "1cc28d08ee28eb4b6fcebaf8f0c77c5c",
+      "document": "1cc28d08ee28eb4b6fcebaf8f0c77c5c/report.txt",
+      "conflict": {
+        "field": "Annual Income GBP",
+        "file": "register_extract.txt",
+        "value": "341999.00"
+      },
+      "fields": {
+        "Charity ID*": {
+          "cell": "A5",
+          "expected_value": "CHA-309766",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B5",
+          "expected_value": "Beckett's_and_Sargeant's_Educational_Foundation",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C5",
+          "expected_value": "309766",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D5",
+          "expected_value": "2015-12-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E5",
+          "expected_value": "BILLING_ROAD",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F5",
+          "expected_value": "NORTHAMPTON",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G5",
+          "expected_value": "NN1_5AU",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H5",
+          "expected_value": null,
+          "status": "unresolved"
+        },
+        "Annual Spending GBP": {
+          "cell": "I5",
+          "expected_value": "158042.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J5",
+          "expected_value": null,
+          "status": "unresolved"
+        }
+      }
+    },
+    {
+      "row": 6,
+      "folder": "1f49fbc85e9947d2b40a19bf53882ef4",
+      "document": "1f49fbc85e9947d2b40a19bf53882ef4/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A6",
+          "expected_value": "CHA-1160799",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B6",
+          "expected_value": "Woodland_View_Dementia_Support_Group",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C6",
+          "expected_value": "1160799",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D6",
+          "expected_value": "2017-02-28",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E6",
+          "expected_value": "28_THE_GREEN",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F6",
+          "expected_value": "ROTHERHAM",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G6",
+          "expected_value": "S60_4JD",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H6",
+          "expected_value": "17756.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I6",
+          "expected_value": "4904.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J6",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 7,
+      "folder": "201d51b921f796ff5ff349fa3f7c05b0",
+      "document": "201d51b921f796ff5ff349fa3f7c05b0/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A7",
+          "expected_value": "CHA-1156630",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B7",
+          "expected_value": "The_Northumbria_Community_Trust",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C7",
+          "expected_value": "1156630",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D7",
+          "expected_value": "2017-03-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E7",
+          "expected_value": "MORPETH",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F7",
+          "expected_value": "MORPETH",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G7",
+          "expected_value": "NE65_9NU",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H7",
+          "expected_value": "487458.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I7",
+          "expected_value": "286956.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J7",
+          "expected_value": "Medium",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 8,
+      "folder": "264da2011ef83d68aefeda4d2d139d0c",
+      "document": "264da2011ef83d68aefeda4d2d139d0c/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A8",
+          "expected_value": "CHA-1161936",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B8",
+          "expected_value": "Angelic_Stars",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C8",
+          "expected_value": "1161936",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D8",
+          "expected_value": "2017-05-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E8",
+          "expected_value": "FRIAR_LANE",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F8",
+          "expected_value": "NOTTINGHAM",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G8",
+          "expected_value": "NG1_6DQ",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H8",
+          "expected_value": "4418.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I8",
+          "expected_value": "4740.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J8",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 9,
+      "folder": "3124c13e91ee1e64f20389dd8ed0dd1e",
+      "document": "3124c13e91ee1e64f20389dd8ed0dd1e/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A9",
+          "expected_value": "CHA-1116001",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B9",
+          "expected_value": "Walsingham_Care",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C9",
+          "expected_value": "1116001",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D9",
+          "expected_value": "2018-06-30",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E9",
+          "expected_value": "ROSEMOUNT_AVENUE",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F9",
+          "expected_value": "WEST_BYFLEET",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G9",
+          "expected_value": "KT14_6LB",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H9",
+          "expected_value": "224979.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I9",
+          "expected_value": "200197.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J9",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 10,
+      "folder": "3782e5cadd254c1a056aa74219f2fea3",
+      "document": "3782e5cadd254c1a056aa74219f2fea3/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A10",
+          "expected_value": "CHA-1078605",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B10",
+          "expected_value": "Louth_Playgoers_Society_Ltd.",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C10",
+          "expected_value": "1078605",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D10",
+          "expected_value": "2016-05-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E10",
+          "expected_value": "VICTORIA_ROAD",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F10",
+          "expected_value": "LOUTH",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G10",
+          "expected_value": "LN11_0BX",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H10",
+          "expected_value": "224411.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I10",
+          "expected_value": "267965.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J10",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 11,
+      "folder": "40fcfce28c9fc67ab4167f84c1c0d226",
+      "document": "40fcfce28c9fc67ab4167f84c1c0d226/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A11",
+          "expected_value": "CHA-1022746",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B11",
+          "expected_value": "Holgate_Pre-School",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C11",
+          "expected_value": "1022746",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D11",
+          "expected_value": "2018-08-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E11",
+          "expected_value": "ACOMB_ROAD",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F11",
+          "expected_value": "YORK",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G11",
+          "expected_value": "YO24_4AE",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H11",
+          "expected_value": "74075.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I11",
+          "expected_value": "74364.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J11",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 12,
+      "folder": "48a52c19f79079f6d5807e76bbadbe60",
+      "document": "48a52c19f79079f6d5807e76bbadbe60/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A12",
+          "expected_value": "CHA-1145588",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B12",
+          "expected_value": "Greasby_Community_Association",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C12",
+          "expected_value": "1145588",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D12",
+          "expected_value": "2017-03-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E12",
+          "expected_value": "52_EASTWAY",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F12",
+          "expected_value": "WIRRAL",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G12",
+          "expected_value": "CH49_2NT",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H12",
+          "expected_value": "60571.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I12",
+          "expected_value": "34965.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J12",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 13,
+      "folder": "5136a9bc957bf523da2d1d41cfede6ed",
+      "document": "5136a9bc957bf523da2d1d41cfede6ed/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A13",
+          "expected_value": null,
+          "status": "blank"
+        },
+        "Charity Name": {
+          "cell": "B13",
+          "expected_value": "Kingsheart_Church,_Romford",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C13",
+          "expected_value": null,
+          "status": "blank"
+        },
+        "Report Date": {
+          "cell": "D13",
+          "expected_value": "2015-04-05",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E13",
+          "expected_value": "262_PETTITS_LANE_NORTH",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F13",
+          "expected_value": "ROMFORD",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G13",
+          "expected_value": null,
+          "status": "blank"
+        },
+        "Annual Income GBP": {
+          "cell": "H13",
+          "expected_value": "53063.78",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I13",
+          "expected_value": "67195.24",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J13",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 14,
+      "folder": "57859eca38ca103284086d4c4bb23a45",
+      "document": "57859eca38ca103284086d4c4bb23a45/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A14",
+          "expected_value": "CHA-1049067",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B14",
+          "expected_value": "Wythenshawe_Hospital_Transplant_Fund",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C14",
+          "expected_value": "1049067",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D14",
+          "expected_value": "2016-03-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E14",
+          "expected_value": null,
+          "status": "blank"
+        },
+        "Post Town": {
+          "cell": "F14",
+          "expected_value": "MANCHESTER",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G14",
+          "expected_value": "M23_9LT",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H14",
+          "expected_value": "157875.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I14",
+          "expected_value": "394923.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J14",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 15,
+      "folder": "62496c4e57a8f134260f6b516d841f78",
+      "document": "62496c4e57a8f134260f6b516d841f78/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A15",
+          "expected_value": "CHA-1114235",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B15",
+          "expected_value": "Naree_Shakti_-_Women's_Strength",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C15",
+          "expected_value": "1114235",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D15",
+          "expected_value": "2016-03-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E15",
+          "expected_value": "95_BOWES_ROAD",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F15",
+          "expected_value": "LONDON",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G15",
+          "expected_value": "N13_4RU",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H15",
+          "expected_value": "53033.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I15",
+          "expected_value": "48165.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J15",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 16,
+      "folder": "6d237b6010395e9f225b146708352a69",
+      "document": "6d237b6010395e9f225b146708352a69/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A16",
+          "expected_value": "CHA-1014956",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B16",
+          "expected_value": "The_Britland_Charitable_Trust",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C16",
+          "expected_value": "1014956",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D16",
+          "expected_value": "2013-12-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E16",
+          "expected_value": "20_HENDERSON_ROAD",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F16",
+          "expected_value": "LONDON",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G16",
+          "expected_value": "SW18_3RR",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H16",
+          "expected_value": "37519.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I16",
+          "expected_value": "26250.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J16",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 17,
+      "folder": "721b169a3a121f3afbcc8bd5c8e64635",
+      "document": "721b169a3a121f3afbcc8bd5c8e64635/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A17",
+          "expected_value": "CHA-1155139",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B17",
+          "expected_value": "Athula_Dassana_Multi-Cultural_Buddhist_Community_Centre",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C17",
+          "expected_value": "1155139",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D17",
+          "expected_value": "2017-12-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E17",
+          "expected_value": "114_HOUNSLOW_ROAD",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F17",
+          "expected_value": "FELTHAM",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G17",
+          "expected_value": "TW13_6QB",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H17",
+          "expected_value": "94698.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I17",
+          "expected_value": "86808.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J17",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 18,
+      "folder": "72e92af0c4afd84ff8df6c0c74d3c805",
+      "document": "72e92af0c4afd84ff8df6c0c74d3c805/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A18",
+          "expected_value": "CHA-210662",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B18",
+          "expected_value": "Saffron_Walden_United_Charities",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C18",
+          "expected_value": "210662",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D18",
+          "expected_value": "2015-12-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E18",
+          "expected_value": "RADWINTER_ROAD",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F18",
+          "expected_value": "SAFFRON_WALDEN",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G18",
+          "expected_value": "CB11_3HY",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H18",
+          "expected_value": "43292.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I18",
+          "expected_value": "36694.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J18",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 19,
+      "folder": "7320770c3bf4cbce801f225cbe5b481d",
+      "document": "7320770c3bf4cbce801f225cbe5b481d/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A19",
+          "expected_value": "CHA-1130525",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B19",
+          "expected_value": "The_Parochial_Church_Council_Of_The_Ecclesiastical_Parish_Of_St._Augustine's_Church,_Hedon",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C19",
+          "expected_value": "1130525",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D19",
+          "expected_value": "2015-12-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E19",
+          "expected_value": "CHURCH_LANE",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F19",
+          "expected_value": null,
+          "status": "blank"
+        },
+        "Postcode": {
+          "cell": "G19",
+          "expected_value": "HU12_7TQ",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H19",
+          "expected_value": "47311.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I19",
+          "expected_value": "35311.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J19",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 20,
+      "folder": "73b75c3c202617ee200c9f7e069d6878",
+      "document": "73b75c3c202617ee200c9f7e069d6878/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A20",
+          "expected_value": "CHA-1126428",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B20",
+          "expected_value": "Hope_Community_Church_(Wymondham)",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C20",
+          "expected_value": "1126428",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D20",
+          "expected_value": "2018-07-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E20",
+          "expected_value": "AYTON_ROAD",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F20",
+          "expected_value": "WYMONDHAM",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G20",
+          "expected_value": "NR18_0QJ",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H20",
+          "expected_value": "276677.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I20",
+          "expected_value": "252491.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J20",
+          "expected_value": "Medium",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 21,
+      "folder": "78bce740bdb89a39c139b84e0ac81b1d",
+      "document": "78bce740bdb89a39c139b84e0ac81b1d/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A21",
+          "expected_value": "CHA-1023260",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B21",
+          "expected_value": "Busy_Otters_Pre-School_Playgroup",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C21",
+          "expected_value": "1023260",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D21",
+          "expected_value": "2018-07-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E21",
+          "expected_value": "LONGDOGS_LANE",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F21",
+          "expected_value": "OTTERY_ST_MARY",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G21",
+          "expected_value": "EX11_1HY",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H21",
+          "expected_value": "125113.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I21",
+          "expected_value": "104813.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J21",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 22,
+      "folder": "7b43013f9729f3e6c5d487743fca1670",
+      "document": "7b43013f9729f3e6c5d487743fca1670/report.txt",
+      "conflict": {
+        "field": "Annual Income GBP",
+        "file": "register_extract.txt",
+        "value": "218877.00"
+      },
+      "fields": {
+        "Charity ID*": {
+          "cell": "A22",
+          "expected_value": "CHA-1143209",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B22",
+          "expected_value": "Mad_Theatre_Company",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C22",
+          "expected_value": "1143209",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D22",
+          "expected_value": "2016-09-30",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E22",
+          "expected_value": "16_ST_JOHNS_GARDENS",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F22",
+          "expected_value": "BURY",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G22",
+          "expected_value": "BL9_ONP",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H22",
+          "expected_value": null,
+          "status": "unresolved"
+        },
+        "Annual Spending GBP": {
+          "cell": "I22",
+          "expected_value": "90174.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J22",
+          "expected_value": null,
+          "status": "unresolved"
+        }
+      }
+    },
+    {
+      "row": 23,
+      "folder": "9825d673aac0dd524baeec4fba41cae7",
+      "document": "9825d673aac0dd524baeec4fba41cae7/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A23",
+          "expected_value": "CHA-295296",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B23",
+          "expected_value": "Acorn_Under_Fives",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C23",
+          "expected_value": "295296",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D23",
+          "expected_value": "2016-12-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E23",
+          "expected_value": "BUTLER_ROAD",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F23",
+          "expected_value": "CROWTHORNE",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G23",
+          "expected_value": "RG45_6QZ",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H23",
+          "expected_value": "140075.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I23",
+          "expected_value": "138587.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J23",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 24,
+      "folder": "9d2c257a42d4aedee5b8b5292b1d432a",
+      "document": "9d2c257a42d4aedee5b8b5292b1d432a/report.txt",
+      "conflict": {
+        "field": "Annual Income GBP",
+        "file": "register_extract.txt",
+        "value": "339803.00"
+      },
+      "fields": {
+        "Charity ID*": {
+          "cell": "A24",
+          "expected_value": "CHA-1016894",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B24",
+          "expected_value": "Bloomfield_Learning_Centre_For_Children_Ltd.",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C24",
+          "expected_value": "1016894",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D24",
+          "expected_value": "2014-08-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E24",
+          "expected_value": "66_SNOWSFIELDS",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F24",
+          "expected_value": "LONDON",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G24",
+          "expected_value": "SE1_3SS",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H24",
+          "expected_value": null,
+          "status": "unresolved"
+        },
+        "Annual Spending GBP": {
+          "cell": "I24",
+          "expected_value": "154320.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J24",
+          "expected_value": null,
+          "status": "unresolved"
+        }
+      }
+    },
+    {
+      "row": 25,
+      "folder": "9f80e5b974d728a1e186e778723ea162",
+      "document": "9f80e5b974d728a1e186e778723ea162/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A25",
+          "expected_value": "CHA-1043903",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B25",
+          "expected_value": "Spalding_High_School_Fund",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C25",
+          "expected_value": "1043903",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D25",
+          "expected_value": "2018-03-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E25",
+          "expected_value": "STONEGATE",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F25",
+          "expected_value": "SPALDING",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G25",
+          "expected_value": "PE11_2PJ",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H25",
+          "expected_value": "300546.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I25",
+          "expected_value": "302195.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J25",
+          "expected_value": "Medium",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 26,
+      "folder": "a2f8a4530baa7effb4262607d1e58adb",
+      "document": "a2f8a4530baa7effb4262607d1e58adb/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A26",
+          "expected_value": "CHA-276397",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B26",
+          "expected_value": "Exeter_Cathedral_Preservation_Trust",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C26",
+          "expected_value": "276397",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D26",
+          "expected_value": "2015-12-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E26",
+          "expected_value": null,
+          "status": "blank"
+        },
+        "Post Town": {
+          "cell": "F26",
+          "expected_value": "EXETER",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G26",
+          "expected_value": "EX1_1HS",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H26",
+          "expected_value": "25830.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I26",
+          "expected_value": "130355.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J26",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 27,
+      "folder": "cdd7cafa5fe035d23b5c2d7a657b964e",
+      "document": "cdd7cafa5fe035d23b5c2d7a657b964e/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A27",
+          "expected_value": "CHA-276796",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B27",
+          "expected_value": "Friends_Of_Aiglon_College_Uk.",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C27",
+          "expected_value": "276796",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D27",
+          "expected_value": "2018-08-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E27",
+          "expected_value": "HOLLOW_LANE",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F27",
+          "expected_value": "LINGFIELD",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G27",
+          "expected_value": "RH7_6PB",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H27",
+          "expected_value": "119884.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I27",
+          "expected_value": "136745.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J27",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 28,
+      "folder": "d47bcb11ee78e487ab8cd04e5a998471",
+      "document": "d47bcb11ee78e487ab8cd04e5a998471/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A28",
+          "expected_value": "CHA-1120569",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B28",
+          "expected_value": "Nottingham_Women's_Counselling_Service",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C28",
+          "expected_value": "1120569",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D28",
+          "expected_value": "2015-05-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E28",
+          "expected_value": "PELHAM_ROAD",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F28",
+          "expected_value": "NOTTINGHAM",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G28",
+          "expected_value": "NG5_1AP",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H28",
+          "expected_value": "77813.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I28",
+          "expected_value": "80743.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J28",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 29,
+      "folder": "d5baa674d58f9bb9e899827023852b31",
+      "document": "d5baa674d58f9bb9e899827023852b31/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A29",
+          "expected_value": "CHA-1068108",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B29",
+          "expected_value": "Voyage",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C29",
+          "expected_value": "1068108",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D29",
+          "expected_value": "2017-03-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E29",
+          "expected_value": "FALKIRK_STREET",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F29",
+          "expected_value": "LONDON",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G29",
+          "expected_value": "N1_6QH",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H29",
+          "expected_value": "82039.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I29",
+          "expected_value": "95493.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J29",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 30,
+      "folder": "e127d9be510ad6847442e7a9fc92c724",
+      "document": "e127d9be510ad6847442e7a9fc92c724/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A30",
+          "expected_value": "CHA-1138103",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B30",
+          "expected_value": "Wigan_Methodist_Circuit",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C30",
+          "expected_value": "1138103",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D30",
+          "expected_value": "2017-08-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E30",
+          "expected_value": "SPENCER_ROAD",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F30",
+          "expected_value": "WIGAN",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G30",
+          "expected_value": "WN1_2QR",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H30",
+          "expected_value": "335586.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I30",
+          "expected_value": "353644.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J30",
+          "expected_value": "Medium",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 31,
+      "folder": "e323d12083fd67b6a0d4635d6c6fa1c9",
+      "document": "e323d12083fd67b6a0d4635d6c6fa1c9/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A31",
+          "expected_value": "CHA-294242",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B31",
+          "expected_value": "Davis_Estate_Community_Centre",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C31",
+          "expected_value": "294242",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D31",
+          "expected_value": "2015-03-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E31",
+          "expected_value": "BARBERRY_AVENUE",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F31",
+          "expected_value": "CHATHAM",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G31",
+          "expected_value": "ME5_9TE",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H31",
+          "expected_value": "29114.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I31",
+          "expected_value": "27767.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J31",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 32,
+      "folder": "e58a0e2e131a25457c02dcff96938047",
+      "document": "e58a0e2e131a25457c02dcff96938047/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A32",
+          "expected_value": "CHA-243909",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B32",
+          "expected_value": "'45_Aid_Society_Ltd.",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C32",
+          "expected_value": "243909",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D32",
+          "expected_value": "2016-12-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E32",
+          "expected_value": null,
+          "status": "blank"
+        },
+        "Post Town": {
+          "cell": "F32",
+          "expected_value": "LONDON",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G32",
+          "expected_value": "W1T_3BL",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H32",
+          "expected_value": "74325.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I32",
+          "expected_value": "114997.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J32",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 33,
+      "folder": "ecf7fc9e7e1c2939b3b2fc3cd2a93c0f",
+      "document": "ecf7fc9e7e1c2939b3b2fc3cd2a93c0f/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A33",
+          "expected_value": "CHA-1168193",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B33",
+          "expected_value": "Families_Relief",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C33",
+          "expected_value": "1168193",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D33",
+          "expected_value": "2017-12-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E33",
+          "expected_value": "133_ABBEYDALE_ROAD",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F33",
+          "expected_value": "SHEFFIELD",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G33",
+          "expected_value": "S7_1FE",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H33",
+          "expected_value": null,
+          "status": "blank"
+        },
+        "Annual Spending GBP": {
+          "cell": "I33",
+          "expected_value": null,
+          "status": "blank"
+        },
+        "Income Size Band": {
+          "cell": "J33",
+          "expected_value": null,
+          "status": "blank"
+        }
+      }
+    },
+    {
+      "row": 34,
+      "folder": "f1a60ff295660db24521deae3865d8dc",
+      "document": "f1a60ff295660db24521deae3865d8dc/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A34",
+          "expected_value": "CHA-236065",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B34",
+          "expected_value": "Third_Church_Of_Christ,_Scientist,_London,_England",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C34",
+          "expected_value": "236065",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D34",
+          "expected_value": "2014-12-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E34",
+          "expected_value": "7_CURZON_STREET",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F34",
+          "expected_value": "LONDON",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G34",
+          "expected_value": "W1J_5HG",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H34",
+          "expected_value": "267001.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I34",
+          "expected_value": "284547.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J34",
+          "expected_value": "Medium",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 35,
+      "folder": "f348cae2e6348821995eeece5f8e9e78",
+      "document": "f348cae2e6348821995eeece5f8e9e78/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A35",
+          "expected_value": "CHA-1163804",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B35",
+          "expected_value": "Lighthouse_Global_Network",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C35",
+          "expected_value": "1163804",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D35",
+          "expected_value": "2016-05-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E35",
+          "expected_value": "5A_TONBRIDGE_ROAD",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F35",
+          "expected_value": "MAIDSTONE",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G35",
+          "expected_value": "ME16_8RL",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H35",
+          "expected_value": null,
+          "status": "blank"
+        },
+        "Annual Spending GBP": {
+          "cell": "I35",
+          "expected_value": null,
+          "status": "blank"
+        },
+        "Income Size Band": {
+          "cell": "J35",
+          "expected_value": null,
+          "status": "blank"
+        }
+      }
+    },
+    {
+      "row": 36,
+      "folder": "f529c080fc577b169f995ec5016fdb6a",
+      "document": "f529c080fc577b169f995ec5016fdb6a/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A36",
+          "expected_value": "CHA-226134",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B36",
+          "expected_value": "Scarborough_Trinity_House_Seafarers'_Trust",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C36",
+          "expected_value": "226134",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D36",
+          "expected_value": "2013-12-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E36",
+          "expected_value": "43_NEWLANDS_PARK_GROVE",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F36",
+          "expected_value": "SCARBOROUGH",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G36",
+          "expected_value": "YO12_6PT",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H36",
+          "expected_value": "70470.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I36",
+          "expected_value": "53768.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J36",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    },
+    {
+      "row": 37,
+      "folder": "f9db3a1216d00fa9c594c33ddcaf9bfc",
+      "document": "f9db3a1216d00fa9c594c33ddcaf9bfc/report.txt",
+      "conflict": null,
+      "fields": {
+        "Charity ID*": {
+          "cell": "A37",
+          "expected_value": "CHA-1163804",
+          "status": "expected"
+        },
+        "Charity Name": {
+          "cell": "B37",
+          "expected_value": "Lighthouse_Global_Network",
+          "status": "expected"
+        },
+        "Registration Number": {
+          "cell": "C37",
+          "expected_value": "1163804",
+          "status": "expected"
+        },
+        "Report Date": {
+          "cell": "D37",
+          "expected_value": "2017-05-31",
+          "status": "expected"
+        },
+        "Street Line": {
+          "cell": "E37",
+          "expected_value": "5A_TONBRIDGE_ROAD",
+          "status": "expected"
+        },
+        "Post Town": {
+          "cell": "F37",
+          "expected_value": "MAIDSTONE",
+          "status": "expected"
+        },
+        "Postcode": {
+          "cell": "G37",
+          "expected_value": "ME16_8RL",
+          "status": "expected"
+        },
+        "Annual Income GBP": {
+          "cell": "H37",
+          "expected_value": "5500.00",
+          "status": "expected"
+        },
+        "Annual Spending GBP": {
+          "cell": "I37",
+          "expected_value": "1870.00",
+          "status": "expected"
+        },
+        "Income Size Band": {
+          "cell": "J37",
+          "expected_value": "Small",
+          "status": "expected"
+        }
+      }
+    }
+  ]
+}

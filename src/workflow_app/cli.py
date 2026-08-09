@@ -1,16 +1,25 @@
-"""CLI entry (plan section 4): `workflow run` and `workflow resume`.
+"""CLI entry (plan section 4): `workflow run`, `resume`, `evaluate`,
+and `build-benchmark`.
 
 A thin shell over the engine — no business logic here. Runs use the
 live agent runtimes by default (Claude Code for scoping/fill/revision,
 Codex for review/re-review); `--runtimes fake` replays the degenerate
 walking-skeleton fixtures instead, for wiring checks and tests that
-must not spend agent quota (plan section 32).
+must not spend agent quota (plan section 32). `build-benchmark` and
+`evaluate` are the plan-section-42 benchmark pipeline: build inputs
+from a Kleister-Charity split, score a completed run against the
+labels, and optionally record the result as a baseline.
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
+from workflow_app.benchmark.kleister import build_benchmark
+from workflow_app.evaluation.evaluate import evaluate_run
+from workflow_app.evaluation.labels import load_labels
+from workflow_app.evaluation.report import format_metric, render_evaluation_md
 from workflow_app.progress import emit
 from workflow_app.runtimes.claude_code import ClaudeCodeRuntime
 from workflow_app.runtimes.codex import CodexRuntime
@@ -123,6 +132,36 @@ def build_parser():
         default="runs",
         help="directory holding per-run workspaces (default: ./runs)",
     )
+    evaluate = subparsers.add_parser(
+        "evaluate", help="score a completed run against benchmark labels"
+    )
+    evaluate.add_argument(
+        "--run-id", required=True, help="id of the completed run to score"
+    )
+    evaluate.add_argument(
+        "--runs-root",
+        default="runs",
+        help="directory holding per-run workspaces (default: ./runs)",
+    )
+    evaluate.add_argument("--labels", required=True, help="benchmark labels.json file")
+    evaluate.add_argument(
+        "--record-baseline",
+        help="also copy evaluation.json to this path as the recorded baseline",
+    )
+
+    build = subparsers.add_parser(
+        "build-benchmark",
+        help="build the Kleister-Charity benchmark inputs from a dataset split",
+    )
+    build.add_argument(
+        "--split-dir",
+        required=True,
+        help="dataset split directory holding in.tsv(.xz) and expected.tsv",
+    )
+    build.add_argument(
+        "--output", required=True, help="directory to write the benchmark inputs to"
+    )
+
     for subparser in (run, resume):
         subparser.add_argument(
             "--runtimes",
@@ -161,16 +200,51 @@ def build_parser():
     return parser
 
 
+def run_evaluation(args):
+    labels = load_labels(Path(args.labels))
+    workspace = Path(args.runs_root) / args.run_id
+    evaluation = evaluate_run(workspace, labels)
+
+    artifacts = workspace / "artifacts"
+    # Workbook values may be dates; default=str keeps the record readable.
+    evaluation_json = json.dumps(evaluation, indent=2, default=str) + "\n"
+    (artifacts / "evaluation.json").write_text(evaluation_json)
+    (artifacts / "evaluation.md").write_text(render_evaluation_md(evaluation))
+
+    for name, metric in evaluation["metrics"].items():
+        value, detail = format_metric(metric)
+        emit(f"{name}: {value}" + (f" ({detail})" if detail else ""))
+    emit(f"Evaluation written: {artifacts / 'evaluation.md'}")
+
+    if args.record_baseline:
+        baseline = Path(args.record_baseline)
+        baseline.parent.mkdir(parents=True, exist_ok=True)
+        baseline.write_text(evaluation_json)
+        emit(f"Baseline recorded: {baseline}")
+
+
 def main(argv=None):
     args = build_parser().parse_args(argv)
 
-    runtimes = build_runtimes(
-        args.runtimes,
-        claude_model=args.claude_model,
-        codex_model=args.codex_model,
-        codex_effort=args.codex_effort,
-    )
     try:
+        if args.command == "evaluate":
+            run_evaluation(args)
+            return 0
+        if args.command == "build-benchmark":
+            summary = build_benchmark(Path(args.split_dir), Path(args.output))
+            emit(
+                f"Benchmark built: {summary['documents']} documents"
+                f" ({summary['conflicts']} with injected conflicts)"
+                f" -> {summary['output']}"
+            )
+            return 0
+
+        runtimes = build_runtimes(
+            args.runtimes,
+            claude_model=args.claude_model,
+            codex_model=args.codex_model,
+            codex_effort=args.codex_effort,
+        )
         if args.command == "run":
             inputs = RunInputs(
                 source=Path(args.source),
