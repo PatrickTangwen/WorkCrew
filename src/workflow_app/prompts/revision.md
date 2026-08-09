@@ -98,6 +98,11 @@ deterministic layer rejects the whole batch otherwise. Put the
 explanation in `justification` instead; for escalated cells it reaches
 the human review queue verbatim.
 
+When the flagged cell IS the row's Notes cell, your primary edit and
+your `note_append` merge into a single write: the note is appended
+onto your new value (after a `CLEAR`, the note alone becomes the cell
+content). Do not duplicate the note text inside `proposed_value`.
+
 ## Evidence policy
 
 Every decision carries `evidence` for what you re-verified and a

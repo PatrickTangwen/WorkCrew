@@ -100,6 +100,16 @@ def _findings(handoff):
             }
             for item in handoff[key]
         ]
+    # Declared duplicate merges are archival findings too (plan
+    # section 22); pre-declaration handoffs carry no key.
+    findings += [
+        {
+            "kind": "merge",
+            "ref": ", ".join(merge["folders"]) + f" -> row {merge['row']}",
+            "detail": merge["reason"],
+        }
+        for merge in handoff.get("merges", [])
+    ]
     findings += [
         {"kind": "extra_review", "ref": item["cell"], "detail": item["reason"]}
         for item in handoff["extra_review"]
@@ -127,16 +137,20 @@ def build_explorer_data(draft_path, schema, provenance, handoff, manifest):
     # Explicit Filler merge declarations, via the handoff (ADR 0015:
     # the declaration replaced the old evidence inference and its
     # cross-citation false positives). Handoffs persisted before the
-    # declaration existed carry no key.
-    merged_into, merge_reasons = {}, {}
+    # declaration existed carry no key. Only renderable declarations
+    # get navigation markings — the surviving row must exist and the
+    # folder must be a manifest folder; the handoff (and the findings
+    # list) remain the faithful record of everything declared.
+    declared_merges = {}
     for merge in handoff.get("merges", []):
-        # A declaration is only renderable when its surviving row
-        # exists — the navigation badge links to that row.
         if merge["row"] not in row_numbers:
             continue
         for name in merge["folders"]:
-            merged_into[name] = merge["row"]
-            merge_reasons[name] = merge["reason"]
+            if name in folder_names:
+                declared_merges[name] = {
+                    "row": merge["row"],
+                    "reason": merge["reason"],
+                }
 
     rows = []
     for row_number in row_numbers:
@@ -186,7 +200,9 @@ def build_explorer_data(draft_path, schema, provenance, handoff, manifest):
                 "filled": sum(1 for field in fields if field["value"] is not None),
                 "folders": row_folders.get(row_number, []),
                 "merged_from": [
-                    name for name, target in merged_into.items() if target == row_number
+                    name
+                    for name, info in declared_merges.items()
+                    if info["row"] == row_number
                 ],
                 "fields": fields,
             }
@@ -201,8 +217,12 @@ def build_explorer_data(draft_path, schema, provenance, handoff, manifest):
             {
                 "name": name,
                 "rows": folder_rows[name],
-                "merged_into": merged_into.get(name),
-                "merge_reason": merge_reasons.get(name),
+                "merged_into": (
+                    declared_merges[name]["row"] if name in declared_merges else None
+                ),
+                "merge_reason": (
+                    declared_merges[name]["reason"] if name in declared_merges else None
+                ),
             }
             for name in folder_names
         ],

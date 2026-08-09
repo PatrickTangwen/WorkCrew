@@ -28,6 +28,7 @@ STRINGS = {
         "finding_unreadable_source": "Unreadable source",
         "finding_ambiguity": "Ambiguity",
         "finding_source_conflict": "Source conflict",
+        "finding_merge": "Declared duplicate merge",
         "finding_extra_review": "Extra review",
         "col_row": "Row",
         "col_folder": "Folder",
@@ -62,6 +63,7 @@ STRINGS = {
         "finding_unreadable_source": "无法读取的来源",
         "finding_ambiguity": "歧义",
         "finding_source_conflict": "来源冲突",
+        "finding_merge": "声明的重复合并",
         "finding_extra_review": "建议复核",
         "col_row": "行",
         "col_folder": "文件夹",
@@ -372,8 +374,12 @@ function renderRow(r) {
     t('fields_filled', {filled: r.filled, total: DATA.field_count}) + '</div></div>';
 
   if (r.merged_from.length) {
+    const reasons = r.merged_from.map(n => {
+      const f = DATA.folders.find(x => x.name === n);
+      return f && f.merge_reason ? ' ' + f.merge_reason : '';
+    }).join('');
     html += '<div class="notecall">' +
-      esc(t('merged_callout', {names: r.merged_from.join(', ')})) + '</div>';
+      esc(t('merged_callout', {names: r.merged_from.join(', ')}) + reasons) + '</div>';
   }
 
   // A search hit inside a collapsed empty field must be visible.

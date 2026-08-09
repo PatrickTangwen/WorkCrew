@@ -369,6 +369,49 @@ def test_declared_merges_mark_folder_and_row(tmp_path):
     assert row["merged_from"] == ["India 2009"]
 
 
+def test_declared_merges_join_the_findings_list(tmp_path):
+    handoff = empty_handoff()
+    handoff["merges"] = [
+        {
+            "folders": ["India 2009"],
+            "row": 2,
+            "reason": "Same project; the 2009 folder is a re-upload.",
+        }
+    ]
+    data = build(
+        tmp_path,
+        {"A2": "PRJ-0001"},
+        manifest_paths=MANIFEST_PATHS,
+        handoff=handoff,
+    )
+
+    (merge_finding,) = [f for f in data["findings"] if f["kind"] == "merge"]
+    assert merge_finding["ref"] == "India 2009 -> row 2"
+    assert "re-upload" in merge_finding["detail"]
+
+
+def test_unrenderable_declarations_get_no_navigation_markings(tmp_path):
+    # A phantom folder or a nonexistent surviving row cannot be badged
+    # or linked; the declaration stays visible in the handoff and the
+    # findings list.
+    handoff = empty_handoff()
+    handoff["merges"] = [
+        {"folders": ["Ghost 2010"], "row": 2, "reason": "Phantom folder."},
+        {"folders": ["India 2009"], "row": 99, "reason": "Row never filled."},
+    ]
+    data = build(
+        tmp_path,
+        {"A2": "PRJ-0001"},
+        manifest_paths=MANIFEST_PATHS,
+        handoff=handoff,
+    )
+
+    assert all(folder["merged_into"] is None for folder in data["folders"])
+    (row,) = data["rows"]
+    assert row["merged_from"] == []
+    assert len([f for f in data["findings"] if f["kind"] == "merge"]) == 2
+
+
 def test_rows_and_folders_without_evidence_links_stay_visible(tmp_path):
     # Row 3 has no folder evidence (top-level file only); India 2009
     # has files but no referencing row. Both remain visible facts.
