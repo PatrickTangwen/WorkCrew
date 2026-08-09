@@ -31,8 +31,8 @@ PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 # invocation kinds (ADR 0014); every Claude role maps to this one runtime.
 ROLES = {
     "scoping": ("scoping.md", ScopingQuestions),
-    "filler": ("filler.md", ExtractionResult),
-    "revision": ("revision.md", RevisionResult),
+    "filler": ("filler_independent.md", ExtractionResult),
+    "revision": ("revision_independent.md", RevisionResult),
 }
 
 # Tail lengths keep stderr/stdout excerpts in error strings bounded.

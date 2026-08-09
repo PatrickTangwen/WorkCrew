@@ -1,10 +1,37 @@
 from pathlib import Path
 
+from workflow_app.runtimes.claude_code import ROLES as CLAUDE_ROLES
+from workflow_app.runtimes.codex import ROLES as CODEX_ROLES
+
 PROMPTS = Path(__file__).parents[2] / "src" / "workflow_app" / "prompts"
 
 
 def prompt(name):
     return (PROMPTS / name).read_text()
+
+
+def test_live_quality_roles_use_independent_prompt_variants():
+    assert CLAUDE_ROLES["filler"][0] == "filler_independent.md"
+    assert CODEX_ROLES["reviewer"][0] == "reviewer_independent.md"
+    assert CLAUDE_ROLES["revision"][0] == "revision_independent.md"
+
+
+def test_independent_variants_preserve_core_evidence_gates():
+    filler = prompt("filler_independent.md")
+    reviewer = prompt("reviewer_independent.md")
+    revision = prompt("revision_independent.md")
+
+    assert "support test" in filler
+    assert "target cell" in filler
+    assert "conflict, not a chosen winner" in filler
+    assert "verification test" in reviewer
+    assert "target ownership" in reviewer
+    assert "replace source evidence" in reviewer
+    assert "unqualified A1 address" in reviewer
+    assert "never include the sheet" in reviewer
+    assert "proof test" in revision
+    assert "exact value" in revision
+    assert "return `UNRESOLVED`" in revision
 
 
 def test_filler_keeps_row_folder_identity_and_propagates_conflicts():
