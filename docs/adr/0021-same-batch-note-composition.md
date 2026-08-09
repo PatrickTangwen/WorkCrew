@@ -45,17 +45,20 @@ the Notes cell that comes *after* an append in the same batch
 overwrites the composed notes — decision order is the authority, and
 the layer applies it faithfully rather than reordering or merging.
 
-### Known reachable edge, unchanged by this fix
+### Self-targeting decisions compose into one mutation (added 2026-08-09)
 
 A single decision whose primary edit targets the Notes cell itself
-*and* that carries its own `note_append` emits two mutations with
-different values under one (cell, source_ref) idempotency key, so the
-mutation layer raises MutationConflictError and aborts the batch. The
-combination is legal per `check_decisions` and therefore reachable in
-a live run. This failure predates the fix and is identical before and
-after it; resolving it — composing the pair into one write, or
-refusing the combination at the legality check — is deferred to a
-follow-up.
+*and* that carries its own `note_append` used to emit two mutations
+with different values under one (cell, source_ref) idempotency key,
+so the mutation layer raised MutationConflictError and aborted the
+batch — permanently, since a resume replays the same decisions file
+into the same conflict. The combination is legal per `check_decisions`
+and actively steered into by the revision prompt (CLEAR MUST carry a
+note_append), so a FAIL finding on a Notes cell made the abort
+deterministic. Resolution: the pair composes into ONE mutation — the
+note appends onto the new primary value (for CLEAR, the note alone
+survives, preserving the cleared cell's context). Replay follows the
+same audited-prior rule as every other composition.
 
 ### The composition seam lives in routing
 

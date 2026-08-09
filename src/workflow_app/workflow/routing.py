@@ -110,12 +110,31 @@ def compose_revision_mutations(
         source_ref = f"decisions[{index}]"
         decision_by_ref[source_ref] = decision
         cell_ref = writer.normalize_cell(decision.cell)
+
+        notes_ref = None
+        if decision.note_append is not None:
+            notes_ref = notes_cell_for(sheet_schema, cell_ref)
+            if notes_ref is None:
+                raise ValueError(
+                    f"decision on {decision.cell!r} carries note_append but"
+                    " the target sheet declares no notes_field"
+                )
+
         if decision.action in ("ACCEPT", "FIX", "CLEAR"):
-            value = {
-                "ACCEPT": findings_by_cell[decision.cell].recommended_value,
-                "FIX": decision.proposed_value,
-                "CLEAR": None,
-            }[decision.action]
+            if decision.action == "ACCEPT":
+                value = findings_by_cell[decision.cell].recommended_value
+            elif decision.action == "FIX":
+                value = decision.proposed_value
+            else:
+                value = None
+            if notes_ref == cell_ref:
+                # The primary edit targets the Notes cell itself: the
+                # note composes onto the new value inside the SAME
+                # mutation — a second write under one idempotency key
+                # would abort the whole batch (ADR 0021).
+                prior = find_prior(cell_ref, source_ref)
+                value = note_append_value(value, decision.note_append, prior)
+                notes_ref = None
             mutations.append(
                 CellMutation(
                     sheet=sheet_schema.name,
@@ -126,13 +145,8 @@ def compose_revision_mutations(
                 )
             )
             pending[cell_ref] = value
-        if decision.note_append is not None:
-            notes_ref = notes_cell_for(sheet_schema, cell_ref)
-            if notes_ref is None:
-                raise ValueError(
-                    f"decision on {decision.cell!r} carries note_append but"
-                    " the target sheet declares no notes_field"
-                )
+
+        if notes_ref is not None:
             if notes_ref in pending:
                 current = pending[notes_ref]
             else:
