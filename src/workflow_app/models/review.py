@@ -1,4 +1,5 @@
-"""Review finding and re-review verdict contracts (plan sections 18, 23)."""
+"""Review finding, re-review verdict, and container contracts
+(plan sections 18, 23, 26)."""
 
 from typing import Any, Literal
 
@@ -41,3 +42,15 @@ class ReReviewVerdict(BaseModel):
     ]
 
     reviewer_comment: str
+
+
+class ReviewResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    findings: list[ReviewFinding]
+
+
+class ReReviewResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    verdicts: list[ReReviewVerdict]

@@ -28,3 +28,9 @@ class RevisionDecision(BaseModel):
 
     evidence: list[Evidence]
     justification: str
+
+
+class RevisionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decisions: list[RevisionDecision]

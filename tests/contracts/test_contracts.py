@@ -12,9 +12,12 @@ from workflow_app.models import (
     CellProposal,
     Evidence,
     ExtractionResult,
+    ReReviewResult,
     ReReviewVerdict,
     ReviewFinding,
+    ReviewResult,
     RevisionDecision,
+    RevisionResult,
 )
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "contracts"
@@ -140,6 +143,23 @@ def test_extraction_result_wraps_proposals():
     container = {"proposals": [load("cell_proposal.json")]}
     result = ExtractionResult.model_validate(container)
     assert len(result.proposals) == 1
+
+
+@pytest.mark.parametrize(
+    ("model", "key", "fixture_name"),
+    [
+        (ReviewResult, "findings", "review_finding.json"),
+        (RevisionResult, "decisions", "revision_decision.json"),
+        (ReReviewResult, "verdicts", "re_review_verdict.json"),
+    ],
+)
+def test_result_containers_wrap_their_items(model, key, fixture_name):
+    result = model.model_validate({key: [load(fixture_name)]})
+    assert len(getattr(result, key)) == 1
+    with pytest.raises(ValidationError):
+        model.model_validate({})
+    with pytest.raises(ValidationError):
+        model.model_validate({key: [], "extra": True})
 
 
 def test_extraction_result_requires_proposals_key():

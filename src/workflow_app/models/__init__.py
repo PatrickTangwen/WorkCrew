@@ -2,14 +2,22 @@
 
 from workflow_app.models.evidence import Evidence
 from workflow_app.models.extraction import CellProposal, ExtractionResult
-from workflow_app.models.review import ReReviewVerdict, ReviewFinding
-from workflow_app.models.revision import RevisionDecision
+from workflow_app.models.review import (
+    ReReviewResult,
+    ReReviewVerdict,
+    ReviewFinding,
+    ReviewResult,
+)
+from workflow_app.models.revision import RevisionDecision, RevisionResult
 
 __all__ = [
     "CellProposal",
     "Evidence",
     "ExtractionResult",
+    "ReReviewResult",
     "ReReviewVerdict",
     "ReviewFinding",
+    "ReviewResult",
     "RevisionDecision",
+    "RevisionResult",
 ]
