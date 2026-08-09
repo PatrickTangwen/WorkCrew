@@ -38,6 +38,9 @@ class FieldSpec(BaseModel):
     values: list[str] | None = None
     pattern: str | None = None
     date_format: str | None = None
+    # Chinese gloss shown under the field name in the ZH review
+    # explorer (plan section 22); display-only.
+    gloss_zh: str | None = None
 
     @model_validator(mode="after")
     def _fail_fast_on_unusable_specs(self):
@@ -56,14 +59,24 @@ class SheetSchema(BaseModel):
     # Field name of this sheet's Notes column; enables note_append
     # companion edits (plan section 28).
     notes_field: str | None = None
+    # Display annotations for the review explorer (plan section 22):
+    # the field whose value titles a row in navigation and detail
+    # pages, and the fields shown as master-table columns.
+    title_field: str | None = None
+    overview_fields: list[str] = []
     fields: dict[str, FieldSpec] = {}
 
     @model_validator(mode="after")
-    def _notes_field_must_exist(self):
-        if self.notes_field is not None and self.notes_field not in self.fields:
-            raise ValueError(
-                f"notes_field {self.notes_field!r} is not a declared field"
-            )
+    def _named_fields_must_exist(self):
+        for label in ("notes_field", "title_field"):
+            name = getattr(self, label)
+            if name is not None and name not in self.fields:
+                raise ValueError(f"{label} {name!r} is not a declared field")
+        for name in self.overview_fields:
+            if name not in self.fields:
+                raise ValueError(
+                    f"overview_fields entry {name!r} is not a declared field"
+                )
         return self
 
     @model_validator(mode="after")

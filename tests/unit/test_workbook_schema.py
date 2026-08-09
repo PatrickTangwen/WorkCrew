@@ -110,3 +110,17 @@ def test_duplicate_columns_within_a_sheet_are_rejected(tmp_path):
     config["sheets"][0]["fields"]["Notes"]["column"] = "G"
     with pytest.raises(ValueError, match="failed validation"):
         load_workbook_schema(write_config(tmp_path, config))
+
+
+def test_title_field_must_name_a_declared_field(tmp_path):
+    config = json.loads(json.dumps(VALID_CONFIG))
+    config["sheets"][0]["title_field"] = "No Such Column"
+    with pytest.raises(ValueError, match="failed validation"):
+        load_workbook_schema(write_config(tmp_path, config))
+
+
+def test_overview_fields_must_name_declared_fields(tmp_path):
+    config = json.loads(json.dumps(VALID_CONFIG))
+    config["sheets"][0]["overview_fields"] = ["No Such Column"]
+    with pytest.raises(ValueError, match="failed validation"):
+        load_workbook_schema(write_config(tmp_path, config))

@@ -132,6 +132,22 @@ class Workspace:
         return self.artifacts / "handoff.md"
 
     @property
+    def review_explorer_html(self):
+        return self.artifacts / "review_explorer.html"
+
+    @property
+    def review_explorer_zh_html(self):
+        return self.artifacts / "review_explorer_zh.html"
+
+    @property
+    def review_explorer_v2_html(self):
+        return self.artifacts / "review_explorer_v2.html"
+
+    @property
+    def review_explorer_zh_v2_html(self):
+        return self.artifacts / "review_explorer_zh_v2.html"
+
+    @property
     def review_json(self):
         return self.artifacts / "review.json"
 

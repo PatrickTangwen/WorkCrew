@@ -29,6 +29,8 @@ from workflow_app.models import (
     ScopingQuestions,
 )
 from workflow_app.progress import emit
+from workflow_app.provenance.explorer import render_explorer_html
+from workflow_app.provenance.render import build_explorer_data
 from workflow_app.provenance.store import build_provenance, resync_provenance
 from workflow_app.reports import (
     action_counts,
@@ -227,8 +229,32 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         workspace.handoff_json.write_text(json.dumps(handoff, indent=2))
         workspace.handoff_md.write_text(render_handoff_markdown(handoff))
 
+        write_explorers(state)
+
         emit(f"Draft written: {len(applied)} cells populated")
         return {"draft_xlsx_path": str(workspace.draft_xlsx)}
+
+    def write_explorers(state, version_suffix=""):
+        emit(f"Rendering review explorer (EN/ZH){version_suffix and ' v2'}...")
+        schema = schema_from(state)
+        provenance = json.loads(workspace.provenance_json.read_text())
+        handoff = json.loads(workspace.handoff_json.read_text())
+        manifest = Manifest.model_validate(
+            json.loads(Path(state["manifest_path"]).read_text())
+        )
+        data = build_explorer_data(
+            workspace.draft_xlsx, schema, provenance, handoff, manifest
+        )
+        targets = {
+            "": (workspace.review_explorer_html, workspace.review_explorer_zh_html),
+            "_v2": (
+                workspace.review_explorer_v2_html,
+                workspace.review_explorer_zh_v2_html,
+            ),
+        }[version_suffix]
+        version = version_suffix.lstrip("_")
+        for path, lang in zip(targets, ("en", "zh"), strict=True):
+            path.write_text(render_explorer_html(data, lang, version=version))
 
     def run_agent(role, raw_output_path):
         result = runtimes[role].run(
@@ -394,6 +420,9 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         workspace.revision_log_md.write_text(
             render_revision_log_md(revision.decisions, outcomes)
         )
+        # The explorer regenerates so it matches the revised workbook
+        # and updated provenance exactly (plan section 22).
+        write_explorers(state, version_suffix="_v2")
         applied = sum(1 for outcome in outcomes if outcome.status == "applied")
         emit(f"Applied {applied} authorized revisions")
 
