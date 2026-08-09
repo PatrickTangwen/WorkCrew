@@ -9,6 +9,8 @@ WORKBOOK_SCHEMA_CONFIG = {
             "name": "7) Practicum Courses",
             "target": True,
             "notes_field": "Notes",
+            "title_field": "Project ID*",
+            "overview_fields": ["Maturity", "Main Issue Area(s)"],
             "fields": {
                 "Project ID*": {
                     "required": True,

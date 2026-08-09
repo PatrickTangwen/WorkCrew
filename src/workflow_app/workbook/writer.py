@@ -52,5 +52,9 @@ def read_cell(workbook, sheet, cell_ref):
     return workbook[sheet][cell_ref].value
 
 
+def max_row(workbook, sheet):
+    return workbook[sheet].max_row
+
+
 def write_cell(workbook, sheet, cell_ref, value):
     workbook[sheet][cell_ref] = value
