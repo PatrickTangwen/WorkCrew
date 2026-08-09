@@ -1,20 +1,14 @@
 """Proposal-level validation rules (ticket #5, plan sections 20, 25).
 
 check_proposal enforces the medium-confidence cap for constructed and
-mapped fields and schema consistency; classify_confidence buckets
-confidence with the spec thresholds (low < 0.60 <= medium < 0.85 <= high).
+mapped fields and schema consistency.
 """
 
 import pytest
 from pydantic import ValidationError
 
 from workflow_app.models import CellProposal
-from workflow_app.validation.rules import (
-    HIGH_CONFIDENCE_THRESHOLD,
-    LOW_CONFIDENCE_THRESHOLD,
-    check_proposal,
-    classify_confidence,
-)
+from workflow_app.validation.rules import check_proposal
 from workflow_app.workbook.schema import WorkbookSchema
 
 SHEET = "7) Practicum Courses"
@@ -69,30 +63,11 @@ def proposal(**overrides):
             }
         ],
         "rules_applied": [],
-        "confidence": 0.95,
+        "confidence": "high",
         "status": "proposed",
     }
     base.update(overrides)
     return CellProposal.model_validate(base)
-
-
-# --- confidence buckets --------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("confidence", "bucket"),
-    [
-        (0.0, "low"),
-        (0.59, "low"),
-        (LOW_CONFIDENCE_THRESHOLD, "medium"),
-        (0.7, "medium"),
-        (0.84, "medium"),
-        (HIGH_CONFIDENCE_THRESHOLD, "high"),
-        (1.0, "high"),
-    ],
-)
-def test_classify_confidence_buckets(confidence, bucket):
-    assert classify_confidence(confidence) == bucket
 
 
 # --- the medium-confidence cap ------------------------------------------
@@ -115,14 +90,16 @@ def test_constructed_and_mapped_fields_are_capped_at_medium(column_name, cell, v
         column_name=column_name,
         cell=cell,
         value=value,
-        confidence=HIGH_CONFIDENCE_THRESHOLD,
+        confidence="high",
     )
     reason = check_proposal(capped, SCHEMA)
     assert reason is not None and "medium" in reason
 
 
-def test_capped_field_passes_below_the_threshold():
-    ok = proposal(column_name="Maturity", cell="E12", value="Emerging", confidence=0.84)
+def test_capped_field_accepts_medium_confidence():
+    ok = proposal(
+        column_name="Maturity", cell="E12", value="Emerging", confidence="medium"
+    )
     assert check_proposal(ok, SCHEMA) is None
 
 

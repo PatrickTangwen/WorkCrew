@@ -23,10 +23,9 @@ pytestmark = pytest.mark.smoke
 
 ALL_CLEAR_REVIEW = {"reviewer": {"findings": []}}
 
-# Fields capped at medium confidence (constructed / mapped, plan
-# section 20) in the sample workspace's schema config.
+# Fields capped at medium confidence (constructed / mapped, ADR 0024)
+# in the sample workspace's schema config.
 CAPPED_FIELDS = {"Project ID*", "Maturity"}
-MEDIUM_CAP = 0.85
 
 
 def live_runtimes():
@@ -123,7 +122,7 @@ def test_live_fill(inputs, monkeypatch):
                 f"proposed cell {proposal.cell} carries no evidence"
             )
         if proposal.column_name in CAPPED_FIELDS:
-            assert proposal.confidence < MEDIUM_CAP, (
+            assert proposal.confidence in {"low", "medium"}, (
                 f"{proposal.column_name} is constructed/mapped but has "
                 f"confidence {proposal.confidence}"
             )

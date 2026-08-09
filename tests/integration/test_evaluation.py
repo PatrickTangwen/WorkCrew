@@ -109,7 +109,7 @@ def build_outputs(labels):
                         "value": value,
                         "evidence": [evidence(folder)] + (extra_evidence or []),
                         "rules_applied": [],
-                        "confidence": 0.7,
+                        "confidence": "medium",
                         "status": "proposed",
                     }
                 )

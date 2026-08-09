@@ -8,7 +8,6 @@ machine artifact; handoff.md is its human rendering.
 
 from collections import Counter
 
-from workflow_app.validation.rules import classify_confidence
 from workflow_app.workbook.safety import cell_key
 
 
@@ -18,7 +17,7 @@ def build_handoff(manifest, extraction, rejections, outcomes, schema):
     applied = [o for o in outcomes if o.status == "applied"]
     safety_rejected = [o for o in outcomes if o.status == "rejected"]
 
-    confidence = Counter(classify_confidence(p.confidence) for p in proposed)
+    confidence = Counter(p.confidence for p in proposed)
     evidence_types = Counter(
         item.evidence_type for p in proposals for item in p.evidence
     )
@@ -38,10 +37,10 @@ def build_handoff(manifest, extraction, rejections, outcomes, schema):
         + [
             {
                 "cell": cell_key(p.sheet, p.cell),
-                "reason": (f"written at low confidence ({p.confidence})"),
+                "reason": "written at low confidence",
             }
             for p in proposed
-            if classify_confidence(p.confidence) == "low" and _was_applied(p, applied)
+            if p.confidence == "low" and _was_applied(p, applied)
         ]
     )
 

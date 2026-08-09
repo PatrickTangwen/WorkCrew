@@ -245,9 +245,10 @@ def test_review_policy_reaches_reviewer_inputs(inputs, tmp_path):
     workspace = workspace_of(inputs, state)
 
     canonical = json.loads((workspace / "artifacts" / "review_policy.json").read_text())
-    assert canonical["strict_fields"] == ["Project ID*"]
-    assert canonical["high_confidence_sampling_per_record"] == 3
-    assert canonical["low_confidence_threshold"] == 0.60
+    assert canonical == {
+        "strict_fields": ["Project ID*"],
+        "high_confidence_sampling_per_record": 3,
+    }
 
     reviewer_inputs = json.loads(
         (workspace / "agent_outputs" / "reviewer" / "inputs.json").read_text()
@@ -260,8 +261,10 @@ def test_default_review_policy_applies_when_none_is_provided(inputs):
     state = start_run(inputs)
     workspace = workspace_of(inputs, state)
     canonical = json.loads((workspace / "artifacts" / "review_policy.json").read_text())
-    assert canonical["strict_fields"] == []
-    assert canonical["medium_confidence_threshold"] == 0.85
+    assert canonical == {
+        "strict_fields": [],
+        "high_confidence_sampling_per_record": 2,
+    }
 
 
 def test_unknown_strict_field_fails_before_any_agent_runs(inputs, tmp_path):

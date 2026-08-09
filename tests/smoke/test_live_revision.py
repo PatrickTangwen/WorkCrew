@@ -71,13 +71,21 @@ def proposal(column_name, cell, value, confidence, text):
 
 FILLER_FIXTURE = {
     "proposals": [
-        proposal("Project ID*", "A2", "PRJ-2008", 0.80, "PRJ-<start year> rule"),
+        proposal("Project ID*", "A2", "PRJ-2008", "medium", "PRJ-<start year> rule"),
         proposal(
-            "Start Date", "D2", "2008-03-15", 0.80, "began operations on 2008-03-15"
+            "Start Date",
+            "D2",
+            "2008-03-15",
+            "medium",
+            "began operations on 2008-03-15",
         ),
-        proposal("Maturity", "E2", "Established", 0.70, "well established"),
+        proposal("Maturity", "E2", "Established", "medium", "well established"),
         proposal(
-            "Main Issue Area(s)", "G2", "Healthcare", 0.80, "community healthcare"
+            "Main Issue Area(s)",
+            "G2",
+            "Healthcare",
+            "medium",
+            "community healthcare",
         ),
     ]
 }
