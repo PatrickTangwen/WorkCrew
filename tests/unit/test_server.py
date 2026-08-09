@@ -1,10 +1,15 @@
 import socket
+import sqlite3
 import threading
+import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from workflow_app.audit.db import AuditStore
 from workflow_app.server import ServerOptions, bind_available_socket, create_app
+from workflow_app.workspace import RunInputs, Workspace
 
 
 class BlockingRunner:
@@ -29,6 +34,36 @@ def run_payload(home):
         "scoping_answers": None,
         "review_policy": None,
     }
+
+
+@dataclass(frozen=True)
+class HistoricalRun:
+    run_id: str
+    status: str
+    started_at: str
+    finished_at: str
+    source_name: str
+    workbook_name: str
+
+
+def record_historical_run(runs_root, run):
+    workspace = Workspace(runs_root / run.run_id)
+    workspace.create_layout()
+    inputs = RunInputs(
+        source=Path("/inputs") / run.source_name,
+        workbook=Path("/inputs") / run.workbook_name,
+        rules=Path("/inputs/rules"),
+        workbook_schema=Path("/inputs/workbook-schema.json"),
+    )
+    audit = AuditStore(workspace.audit_db)
+    audit.record_run_started(run.run_id, inputs)
+    audit.close()
+    with sqlite3.connect(workspace.audit_db) as conn:
+        conn.execute(
+            "UPDATE runs SET status = ?, started_at = ?, finished_at = ?"
+            " WHERE run_id = ?",
+            (run.status, run.started_at, run.finished_at, run.run_id),
+        )
 
 
 def test_bind_available_socket_increments_past_an_occupied_port():
@@ -130,6 +165,175 @@ def test_post_run_rejects_a_second_active_run(tmp_path):
         assert second.status_code == 409
         assert second.json() == {"detail": "A run is already active"}
         runner.release.set()
+
+
+def test_get_runs_lists_audit_history_newest_first(tmp_path):
+    runs_root = tmp_path / "runs"
+    record_historical_run(
+        runs_root,
+        HistoricalRun(
+            run_id="run-older",
+            status="completed",
+            started_at="2026-08-08T10:00:00+00:00",
+            finished_at="2026-08-08T10:01:30+00:00",
+            source_name="older-source",
+            workbook_name="older.xlsx",
+        ),
+    )
+    record_historical_run(
+        runs_root,
+        HistoricalRun(
+            run_id="run-newer",
+            status="failed",
+            started_at="2026-08-09T12:00:00+00:00",
+            finished_at="2026-08-09T12:00:04+00:00",
+            source_name="newer-source",
+            workbook_name="newer.xlsx",
+        ),
+    )
+    client = TestClient(
+        create_app(
+            tmp_path / "missing-static",
+            options=ServerOptions(runs_root=runs_root),
+        )
+    )
+
+    response = client.get("/api/runs")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "run_id": "run-newer",
+            "status": "failed",
+            "started_at": "2026-08-09T12:00:00+00:00",
+            "duration": 4.0,
+            "source_name": "newer-source",
+            "workbook_name": "newer.xlsx",
+        },
+        {
+            "run_id": "run-older",
+            "status": "completed",
+            "started_at": "2026-08-08T10:00:00+00:00",
+            "duration": 90.0,
+            "source_name": "older-source",
+            "workbook_name": "older.xlsx",
+        },
+    ]
+
+
+def test_get_runs_includes_active_run_before_audit_record_exists(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    runs_root = tmp_path / "runs"
+    record_historical_run(
+        runs_root,
+        HistoricalRun(
+            run_id="run-historical",
+            status="completed",
+            started_at="2026-08-08T10:00:00+00:00",
+            finished_at="2026-08-08T10:00:08+00:00",
+            source_name="history-source",
+            workbook_name="history.xlsx",
+        ),
+    )
+    runner = BlockingRunner()
+    app = create_app(
+        tmp_path / "missing-static",
+        options=ServerOptions(
+            home_dir=home,
+            runs_root=runs_root,
+            runner=runner,
+            runtimes={},
+        ),
+    )
+
+    with TestClient(app) as client:
+        try:
+            created = client.post("/api/runs", json=run_payload(home)).json()
+            assert runner.started.wait(timeout=1)
+
+            runs = client.get("/api/runs").json()
+
+            assert [run["run_id"] for run in runs] == [
+                created["run_id"],
+                "run-historical",
+            ]
+            assert runs[0]["status"] == "running"
+            assert runs[0]["duration"] >= 0
+            assert runs[0]["source_name"] == "source"
+            assert runs[0]["workbook_name"] == "template.xlsx"
+        finally:
+            runner.release.set()
+
+
+def test_get_runs_freezes_duration_when_current_run_finishes(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    app = create_app(
+        tmp_path / "missing-static",
+        options=ServerOptions(
+            home_dir=home,
+            runs_root=tmp_path / "runs",
+            runner=lambda **_kwargs: {"phase": "FINALIZE"},
+            runtimes={},
+        ),
+    )
+
+    with TestClient(app) as client:
+        created = client.post("/api/runs", json=run_payload(home)).json()
+        for _ in range(100):
+            if (
+                client.get(f"/api/runs/{created['run_id']}").json()["status"]
+                == "completed"
+            ):
+                break
+            time.sleep(0.001)
+
+        first_duration = client.get("/api/runs").json()[0]["duration"]
+        time.sleep(0.02)
+        second_duration = client.get("/api/runs").json()[0]["duration"]
+
+    assert second_duration == first_duration
+
+
+def test_get_historical_run_reads_detail_from_audit_store(tmp_path):
+    runs_root = tmp_path / "runs"
+    run_id = "run-completed"
+    record_historical_run(
+        runs_root,
+        HistoricalRun(
+            run_id=run_id,
+            status="completed",
+            started_at="2026-08-09T12:00:00+00:00",
+            finished_at="2026-08-09T12:00:45+00:00",
+            source_name="source-documents",
+            workbook_name="delivery.xlsx",
+        ),
+    )
+    workspace = Workspace(runs_root / run_id)
+    audit = AuditStore(workspace.audit_db)
+    audit.record_stage_started(run_id, "FINALIZE")
+    audit.record_stage_finished(run_id, "FINALIZE")
+    audit.close()
+    client = TestClient(
+        create_app(
+            tmp_path / "missing-static",
+            options=ServerOptions(runs_root=runs_root),
+        )
+    )
+
+    response = client.get(f"/api/runs/{run_id}")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "run_id": run_id,
+        "status": "completed",
+        "start_time": "2026-08-09T12:00:00+00:00",
+        "workspace_path": str(workspace.root.resolve()),
+        "phase": "FINALIZE",
+        "source_name": "source-documents",
+        "workbook_name": "delivery.xlsx",
+    }
 
 
 def test_browse_lists_home_directory_entries(tmp_path):

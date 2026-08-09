@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from workflow_app.audit.db import AuditStore
 from workflow_app.progress import emit
 from workflow_app.workflow.engine import new_run_id, run_workflow
 from workflow_app.workspace import RunInputs
@@ -22,6 +23,7 @@ from workflow_app.workspace import RunInputs
 UI_HOST = "127.0.0.1"
 DEFAULT_UI_PORT = 8470
 DEFAULT_STATIC_DIR = Path(__file__).parent / "static"
+RunStatus = Literal["running", "paused", "completed", "failed", "cancelled"]
 
 
 class CreateRunRequest(BaseModel):
@@ -35,12 +37,47 @@ class CreateRunRequest(BaseModel):
 
 class RunRecord(BaseModel):
     run_id: str
-    status: Literal["running", "paused", "completed", "failed"]
+    status: RunStatus
     start_time: str
     workspace_path: str
     phase: str
     source_name: str
     workbook_name: str
+
+
+class RunSummary(BaseModel):
+    run_id: str
+    status: RunStatus
+    started_at: str
+    duration: float
+    source_name: str
+    workbook_name: str
+
+
+@dataclass(frozen=True)
+class RunFacts:
+    run_id: str
+    status: RunStatus
+    started_at: str
+    finished_at: str | None
+    source_name: str
+    workbook_name: str
+
+    def summary(self):
+        return RunSummary(
+            run_id=self.run_id,
+            status=self.status,
+            started_at=self.started_at,
+            duration=_duration(self.started_at, self.finished_at),
+            source_name=self.source_name,
+            workbook_name=self.workbook_name,
+        ).model_dump()
+
+
+@dataclass
+class TrackedRun:
+    record: RunRecord
+    finished_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -58,7 +95,9 @@ class RunCoordinator:
         self.tasks = set()
 
     async def start(self, request):
-        if any(run.status in {"running", "paused"} for run in self.runs.values()):
+        if any(
+            run.record.status in {"running", "paused"} for run in self.runs.values()
+        ):
             raise HTTPException(status_code=409, detail="A run is already active")
 
         inputs = RunInputs(
@@ -74,18 +113,30 @@ class RunCoordinator:
             else Path(request.review_policy),
         )
         record = self._new_record(inputs)
-        self.runs[record.run_id] = record
+        tracked = TrackedRun(record)
+        self.runs[record.run_id] = tracked
         response = record.model_dump()
-        task = asyncio.create_task(self._execute(record, inputs))
+        task = asyncio.create_task(self._execute(tracked, inputs))
         self.tasks.add(task)
-        task.add_done_callback(lambda done: self._finish(done, record))
+        task.add_done_callback(lambda done: self._finish(done, tracked))
         return response
 
-    def get(self, run_id):
-        try:
-            return self.runs[run_id].model_dump()
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail="Run not found") from exc
+    def find(self, run_id):
+        tracked = self.runs.get(run_id)
+        return None if tracked is None else tracked.record.model_dump()
+
+    def list_summaries(self):
+        return [
+            RunFacts(
+                run_id=tracked.record.run_id,
+                status=tracked.record.status,
+                started_at=tracked.record.start_time,
+                finished_at=tracked.finished_at,
+                source_name=tracked.record.source_name,
+                workbook_name=tracked.record.workbook_name,
+            ).summary()
+            for tracked in self.runs.values()
+        ]
 
     def _new_record(self, inputs):
         run_id = new_run_id()
@@ -100,7 +151,8 @@ class RunCoordinator:
             workbook_name=inputs.workbook.name,
         )
 
-    async def _execute(self, record, inputs):
+    async def _execute(self, tracked, inputs):
+        record = tracked.record
         runtimes = self.options.runtimes
         if runtimes is None:
             from workflow_app.cli import build_runtimes
@@ -116,12 +168,87 @@ class RunCoordinator:
 
         record.phase = result.get("phase", record.phase)
         record.status = "paused" if "__interrupt__" in result else "completed"
+        if record.status == "completed":
+            tracked.finished_at = datetime.now(UTC).isoformat()
 
-    def _finish(self, task, record):
+    def _finish(self, task, tracked):
         self.tasks.discard(task)
         if not task.cancelled() and task.exception() is not None:
+            record = tracked.record
             record.status = "failed"
             record.phase = "FAILED"
+            tracked.finished_at = datetime.now(UTC).isoformat()
+
+
+class RunHistory:
+    def __init__(self, runs_root):
+        self.runs_root = Path(runs_root)
+
+    def list_summaries(self):
+        if not self.runs_root.is_dir():
+            return []
+
+        summaries = [
+            self._read_summary(audit_db)
+            for audit_db in self.runs_root.glob("*/state/audit.sqlite")
+        ]
+        summaries.sort(key=lambda run: run["started_at"], reverse=True)
+        return summaries
+
+    def get_record(self, run_id):
+        root = self.runs_root.resolve()
+        workspace = (root / run_id).resolve()
+        if not workspace.is_relative_to(root):
+            raise HTTPException(status_code=404, detail="Run not found")
+        run, stages = self._read_run(workspace)
+
+        phase = stages[-1]["stage"] if stages else run["status"].upper()
+        return RunRecord(
+            run_id=run["run_id"],
+            status=run["status"],
+            start_time=run["started_at"],
+            workspace_path=str(workspace),
+            phase=phase,
+            source_name=Path(run["source_path"]).name,
+            workbook_name=Path(run["workbook_path"]).name,
+        ).model_dump()
+
+    def _read_summary(self, audit_db):
+        run, _ = self._read_run(audit_db.parents[1])
+        return RunFacts(
+            run_id=run["run_id"],
+            status=run["status"],
+            started_at=run["started_at"],
+            finished_at=run["finished_at"],
+            source_name=Path(run["source_path"]).name,
+            workbook_name=Path(run["workbook_path"]).name,
+        ).summary()
+
+    def _read_run(self, workspace):
+        run_id = workspace.name
+        audit_db = workspace / "state" / "audit.sqlite"
+        if not audit_db.is_file():
+            raise HTTPException(status_code=404, detail="Run not found")
+        audit = AuditStore(audit_db)
+        try:
+            try:
+                run = audit.get_run(run_id)
+            except KeyError as exc:
+                raise HTTPException(status_code=404, detail="Run not found") from exc
+            stages = audit.list_stages(run_id)
+        finally:
+            audit.close()
+        return run, stages
+
+
+def _duration(started_at, finished_at=None):
+    started = datetime.fromisoformat(started_at)
+    finished = (
+        datetime.now(UTC)
+        if finished_at is None
+        else datetime.fromisoformat(finished_at)
+    )
+    return max(0.0, (finished - started).total_seconds())
 
 
 class HomeBrowser:
@@ -200,15 +327,30 @@ def create_app(static_dir=DEFAULT_STATIC_DIR, require_frontend=False, options=No
 
     app = FastAPI(title="WorkCrew")
     coordinator = RunCoordinator(options)
+    history = RunHistory(options.runs_root)
     browser = HomeBrowser(options.home_dir)
 
     @app.post("/api/runs", status_code=201)
     async def create_run(request: CreateRunRequest):
         return await coordinator.start(request)
 
+    @app.get("/api/runs")
+    async def list_runs():
+        stored_runs = await asyncio.to_thread(history.list_summaries)
+        runs_by_id = {run["run_id"]: run for run in stored_runs}
+        runs_by_id.update({run["run_id"]: run for run in coordinator.list_summaries()})
+        return sorted(
+            runs_by_id.values(),
+            key=lambda run: run["started_at"],
+            reverse=True,
+        )
+
     @app.get("/api/runs/{run_id}")
     async def get_run(run_id: str):
-        return coordinator.get(run_id)
+        current = coordinator.find(run_id)
+        if current is not None:
+            return current
+        return await asyncio.to_thread(history.get_record, run_id)
 
     @app.get("/api/browse")
     def browse(path: str | None = None):
