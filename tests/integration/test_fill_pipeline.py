@@ -107,6 +107,36 @@ def artifacts(inputs, state):
     return Path(state["workspace_path"]) / "artifacts"
 
 
+def test_declared_merges_flow_into_the_handoff(inputs):
+    output = {
+        "proposals": FILLER_OUTPUT["proposals"],
+        "merges": [
+            {
+                "folders": ["India 2009"],
+                "row": 2,
+                "reason": "Duplicate of the 2008 folder.",
+            }
+        ],
+    }
+    fake = FakeAgentRuntime({"filler": output, "reviewer": {"findings": []}})
+    state = run_workflow(
+        inputs=RunInputs(
+            source=inputs["source"],
+            workbook=inputs["workbook"],
+            rules=inputs["rules"],
+            workbook_schema=inputs["workbook_schema"],
+            scoping_answers=inputs["scoping_answers"],
+        ),
+        runs_root=inputs["runs_root"],
+        runtimes={"filler": fake, "reviewer": fake},
+    )
+
+    handoff = json.loads((artifacts(inputs, state) / "handoff.json").read_text())
+    assert handoff["merges"] == output["merges"]
+    text = (artifacts(inputs, state) / "handoff.md").read_text()
+    assert "Duplicate of the 2008 folder." in text
+
+
 def test_draft_contains_only_authorized_valid_proposals(inputs):
     state = start_run(inputs)
 

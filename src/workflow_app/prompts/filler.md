@@ -59,6 +59,16 @@ list of cell proposals. For each proposal:
   0.85 and above is high.
 - `status` and `notes` — see the uncertainty policy.
 
+Alongside `proposals`, your output carries a `merges` list (empty when
+none). When you determine that two or more top-level source folders
+describe the SAME entity — a re-upload, a renamed copy, a duplicate
+year — declare it instead of silently folding them together: each
+entry names the duplicate `folders` (exactly as listed in
+`artifacts/manifest.json`), the surviving `row` you filled, and a
+one-sentence `reason`. Declared duplicates are surfaced to the
+Reviewer and in the review explorer; never spread one entity across
+multiple rows to avoid declaring a merge.
+
 ## Uncertainty policy
 
 Distinguish honestly; never return unsupported values merely to increase

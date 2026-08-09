@@ -1,7 +1,7 @@
 """Core data contracts (plan section 18)."""
 
 from workflow_app.models.evidence import Evidence
-from workflow_app.models.extraction import CellProposal, ExtractionResult
+from workflow_app.models.extraction import CellProposal, ExtractionResult, FolderMerge
 from workflow_app.models.review import (
     ReReviewResult,
     ReReviewVerdict,
@@ -17,6 +17,7 @@ __all__ = [
     "CellValue",
     "Evidence",
     "ExtractionResult",
+    "FolderMerge",
     "ReReviewResult",
     "ReReviewVerdict",
     "ReviewFinding",

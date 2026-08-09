@@ -124,13 +124,19 @@ def build_explorer_data(draft_path, schema, provenance, handoff, manifest):
         name: [row for row in row_numbers if name in row_folders.get(row, [])]
         for name in folder_names
     }
-    # A duplicate source folder was merged when its entire evidence
-    # went into a single row that primarily belongs to another folder.
-    merged_into = {
-        name: rows[0]
-        for name, rows in folder_rows.items()
-        if len(rows) == 1 and row_folders[rows[0]][0] != name
-    }
+    # Explicit Filler merge declarations, via the handoff (ADR 0015:
+    # the declaration replaced the old evidence inference and its
+    # cross-citation false positives). Handoffs persisted before the
+    # declaration existed carry no key.
+    merged_into, merge_reasons = {}, {}
+    for merge in handoff.get("merges", []):
+        # A declaration is only renderable when its surviving row
+        # exists — the navigation badge links to that row.
+        if merge["row"] not in row_numbers:
+            continue
+        for name in merge["folders"]:
+            merged_into[name] = merge["row"]
+            merge_reasons[name] = merge["reason"]
 
     rows = []
     for row_number in row_numbers:
@@ -196,6 +202,7 @@ def build_explorer_data(draft_path, schema, provenance, handoff, manifest):
                 "name": name,
                 "rows": folder_rows[name],
                 "merged_into": merged_into.get(name),
+                "merge_reason": merge_reasons.get(name),
             }
             for name in folder_names
         ],

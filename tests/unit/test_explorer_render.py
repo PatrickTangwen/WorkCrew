@@ -319,9 +319,11 @@ def test_folders_follow_manifest_order_with_rows_from_evidence(tmp_path):
     assert second["folders"] == ["India 2008", "India 2009"]
 
 
-def test_folder_whose_only_row_lives_elsewhere_is_merged(tmp_path):
-    # Every India 2009 file fed row 2, whose primary folder is India
-    # 2008 — the duplicate folder was merged into that row.
+def test_undeclared_duplicate_folders_are_not_inferred_as_merged(tmp_path):
+    # Every India 2009 file fed row 2 — the shape the old inference
+    # flagged. Without an explicit Filler declaration the explorer
+    # claims nothing (ADR 0015: the declaration replaced the inference
+    # and its cross-citation false positives).
     data = build(
         tmp_path,
         {"A2": "PRJ-0001"},
@@ -333,8 +335,36 @@ def test_folder_whose_only_row_lives_elsewhere_is_merged(tmp_path):
     )
 
     by_name = {folder["name"]: folder for folder in data["folders"]}
+    assert by_name["India 2009"]["merged_into"] is None
+    (row,) = data["rows"]
+    assert row["merged_from"] == []
+
+
+def test_declared_merges_mark_folder_and_row(tmp_path):
+    # The declaration alone drives the marking — India 2009 needs no
+    # cited evidence at all (a fully ignored duplicate folder).
+    handoff = empty_handoff()
+    handoff["merges"] = [
+        {
+            "folders": ["India 2009"],
+            "row": 2,
+            "reason": "Same project; the 2009 folder is a re-upload.",
+        }
+    ]
+    data = build(
+        tmp_path,
+        {"A2": "PRJ-0001"},
+        provenance=[provenance_entry("A2", "PRJ-0001", "India 2008/brief.txt")],
+        manifest_paths=MANIFEST_PATHS,
+        handoff=handoff,
+    )
+
+    by_name = {folder["name"]: folder for folder in data["folders"]}
+    merged = by_name["India 2009"]
+    assert merged["merged_into"] == 2
+    assert "re-upload" in merged["merge_reason"]
     assert by_name["India 2008"]["merged_into"] is None
-    assert by_name["India 2009"]["merged_into"] == 2
+    assert by_name["India 2008"]["merge_reason"] is None
     (row,) = data["rows"]
     assert row["merged_from"] == ["India 2009"]
 

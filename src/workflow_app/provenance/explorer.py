@@ -18,7 +18,7 @@ STRINGS = {
         "ungrouped": "Ungrouped rows",
         "merged_badge": "↦ row {n}",
         "merged_jump": "see row {n}",
-        "merged_callout": "Folder(s) {names}: all of their cited evidence feeds this row.",
+        "merged_callout": "Folder(s) {names}: declared by the Filler as duplicates merged into this row.",
         "rows_suffix": "{n} rows",
         "stat_folders": "source folders",
         "stat_rows": "rows",
@@ -52,7 +52,7 @@ STRINGS = {
         "ungrouped": "未分组行",
         "merged_badge": "↦ 第 {n} 行",
         "merged_jump": "见第 {n} 行",
-        "merged_callout": "文件夹 {names}：其全部引用证据均属于本行。",
+        "merged_callout": "文件夹 {names}：Filler 声明其为重复来源，已并入本行。",
         "rows_suffix": "{n} 行",
         "stat_folders": "来源文件夹",
         "stat_rows": "行",
@@ -288,9 +288,10 @@ function renderNav() {
       if (q && !rowMatches(target, q) && !contains(folder.name, q.toLowerCase())) continue;
       const badge = '<span class="fbadge">' +
         esc(t('merged_badge', {n: target.row})) + '</span>';
+      const reason = folder.merge_reason ? ' ' + folder.merge_reason : '';
       const jump = '<div class="rowitem' + (state.row === target.row ? ' active' : '') +
         '" data-row="' + target.row + '" title="' +
-        esc(t('merged_callout', {names: folder.name})) + '"><span class="rnum">→' +
+        esc(t('merged_callout', {names: folder.name}) + reason) + '"><span class="rnum">→' +
         target.row + '</span><span class="rorg">' +
         esc(t('merged_jump', {n: target.row})) + ' · ' + hl(rowTitle(target)) +
         '</span></div>';

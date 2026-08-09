@@ -33,7 +33,20 @@ class CellProposal(BaseModel):
     notes: str | None = None
 
 
+class FolderMerge(BaseModel):
+    """Explicit duplicate-folder declaration (ADR 0015): the named
+    source folders describe the same entity as the surviving row."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    folders: list[str]
+    row: int
+    reason: str
+
+
 class ExtractionResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     proposals: list[CellProposal]
+    # Default keeps every pre-declaration extraction artifact valid.
+    merges: list[FolderMerge] = []
