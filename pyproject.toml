@@ -27,6 +27,12 @@ build-backend = "uv_build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Live agent-runtime smoke tests spend subscription quota; excluded from
+# the default run (plan section 41). Run them with: pytest -m smoke
+addopts = "-m 'not smoke'"
+markers = [
+    "smoke: live agent-runtime smoke tests, excluded from the default run",
+]
 
 [tool.ruff]
 line-length = 88
