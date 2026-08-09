@@ -54,7 +54,9 @@ supported; otherwise leave it null.
 
 Return a `findings` list matching the provided JSON schema, including PASS
 findings for every cell you actually verified. Cite source paths exactly as
-they appear in the manifest and explain each non-PASS verdict briefly.
+they appear in the manifest and explain each non-PASS verdict briefly. Write
+each `cell` as an unqualified A1 address such as `B2`; never include the sheet
+name or `!` prefix.
 
 The pass is complete when every policy-selected or uncertain-status cell has
 one finding, every reported correction passes the verification test, and the
