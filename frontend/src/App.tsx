@@ -1,67 +1,69 @@
-import { Files, PanelsTopLeft, Plus, ShieldCheck } from "lucide-react"
+import { useEffect } from "react"
+import { Files, Plus } from "lucide-react"
 
 import { RunCreationForm } from "@/components/run-creation-form"
 import { RunDetail } from "@/components/run-detail"
-import { Badge } from "@/components/ui/badge"
+import { RunSidebar } from "@/components/run-sidebar"
 import { Button } from "@/components/ui/button"
+import { getRun, listRuns, type RunSummary } from "@/lib/api"
 import { useAppStore } from "@/store/use-app-store"
 
 function App() {
   const view = useAppStore((state) => state.view)
   const currentRun = useAppStore((state) => state.currentRun)
+  const runs = useAppStore((state) => state.runs)
+  const historyStatus = useAppStore((state) => state.historyStatus)
+  const historyError = useAppStore((state) => state.historyError)
   const openNewRun = useAppStore((state) => state.openNewRun)
   const showRun = useAppStore((state) => state.showRun)
+  const startHistoryLoad = useAppStore((state) => state.startHistoryLoad)
+  const receiveRuns = useAppStore((state) => state.receiveRuns)
+  const failHistoryLoad = useAppStore((state) => state.failHistoryLoad)
+
+  useEffect(() => {
+    let ignore = false
+    startHistoryLoad()
+    void listRuns()
+      .then((history) => {
+        if (!ignore) receiveRuns(history)
+      })
+      .catch((cause: unknown) => {
+        if (!ignore) {
+          failHistoryLoad(
+            cause instanceof Error ? cause.message : "Unable to load run history"
+          )
+        }
+      })
+    return () => {
+      ignore = true
+    }
+  }, [failHistoryLoad, receiveRuns, startHistoryLoad])
+
+  async function selectRun(run: RunSummary) {
+    try {
+      showRun(await getRun(run.run_id))
+    } catch (cause) {
+      failHistoryLoad(
+        cause instanceof Error ? cause.message : "Unable to open the selected run"
+      )
+    }
+  }
 
   return (
-    <main className="min-h-svh bg-muted/30 lg:grid lg:grid-cols-[260px_minmax(0,1fr)]">
-      <aside className="flex border-b bg-background lg:min-h-svh lg:flex-col lg:border-r lg:border-b-0">
-        <div className="flex flex-1 items-center gap-3 px-4 py-3 lg:flex-none lg:border-b lg:px-5 lg:py-5">
-          <div className="grid size-9 place-items-center rounded-lg bg-foreground text-background">
-            <PanelsTopLeft className="size-4" aria-hidden="true" />
-          </div>
-          <div>
-            <p className="font-heading text-sm font-semibold">WorkCrew</p>
-            <p className="text-xs text-muted-foreground">Local workflow desk</p>
-          </div>
-        </div>
+    <main className="min-h-svh bg-muted/30 lg:grid lg:grid-cols-[288px_minmax(0,1fr)]">
+      <RunSidebar
+        runs={runs}
+        selectedRunId={view === "run" ? (currentRun?.run_id ?? null) : null}
+        historyStatus={historyStatus}
+        historyError={historyError}
+        onNewRun={openNewRun}
+        onSelect={(run) => void selectRun(run)}
+      />
 
-        <div className="p-3 lg:p-4">
-          <Button onClick={openNewRun} className="w-full">
-            <Plus /> New run
-          </Button>
-        </div>
-
-        <div className="hidden min-h-0 flex-1 px-3 lg:block">
-          <p className="px-2 pb-2 text-[10px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
-            Current
-          </p>
-          {currentRun ? (
-            <button
-              type="button"
-              onClick={() => showRun(currentRun)}
-              className="w-full rounded-xl border bg-muted/30 p-3 text-left transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate font-mono text-xs font-medium">{currentRun.run_id}</span>
-                <span className="size-2 shrink-0 rounded-full bg-emerald-500" aria-label="Running" />
-              </div>
-              <p className="mt-2 truncate text-xs text-muted-foreground">{currentRun.workbook_name}</p>
-            </button>
-          ) : (
-            <div className="rounded-xl border border-dashed px-3 py-4 text-xs leading-5 text-muted-foreground">
-              No run selected.
-            </div>
-          )}
-        </div>
-
-        <div className="hidden border-t p-4 lg:block">
-          <Badge variant="outline" className="gap-1.5 bg-background">
-            <ShieldCheck /> Local only
-          </Badge>
-        </div>
-      </aside>
-
-      <section className="min-w-0 p-5 sm:p-8 lg:p-10">
+      <section
+        aria-label={view === "run" ? "Run detail" : undefined}
+        className="min-w-0 p-5 sm:p-8 lg:p-10"
+      >
         {view === "new-run" && <RunCreationForm onCreated={showRun} />}
         {view === "run" && currentRun && <RunDetail run={currentRun} />}
         {view === "empty" && (

@@ -11,9 +11,20 @@ export type BrowseListing = {
   entries: BrowseEntry[]
 }
 
+export type RunStatus = "running" | "paused" | "completed" | "failed" | "cancelled"
+
+export type RunSummary = {
+  run_id: string
+  status: RunStatus
+  started_at: string
+  duration: number
+  source_name: string
+  workbook_name: string
+}
+
 export type RunRecord = {
   run_id: string
-  status: "running" | "paused" | "completed" | "failed"
+  status: RunStatus
   start_time: string
   workspace_path: string
   phase: string
@@ -51,5 +62,15 @@ export async function createRun(input: CreateRunInput) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   })
+  return readResponse<RunRecord>(response)
+}
+
+export async function listRuns() {
+  const response = await fetch("/api/runs")
+  return readResponse<RunSummary[]>(response)
+}
+
+export async function getRun(runId: string) {
+  const response = await fetch(`/api/runs/${encodeURIComponent(runId)}`)
   return readResponse<RunRecord>(response)
 }

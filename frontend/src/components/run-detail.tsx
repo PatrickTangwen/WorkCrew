@@ -1,6 +1,6 @@
-import { Clock3, FolderOpen, LoaderCircle, PackageOpen } from "lucide-react"
+import { Clock3, FolderOpen, PackageOpen } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
+import { RunStatusBadge } from "@/components/run-status-badge"
 import {
   Card,
   CardContent,
@@ -9,18 +9,18 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import type { RunRecord } from "@/lib/api"
+import { runStatusPresentation } from "@/lib/run-status"
 
 function RunDetail({ run }: { run: RunRecord }) {
+  const status = runStatusPresentation[run.status]
+  const StatusIcon = status.detailIcon
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
       <Card className="bg-background shadow-lg shadow-black/4">
         <CardContent className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge className="gap-1.5 bg-emerald-600 text-white">
-                <span className="size-1.5 rounded-full bg-white animate-pulse" />
-                Running
-              </Badge>
+              <RunStatusBadge status={run.status} />
               <span className="font-mono text-xs text-muted-foreground">{run.run_id}</span>
             </div>
             <h1 className="mt-3 truncate font-heading text-2xl font-semibold tracking-tight">
@@ -42,14 +42,17 @@ function RunDetail({ run }: { run: RunRecord }) {
       <Card className="min-h-72 bg-background">
         <CardHeader className="border-b">
           <CardTitle>Workflow status</CardTitle>
-          <CardDescription>The engine is preparing the run workspace.</CardDescription>
+          <CardDescription>{status.detailDescription}</CardDescription>
         </CardHeader>
         <CardContent className="grid min-h-48 place-items-center">
           <div className="text-center">
             <div className="mx-auto grid size-14 place-items-center rounded-2xl border bg-muted/45">
-              <LoaderCircle className="size-6 animate-spin" aria-hidden="true" />
+              <StatusIcon
+                className={`size-6 ${status.detailIconClassName}`}
+                aria-hidden="true"
+              />
             </div>
-            <p className="mt-4 text-sm font-medium">Run in progress</p>
+            <p className="mt-4 text-sm font-medium">{status.detailTitle}</p>
             <p className="mt-1 font-mono text-xs text-muted-foreground">{run.phase}</p>
           </div>
         </CardContent>
