@@ -108,6 +108,22 @@ def test_pass_cells_must_not_receive_decisions():
     assert reason is not None and "PASS" in reason
 
 
+def test_note_append_requires_a_primary_edit():
+    rebut_with_note = RevisionDecision.model_validate(
+        {
+            "cell": "F2",
+            "action": "REBUT",
+            "note_append": "sneaky note on a disputed cell",
+            "evidence": [],
+            "justification": "disagree",
+        }
+    )
+    reason = check_decisions(
+        [finding("F2", "WARN", recommended="x")], [rebut_with_note]
+    )
+    assert reason is not None and "note_append" in reason
+
+
 # --- rebuttals and re-review coverage ------------------------------------
 
 

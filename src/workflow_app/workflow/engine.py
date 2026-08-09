@@ -49,5 +49,5 @@ def run_workflow(inputs, runs_root, runtimes):
     finally:
         audit.close()
 
-    emit(f"Run complete. Workspace: {workspace.root}")
+    emit(f"Run complete. Output: {workspace.final_xlsx}")
     return final_state

@@ -75,6 +75,10 @@ REVIEW_OUTPUT = {
         finding("A2", "WARN", recommended="PRJ-0002"),
         finding("G4", "FAIL", recommended="Healthcare"),
         finding("D2", "WARN", recommended="2026-02-02"),
+        # Missed data: cell empty but determinable (FAIL -> FIX).
+        finding("E2", "FAIL", recommended="Established"),
+        # Reviewer could not adjudicate at all.
+        finding("D4", "UNRESOLVED", comment="Conflicting dates across sources."),
     ]
 }
 
@@ -101,6 +105,9 @@ REVISION_OUTPUT = {
             justification="Issue area cannot be determined from sources.",
         ),
         decision("D2", "REBUT", justification="Program page confirms the date."),
+        # FIX: independent correction differing from the recommendation.
+        decision("E2", "FIX", proposed="Emerging", justification="Brief page 3."),
+        decision("D4", "UNRESOLVED", justification="Cannot adjudicate either."),
     ]
 }
 
@@ -163,6 +170,8 @@ def test_final_workbook_reflects_every_route(inputs):
     assert sheet["G4"].value is None  # CLEAR
     assert sheet["F4"].value == NOTE_TEXT  # note_append companion
     assert sheet["D2"].value == "2026-01-01"  # upheld rebuttal, no change
+    assert sheet["E2"].value == "Emerging"  # FIX fills missed data
+    assert sheet["D4"].value is None  # UNRESOLVED writes nothing
     assert sheet["H2"].value == "=SUM(1,2)"  # untouched formula
 
 
@@ -174,7 +183,7 @@ def test_pass_cells_receive_no_revision_mutations(inputs):
             "SELECT cell FROM mutations WHERE actor_role = 'revision'"
             " AND status = 'applied'"
         ).fetchall()
-    assert {row[0] for row in rows} == {"F2", "G4", "F4"}
+    assert {row[0] for row in rows} == {"F2", "G4", "F4", "E2"}
 
 
 def test_revision_receives_only_the_allowed_context(inputs):
@@ -185,10 +194,12 @@ def test_revision_receives_only_the_allowed_context(inputs):
     )
 
     finding_cells = {item["cell"] for item in revision_inputs["findings"]}
-    assert finding_cells == {"F2", "A2", "G4", "D2"}  # no PASS finding
+    assert finding_cells == {"F2", "A2", "G4", "D2", "E2", "D4"}  # no PASS
 
+    # Only cells that actually have a proposal/provenance carry one.
     assert set(revision_inputs["proposals"]) == {"F2", "A2", "G4", "D2"}
     assert set(revision_inputs["provenance"]) == {"F2", "A2", "G4", "D2"}
+    assert revision_inputs["rules_dir"] == "input/rules"
 
     assert revision_inputs["mutation_allowlist"] == sorted(
         [
@@ -196,6 +207,8 @@ def test_revision_receives_only_the_allowed_context(inputs):
             f"{SHEET}!A2",
             f"{SHEET}!G4",
             f"{SHEET}!D2",
+            f"{SHEET}!E2",
+            f"{SHEET}!D4",
             f"{SHEET}!F4",  # Notes companion of flagged row 4
         ]
     )
@@ -213,23 +226,33 @@ def test_unresolved_and_human_review_artifacts(inputs):
     state = start_run(inputs)
 
     unresolved = read_artifact(state, "unresolved.json")
-    (item,) = unresolved["cells"]
-    assert item["cell"] == "D2"
-    assert "upheld" in item["reason"]
+    reasons = {item["cell"]: item["reason"] for item in unresolved["cells"]}
+    assert set(reasons) == {"D2", "D4"}
+    assert "upheld" in reasons["D2"]
+    assert "revision" in reasons["D4"]
 
     human = read_artifact(state, "human_review.json")
-    (entry,) = human["items"]
-    assert entry["cell"] == "D2"
-    assert entry["current_value"] == "2026-01-01"
-    assert entry["reviewer"]["recommended_value"] == "2026-02-02"
-    assert entry["reviewer"]["comment"]
-    assert entry["revision"]["action"] == "REBUT"
-    assert entry["revision"]["justification"]
-    assert entry["re_review"]["verdict"] == "UPHELD"
-    assert "upheld" in entry["reason"]
+    entries = {entry["cell"]: entry for entry in human["items"]}
+    assert set(entries) == {"D2", "D4"}
+
+    upheld = entries["D2"]
+    assert upheld["current_value"] == "2026-01-01"
+    assert upheld["reviewer"]["recommended_value"] == "2026-02-02"
+    assert upheld["reviewer"]["comment"]
+    assert upheld["revision"]["action"] == "REBUT"
+    assert upheld["revision"]["justification"]
+    assert upheld["re_review"]["verdict"] == "UPHELD"
+    assert "upheld" in upheld["reason"]
+
+    undetermined = entries["D4"]
+    assert undetermined["current_value"] is None
+    assert undetermined["revision"]["action"] == "UNRESOLVED"
+    assert undetermined["re_review"] is None
 
     text = (workspace_of(state) / "artifacts/human_review.md").read_text()
     assert "D2" in text and "2026-02-02" in text
+    # Both agents' evidence is readable without opening the JSON.
+    assert "annual report" in text and "original brief" in text
 
 
 def test_provenance_stays_in_sync_with_revised_cells(inputs):
@@ -241,6 +264,10 @@ def test_provenance_stays_in_sync_with_revised_cells(inputs):
     accept = entries[f"{SHEET}!F2"]
     assert accept["value"] == "Corrected community note."
     assert accept["agent_role"] == "revision"
+
+    fixed = entries[f"{SHEET}!E2"]
+    assert fixed["value"] == "Emerging"
+    assert fixed["agent_role"] == "revision"
 
     cleared = entries[f"{SHEET}!G4"]
     assert cleared["value"] is None
@@ -259,11 +286,11 @@ def test_review_artifacts_are_produced(inputs):
     state = start_run(inputs)
 
     review = read_artifact(state, "review.json")
-    assert len(review["findings"]) == 5
+    assert len(review["findings"]) == 7
     assert Path(state["review_path"]).name == "review.json"
 
     revision = read_artifact(state, "revision.json")
-    assert len(revision["decisions"]) == 4
+    assert len(revision["decisions"]) == 6
 
     for name in ("review.md", "revision_log.md"):
         assert (workspace_of(state) / "artifacts" / name).read_text()

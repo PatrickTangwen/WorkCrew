@@ -48,6 +48,15 @@ def check_decisions(findings, decisions):
                 f"ACCEPT on {decision.cell!r} but the finding carries no"
                 " recommended value"
             )
+        if decision.note_append is not None and decision.action not in (
+            "ACCEPT",
+            "FIX",
+            "CLEAR",
+        ):
+            return (
+                f"note_append on {decision.cell!r} requires a primary edit"
+                f" (ACCEPT/FIX/CLEAR), got {decision.action}"
+            )
     return None
 
 
@@ -77,8 +86,7 @@ def notes_cell_for(sheet_schema, cell_ref):
     if sheet_schema.notes_field is None:
         return None
     notes_column = sheet_schema.fields[sheet_schema.notes_field].column
-    row = cell_ref[len(writer.column_of(cell_ref)) :]
-    return f"{notes_column}{row}"
+    return f"{notes_column}{writer.row_of(cell_ref)}"
 
 
 def derive_revision_allowlist(findings, schema):

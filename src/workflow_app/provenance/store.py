@@ -5,6 +5,7 @@ per applied workbook mutation, carrying the evidence and confidence of
 the proposal that produced it.
 """
 
+import json
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -50,3 +51,30 @@ def build_provenance(applied, run_id, agent_role, agent_runtime):
         for proposal, cell_ref in applied
     ]
     return ProvenanceLog(entries=entries)
+
+
+def resync_provenance(provenance_path, outcomes, decision_by_ref, run_id, runtime):
+    """Replace (or add) the entry of every applied revision so provenance
+    matches post-revision cell contents exactly."""
+    log = ProvenanceLog.model_validate(json.loads(provenance_path.read_text()))
+    entries = {entry.cell: entry for entry in log.entries}
+    order = list(entries)
+    for outcome in outcomes:
+        if outcome.status != "applied":
+            continue
+        decision = decision_by_ref[outcome.mutation.source_ref]
+        cell = cell_key(outcome.mutation.sheet, outcome.cell_ref)
+        entries[cell] = ProvenanceEntry(
+            cell=cell,
+            value=outcome.mutation.value,
+            agent_role="revision",
+            agent_runtime=runtime,
+            evidence=decision.evidence,
+            rules_applied=[],
+            confidence=None,
+            run_id=run_id,
+        )
+        if cell not in order:
+            order.append(cell)
+    updated = ProvenanceLog(entries=[entries[cell] for cell in order])
+    provenance_path.write_text(updated.model_dump_json(indent=2))

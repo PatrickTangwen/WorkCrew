@@ -25,10 +25,13 @@ from workflow_app.models import (
     RevisionResult,
 )
 from workflow_app.progress import emit
-from workflow_app.provenance.store import (
-    ProvenanceEntry,
-    ProvenanceLog,
-    build_provenance,
+from workflow_app.provenance.store import build_provenance, resync_provenance
+from workflow_app.reports import (
+    action_counts,
+    render_human_review_md,
+    render_review_md,
+    render_revision_log_md,
+    verdict_counts,
 )
 from workflow_app.runtimes.base import AgentRequest
 from workflow_app.validation.rules import check_proposal
@@ -76,19 +79,24 @@ def build_graph(workspace, inputs, runtimes, audit):
         emit("Starting Filler...")
         # Raw agent output only; contract + rule validation happens in the
         # VALIDATE node (guardrail 49.11).
-        run_agent("filler", workspace.filler_outputs / "extraction.json")
+        raw_path = workspace.filler_outputs / "extraction.json"
+        run_agent("filler", raw_path)
         emit("Filler complete.")
-        return {"extraction_path": str(workspace.filler_outputs / "extraction.json")}
+        return {"extraction_path": str(raw_path)}
 
     def schema_from(state):
         return WorkbookSchema.model_validate(
             json.loads(Path(state["schema_path"]).read_text())
         )
 
+    def load_extraction(state):
+        return ExtractionResult.model_validate(
+            json.loads(Path(state["extraction_path"]).read_text())
+        )
+
     def validate(state):
         emit("Validating proposals...")
-        raw = json.loads(Path(state["extraction_path"]).read_text())
-        extraction = ExtractionResult.model_validate(raw)
+        extraction = load_extraction(state)
         schema = schema_from(state)
 
         rejections = []
@@ -115,9 +123,7 @@ def build_graph(workspace, inputs, runtimes, audit):
 
     def write_draft(state):
         emit("Writing draft workbook...")
-        extraction = ExtractionResult.model_validate(
-            json.loads(Path(state["extraction_path"]).read_text())
-        )
+        extraction = load_extraction(state)
         rejections = json.loads(workspace.validation_json.read_text())["rejections"]
         rejected_indexes = {rejection["index"] for rejection in rejections}
         schema = schema_from(state)
@@ -206,30 +212,26 @@ def build_graph(workspace, inputs, runtimes, audit):
         if reason is not None:
             raise ValueError(reason)
         workspace.review_json.write_text(review.model_dump_json(indent=2))
-        workspace.review_md.write_text(_render_review_md(review))
-        counts = _verdict_counts(review.findings)
-        emit(
-            "Review complete: "
-            + ", ".join(f"{count} {verdict}" for verdict, count in counts)
-        )
+        workspace.review_md.write_text(render_review_md(review))
+        counts = verdict_counts(review.findings)
+        summary = ", ".join(f"{count} {verdict}" for verdict, count in counts)
+        emit(f"Review complete: {summary or '0 findings'}")
         return {"review_path": str(workspace.review_json)}
 
     def claude_revise(state):
         emit("Starting Revision...")
         review = load_review(state)
         schema = schema_from(state)
-        extraction = ExtractionResult.model_validate(
-            json.loads(Path(state["extraction_path"]).read_text())
-        )
-        provenance = ProvenanceLog.model_validate(
-            json.loads(workspace.provenance_json.read_text())
-        )
+        extraction = load_extraction(state)
+        provenance = json.loads(workspace.provenance_json.read_text())
 
         actionable = routing.non_pass_findings(review.findings)
         flagged_cells = {finding.cell for finding in actionable}
         sheet_name = schema.target_sheet().name
+        flagged_keys = {cell_key(sheet_name, cell): cell for cell in flagged_cells}
         # Only the allowed context (plan section 27): non-PASS findings,
-        # their proposals and provenance, and the mutation allowlist.
+        # their proposals and provenance, the mutation allowlist, and a
+        # pointer to the rules the agent reads via its workspace.
         restricted_inputs = {
             "findings": [finding.model_dump() for finding in actionable],
             "proposals": {
@@ -238,14 +240,14 @@ def build_graph(workspace, inputs, runtimes, audit):
                 if proposal.cell in flagged_cells
             },
             "provenance": {
-                cell: entry.model_dump()
-                for entry in provenance.entries
-                for cell in flagged_cells
-                if entry.cell == cell_key(sheet_name, cell)
+                flagged_keys[entry["cell"]]: entry
+                for entry in provenance["entries"]
+                if entry["cell"] in flagged_keys
             },
             "mutation_allowlist": routing.derive_revision_allowlist(
                 review.findings, schema
             ),
+            "rules_dir": "input/rules",
         }
         (workspace.revision_outputs / "inputs.json").write_text(
             json.dumps(restricted_inputs, indent=2)
@@ -257,7 +259,7 @@ def build_graph(workspace, inputs, runtimes, audit):
         if reason is not None:
             raise ValueError(reason)
         workspace.revision_json.write_text(revision.model_dump_json(indent=2))
-        actions = _action_counts(revision.decisions)
+        actions = action_counts(revision.decisions)
         emit(
             "Revision complete: "
             + ", ".join(f"{count} {action}" for action, count in actions)
@@ -329,11 +331,15 @@ def build_graph(workspace, inputs, runtimes, audit):
             )
             raise ValueError(f"revision mutations were rejected: {reasons}")
 
-        _resync_provenance(
-            workspace, outcomes, decision_by_ref, state["run_id"], runtimes
+        resync_provenance(
+            workspace.provenance_json,
+            outcomes,
+            decision_by_ref,
+            state["run_id"],
+            runtimes["revision"].name,
         )
         workspace.revision_log_md.write_text(
-            _render_revision_log(revision.decisions, outcomes)
+            render_revision_log_md(revision.decisions, outcomes)
         )
         applied = sum(1 for outcome in outcomes if outcome.status == "applied")
         emit(f"Applied {applied} authorized revisions")
@@ -422,7 +428,7 @@ def build_graph(workspace, inputs, runtimes, audit):
                 }
             )
         workspace.human_review_json.write_text(json.dumps({"items": items}, indent=2))
-        workspace.human_review_md.write_text(_render_human_review_md(items))
+        workspace.human_review_md.write_text(render_human_review_md(items))
 
     def finalize(state):
         emit("Finalizing run...")
@@ -498,113 +504,6 @@ def build_graph(workspace, inputs, runtimes, audit):
     graph.add_edge("FINALIZE", END)
 
     return graph.compile()
-
-
-def _verdict_counts(findings):
-    order = ("FAIL", "WARN", "PASS", "UNRESOLVED")
-    counts = {verdict: 0 for verdict in order}
-    for finding in findings:
-        counts[finding.verdict] += 1
-    return [(verdict, counts[verdict]) for verdict in order if counts[verdict]]
-
-
-def _action_counts(decisions):
-    counts = {}
-    for decision in decisions:
-        counts[decision.action] = counts.get(decision.action, 0) + 1
-    return sorted(counts.items())
-
-
-def _resync_provenance(workspace, outcomes, decision_by_ref, run_id, runtimes):
-    # Provenance must match post-revision cell contents exactly: every
-    # applied revision replaces (or adds) its cell's entry.
-    log = ProvenanceLog.model_validate(
-        json.loads(workspace.provenance_json.read_text())
-    )
-    entries = {entry.cell: entry for entry in log.entries}
-    order = list(entries)
-    for outcome in outcomes:
-        if outcome.status != "applied":
-            continue
-        decision = decision_by_ref[outcome.mutation.source_ref]
-        cell = cell_key(outcome.mutation.sheet, outcome.cell_ref)
-        entries[cell] = ProvenanceEntry(
-            cell=cell,
-            value=outcome.mutation.value,
-            agent_role="revision",
-            agent_runtime=runtimes["revision"].name,
-            evidence=decision.evidence,
-            rules_applied=[],
-            confidence=None,
-            run_id=run_id,
-        )
-        if cell not in order:
-            order.append(cell)
-    updated = ProvenanceLog(entries=[entries[cell] for cell in order])
-    workspace.provenance_json.write_text(updated.model_dump_json(indent=2))
-
-
-def _render_review_md(review):
-    lines = ["# Review", ""]
-    for verdict, count in _verdict_counts(review.findings):
-        lines.append(f"- {verdict}: {count}")
-    lines.append("")
-    for finding in review.findings:
-        lines += [f"## {finding.cell} — {finding.verdict}", ""]
-        if finding.recommended_value is not None:
-            lines.append(f"- Recommended: {finding.recommended_value}")
-        lines += [f"- {finding.reviewer_comment}", ""]
-    return "\n".join(lines)
-
-
-def _render_revision_log(decisions, outcomes):
-    applied_refs = {
-        outcome.mutation.source_ref
-        for outcome in outcomes
-        if outcome.status == "applied"
-    }
-    lines = ["# Revision log", ""]
-    for index, decision in enumerate(decisions):
-        marker = "applied" if f"decisions[{index}]" in applied_refs else "no write"
-        lines.append(f"- {decision.cell} — {decision.action} ({marker})")
-        lines.append(f"  - {decision.justification}")
-        if decision.note_append is not None:
-            lines.append(f"  - Note appended: {decision.note_append}")
-    lines.append("")
-    return "\n".join(lines)
-
-
-def _render_human_review_md(items):
-    lines = ["# Human review", ""]
-    if not items:
-        lines.append("Nothing unresolved.")
-    for item in items:
-        reviewer = item["reviewer"]
-        revision = item["revision"]
-        lines += [
-            f"## {item['cell']}",
-            "",
-            f"- Current value: {item['current_value']!r}",
-            f"- Why automation stopped: {item['reason']}",
-            (
-                f"- Reviewer ({reviewer['verdict']}):"
-                f" recommended {reviewer['recommended_value']!r}"
-                f" — {reviewer['comment']}"
-            ),
-        ]
-        if revision is not None:
-            lines.append(
-                f"- Revision ({revision['action']}):"
-                f" proposed {revision['proposed_value']!r}"
-                f" — {revision['justification']}"
-            )
-        if item["re_review"] is not None:
-            lines.append(
-                f"- Re-review: {item['re_review']['verdict']}"
-                f" — {item['re_review']['comment']}"
-            )
-        lines.append("")
-    return "\n".join(lines)
 
 
 def _write_run_summary(workspace, audit, run_id):

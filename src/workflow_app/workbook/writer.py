@@ -32,6 +32,10 @@ def column_of(cell_ref):
     return _CELL_REF.fullmatch(cell_ref).group(1).upper()
 
 
+def row_of(cell_ref):
+    return int(_CELL_REF.fullmatch(cell_ref).group(2))
+
+
 def open_draft(path):
     return load_workbook(path)
 
