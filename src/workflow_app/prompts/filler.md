@@ -35,6 +35,34 @@ Your working directory is an isolated run workspace:
 - You may research online when local sources are insufficient; evidence
   found on the web MUST be tagged `evidence_type: "external_web"`.
 
+## Procedure
+
+1. Read the scoping answers, workbook schema, and every file in
+   `input/rules/` before extracting values. Build a scratch
+   **row-to-folder ledger** that assigns each in-scope top-level source
+   folder to its workbook row exactly as the scoping answers require.
+   This step is complete only when every in-scope folder appears once,
+   every target row appears once, and the ordering has been checked
+   against the actual folder names.
+2. Process one ledger entry at a time. Open every readable document in
+   that folder, finish all target columns for its row, and only then move
+   to the next entry. Keep the row, folder, and document bound together;
+   do not collect values across folders and assign rows afterward.
+3. For each candidate value, apply the field's schema and every relevant
+   local rule before deciding its status. Compare the candidate with the
+   exact evidence text and check that any normalization, construction, or
+   mapping is authorized by a rule.
+4. Before returning output, audit every proposal against the ledger. The
+   **source_file prefix** of source evidence must equal the folder assigned
+   to that proposal's row. Rule evidence under `input/rules/` and external
+   web URLs are the only exceptions. Re-open and repair every mismatch;
+   a path label that names the wrong folder is not a harmless metadata
+   error.
+5. Finish with an uncertainty sweep: every target cell has one proposal,
+   every unreadable source is accounted for, and every ambiguity or source
+   conflict found while reading is represented in the affected proposal
+   statuses and notes.
+
 ## Proposals
 
 Your structured output must match the provided JSON schema: a `proposals`
@@ -74,10 +102,21 @@ multiple rows to avoid declaring a merge.
 Distinguish honestly; never return unsupported values merely to increase
 the fill rate:
 
-- `proposed` — a supportable value with evidence.
-- `not_found` — you searched and nothing supports a value (value null).
-- `ambiguous` — multiple readings are possible; explain them in `notes`.
-- `conflict` — sources contradict each other; describe both in `notes`.
+- `proposed` — a supportable, rule-compliant value with evidence.
+- `not_found` — after checking every readable document in the assigned
+  folder, no evidence supports a value (value null). Use another status
+  when evidence exists but is ambiguous or contradictory. In `notes`,
+  name what was searched and why the field remains unsupported.
+- `ambiguous` — multiple readings are possible; set value null, explain
+  the candidates in `notes`, and cite the evidence for them.
+- `conflict` — equally authoritative evidence contradicts each other; set
+  value null, describe both claims in `notes`, and cite both sides.
+
+Propagate a source conflict to every constructed, mapped, or otherwise
+dependent field whose input is no longer determinable. Such a dependent
+proposal also has value null and `status: "conflict"`; cite the conflicting
+input evidence plus the dependency rule. A conflict is never downgraded to
+`not_found` merely because its final value is blank.
 
 ## Confidence policy
 
