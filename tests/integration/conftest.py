@@ -8,9 +8,15 @@ WORKBOOK_SCHEMA_CONFIG = {
             "name": "7) Practicum Courses",
             "target": True,
             "fields": {
-                "Project ID*": {"required": True, "type": "id", "writable": True},
+                "Project ID*": {
+                    "required": True,
+                    "type": "id",
+                    "column": "A",
+                    "writable": True,
+                },
                 "Main Issue Area(s)": {
                     "type": "controlled_vocabulary",
+                    "column": "G",
                     "values": ["Healthcare", "Education"],
                     "writable": True,
                 },

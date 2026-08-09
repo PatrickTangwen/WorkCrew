@@ -19,17 +19,19 @@ VALID_CONFIG = {
                 "Project ID*": {
                     "required": True,
                     "type": "id",
+                    "column": "A",
                     "reference": "6) Engagement Projects",
                     "writable": True,
                     "key": True,
                 },
                 "Main Issue Area(s)": {
                     "type": "controlled_vocabulary",
+                    "column": "G",
                     "reference": "Main Issue Area Codes.Standardized Format",
                     "values": ["Healthcare", "Education", "Environment"],
                     "writable": True,
                 },
-                "Notes": {"type": "string", "writable": True},
+                "Notes": {"type": "string", "column": "F", "writable": True},
             },
         },
         {"name": "Main Issue Area Codes"},
@@ -87,3 +89,24 @@ def test_unexpected_keys_are_rejected(tmp_path):
 def test_empty_sheet_list_is_rejected(tmp_path):
     with pytest.raises(ValueError, match="failed validation"):
         load_workbook_schema(write_config(tmp_path, {"sheets": []}))
+
+
+def test_vocabulary_field_without_values_is_rejected(tmp_path):
+    config = json.loads(json.dumps(VALID_CONFIG))
+    del config["sheets"][0]["fields"]["Main Issue Area(s)"]["values"]
+    with pytest.raises(ValueError, match="failed validation"):
+        load_workbook_schema(write_config(tmp_path, config))
+
+
+def test_writable_field_without_column_is_rejected(tmp_path):
+    config = json.loads(json.dumps(VALID_CONFIG))
+    del config["sheets"][0]["fields"]["Notes"]["column"]
+    with pytest.raises(ValueError, match="failed validation"):
+        load_workbook_schema(write_config(tmp_path, config))
+
+
+def test_duplicate_columns_within_a_sheet_are_rejected(tmp_path):
+    config = json.loads(json.dumps(VALID_CONFIG))
+    config["sheets"][0]["fields"]["Notes"]["column"] = "G"
+    with pytest.raises(ValueError, match="failed validation"):
+        load_workbook_schema(write_config(tmp_path, config))

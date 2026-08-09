@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 
 class FieldSpec(BaseModel):
@@ -25,12 +25,22 @@ class FieldSpec(BaseModel):
         "controlled_vocabulary",
         "boolean",
     ] = "string"
+    # Excel column letter; hand-authored (no auto-detection in V1).
+    column: str | None = Field(default=None, pattern=r"^[A-Z]+$")
     writable: bool = False
     key: bool = False
     reference: str | None = None
     values: list[str] | None = None
     pattern: str | None = None
     date_format: str | None = None
+
+    @model_validator(mode="after")
+    def _fail_fast_on_unusable_specs(self):
+        if self.type == "controlled_vocabulary" and not self.values:
+            raise ValueError("controlled_vocabulary field must declare values")
+        if self.writable and self.column is None:
+            raise ValueError("writable field must declare its column letter")
+        return self
 
 
 class SheetSchema(BaseModel):
@@ -39,6 +49,26 @@ class SheetSchema(BaseModel):
     name: str
     target: bool = False
     fields: dict[str, FieldSpec] = {}
+
+    @model_validator(mode="after")
+    def _columns_must_be_unique(self):
+        seen = {}
+        for header, field in self.fields.items():
+            if field.column is None:
+                continue
+            if field.column in seen:
+                raise ValueError(
+                    f"column {field.column!r} is declared by both"
+                    f" {seen[field.column]!r} and {header!r}"
+                )
+            seen[field.column] = header
+        return self
+
+    def field_for_column(self, column):
+        for header, field in self.fields.items():
+            if field.column == column:
+                return header, field
+        return None, None
 
 
 class WorkbookSchema(BaseModel):
