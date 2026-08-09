@@ -12,6 +12,7 @@ import pytest
 from openpyxl import Workbook, load_workbook
 
 from workflow_app.audit.db import AuditStore
+from workflow_app.models import ReviewFinding, RevisionDecision
 from workflow_app.workbook.mutations import (
     CellMutation,
     MutationConflictError,
@@ -19,6 +20,7 @@ from workflow_app.workbook.mutations import (
 )
 from workflow_app.workbook.safety import Allowlist
 from workflow_app.workbook.schema import WorkbookSchema
+from workflow_app.workflow.routing import compose_revision_mutations
 
 SHEET = "7) Practicum Courses"
 
@@ -28,6 +30,7 @@ SCHEMA = WorkbookSchema.model_validate(
             {
                 "name": SHEET,
                 "target": True,
+                "notes_field": "Notes",
                 "fields": {
                     "Project ID*": {
                         "type": "id",
@@ -343,6 +346,104 @@ def test_lowercase_cell_addresses_are_normalized(draft, audit):
     outcome = apply_one(draft, audit, mutation("f2", "normalized"))
     assert outcome.status == "applied"
     assert cell_value(draft, "F2") == "normalized"
+
+
+# --- same-batch note composition through the real layers (ADR 0021) ------
+
+
+def finding(cell, verdict, recommended=None):
+    return ReviewFinding.model_validate(
+        {
+            "cell": cell,
+            "verdict": verdict,
+            "recommended_value": recommended,
+            "evidence": [],
+            "reviewer_comment": "because",
+        }
+    )
+
+
+def decision(cell, action, proposed=None, note_append=None):
+    return RevisionDecision.model_validate(
+        {
+            "cell": cell,
+            "action": action,
+            "proposed_value": proposed,
+            "note_append": note_append,
+            "evidence": [],
+            "justification": "reasoned",
+        }
+    )
+
+
+TWO_NOTE_FINDINGS = [finding("G2", "FAIL"), finding("D2", "FAIL")]
+TWO_NOTE_DECISIONS = [
+    decision("G2", "CLEAR", note_append="note one"),
+    decision("D2", "FIX", proposed="2026-02-02", note_append="note two"),
+]
+
+
+def compose_and_apply(draft, audit, decisions=TWO_NOTE_DECISIONS):
+    def find_prior(cell_ref, source_ref):
+        return audit.find_applied_mutation(
+            RUN_ID, SHEET, cell_ref, "revision", source_ref
+        )
+
+    mutations, _ = compose_revision_mutations(
+        decisions,
+        TWO_NOTE_FINDINGS,
+        SCHEMA.target_sheet(),
+        lambda cell_ref: cell_value(draft, cell_ref),
+        find_prior,
+    )
+    return apply_mutations(draft, mutations, SCHEMA, ALLOWED, audit, RUN_ID)
+
+
+def note_audit_rows(audit_path):
+    applied = audit_rows(audit_path, "applied")
+    return [(row[2], row[3]) for row in applied if row[1] == "F2"]
+
+
+def test_two_note_batch_composes_through_the_real_layers(draft, audit, tmp_path):
+    outcomes = compose_and_apply(draft, audit)
+
+    assert [outcome.status for outcome in outcomes] == ["applied"] * 4
+    assert cell_value(draft, "F2") == "note one\nnote two"
+    assert note_audit_rows(tmp_path / "audit.sqlite") == [
+        ("null", '"note one"'),
+        ('"note one"', '"note one\\nnote two"'),
+    ]
+
+
+def test_two_note_replay_after_workbook_reset_is_identical(draft, audit, tmp_path):
+    # ADR 0016's crash window: every mutation audited, the save lost.
+    template = draft.read_bytes()
+    compose_and_apply(draft, audit)
+    draft.write_bytes(template)
+
+    outcomes = compose_and_apply(draft, audit)
+
+    assert [outcome.replayed for outcome in outcomes] == [True] * 4
+    assert cell_value(draft, "F2") == "note one\nnote two"
+    assert len(audit_rows(tmp_path / "audit.sqlite", "applied")) == 4
+
+
+def test_partially_audited_two_note_batch_resumes_identically(draft, audit, tmp_path):
+    # Crash in the middle of the audit loop: only the first decision's
+    # mutations were audited and the save never happened. The resumed
+    # batch composes the unaudited second note on the replayed first.
+    template = draft.read_bytes()
+    compose_and_apply(draft, audit, decisions=TWO_NOTE_DECISIONS[:1])
+    draft.write_bytes(template)
+
+    outcomes = compose_and_apply(draft, audit)
+
+    assert [outcome.replayed for outcome in outcomes] == [True, True, False, False]
+    assert cell_value(draft, "F2") == "note one\nnote two"
+    assert note_audit_rows(tmp_path / "audit.sqlite") == [
+        ("null", '"note one"'),
+        ('"note one"', '"note one\\nnote two"'),
+    ]
 
 
 # --- the draft stays a sane workbook ------------------------------------

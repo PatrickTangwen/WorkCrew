@@ -320,6 +320,56 @@ def test_all_pass_review_short_circuits_to_finalize(inputs):
     assert final["F2"].value == "First draft note."
 
 
+def test_same_batch_note_appends_share_one_notes_cell(inputs):
+    # Two non-PASS findings on the same row, both decisions carrying a
+    # note_append: the notes compose in decision order on the shared
+    # Notes cell instead of clobbering each other.
+    second_note = "Start date corrected against the program page."
+    review = {
+        "findings": [
+            finding("G4", "FAIL", recommended="Healthcare"),
+            finding("D4", "FAIL", recommended="2026-04-04"),
+        ]
+    }
+    revision = {
+        "decisions": [
+            decision(
+                "G4",
+                "CLEAR",
+                note_append=NOTE_TEXT,
+                justification="Issue area cannot be determined from sources.",
+            ),
+            decision(
+                "D4",
+                "FIX",
+                proposed="2026-04-04",
+                note_append=second_note,
+                justification="Program page states the date.",
+            ),
+        ]
+    }
+    outputs = {"filler": FILLER_OUTPUT, "reviewer": review, "revision": revision}
+    runtimes = {role: FakeAgentRuntime(outputs) for role in outputs}
+    state = start_run(inputs, runtimes=runtimes)
+
+    sheet = load_workbook(workspace_of(state) / "output/final.xlsx")[SHEET]
+    assert sheet["G4"].value is None
+    assert sheet["D4"].value == "2026-04-04"
+    assert sheet["F4"].value == f"{NOTE_TEXT}\n{second_note}"
+
+    # The audit trail records both applied writes, each old value being
+    # the previous composed state of the shared cell.
+    with sqlite3.connect(workspace_of(state) / "state/audit.sqlite") as conn:
+        rows = conn.execute(
+            "SELECT old_value, new_value FROM mutations"
+            " WHERE cell = 'F4' AND status = 'applied' ORDER BY id",
+        ).fetchall()
+    assert [(json.loads(old), json.loads(new)) for old, new in rows] == [
+        (None, NOTE_TEXT),
+        (NOTE_TEXT, f"{NOTE_TEXT}\n{second_note}"),
+    ]
+
+
 def test_illegal_decision_fails_the_run(inputs):
     bad_revision = {
         "decisions": [
