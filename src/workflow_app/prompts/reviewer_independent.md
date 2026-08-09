@@ -32,6 +32,10 @@ The verification test checks one claim at a time:
 - The evidence must concern the row's target entity, period, role, and field.
 - A field rule may validate a transformation; cite the rule you actually
   applied.
+- An undated label such as "latest" does not resolve incompatible values in
+  separate, equally authoritative files; require explicit dates or periods.
+- For an OCR-confusable character, the same character must appear independently
+  for the same entity, role, and field before you recommend changing it.
 - A schema or familiar pattern can reject an impossible value but cannot
   replace source evidence.
 - A recommended correction is ready only when its exact value passes the

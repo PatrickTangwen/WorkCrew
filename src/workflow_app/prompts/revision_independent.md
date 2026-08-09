@@ -38,6 +38,9 @@ The proof test is about identity, not plausibility:
 
 - A schema or pattern may reject impossible values; it does not identify a
   particular character or candidate by itself.
+- A raw OCR transcription does not prove an OCR-confusable character. Change
+  that character only when an independent occurrence for the same entity,
+  role, and field confirms it.
 - A repeated word corroborates a value only when it refers to the same
   entity, the same semantic role, and the same field.
 - A Reviewer recommendation is verified only when the sources independently

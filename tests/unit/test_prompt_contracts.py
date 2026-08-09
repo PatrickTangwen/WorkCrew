@@ -23,14 +23,20 @@ def test_independent_variants_preserve_core_evidence_gates():
 
     assert "support test" in filler
     assert "target cell" in filler
+    assert 'undated label such as "latest"' in filler
+    assert "explicit dates or periods" in filler
     assert "conflict, not a chosen winner" in filler
     assert "verification test" in reviewer
     assert "target ownership" in reviewer
+    assert 'undated label such as "latest"' in reviewer
+    assert "OCR-confusable character" in reviewer
     assert "replace source evidence" in reviewer
     assert "unqualified A1 address" in reviewer
     assert "never include the sheet" in reviewer
     assert "proof test" in revision
     assert "exact value" in revision
+    assert "raw OCR transcription does not prove" in revision
+    assert "independent occurrence" in revision
     assert "return `UNRESOLVED`" in revision
 
 

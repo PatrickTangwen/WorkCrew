@@ -36,6 +36,9 @@ The support test separates evidence from plausibility:
   that rule when applying it.
 - Evidence about another person, organization, period, or role does not
   support the target cell.
+- An undated label such as "latest" does not establish a different reporting
+  period. Incompatible values in separate, equally authoritative files remain
+  a conflict unless explicit dates or periods resolve them.
 - Equally authoritative source claims that cannot be reconciled produce a
   conflict, not a chosen winner.
 
