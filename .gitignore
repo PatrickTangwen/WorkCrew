@@ -8,3 +8,6 @@ __pycache__/
 
 # Run workspaces (per-run artifacts, never committed)
 runs/
+
+# macOS
+.DS_Store

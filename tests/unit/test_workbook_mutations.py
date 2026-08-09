@@ -113,10 +113,12 @@ def audit_rows(audit_path, status=None):
         "SELECT sheet, cell, old_value, new_value, actor_role, source_ref,"
         " status, reason FROM mutations"
     )
+    params = ()
     if status:
-        query += f" WHERE status = '{status}'"
+        query += " WHERE status = ?"
+        params = (status,)
     with sqlite3.connect(audit_path) as conn:
-        return conn.execute(query).fetchall()
+        return conn.execute(query, params).fetchall()
 
 
 # --- the happy path, fully audited --------------------------------------
@@ -143,6 +145,15 @@ def test_overwriting_records_the_old_value(draft, audit, tmp_path):
 
 
 # --- authorization ------------------------------------------------------
+
+
+@pytest.mark.parametrize("actor", ["reviewer", "auditor", "", "FILLER"])
+def test_roles_other_than_filler_and_revision_may_not_mutate(draft, audit, actor):
+    outcome = apply_one(draft, audit, mutation("F2", "attempt", actor=actor))
+
+    assert outcome.status == "rejected"
+    assert "may not mutate" in outcome.reason
+    assert cell_value(draft, "F2") is None
 
 
 def test_cell_outside_allowlist_is_rejected_and_audited(draft, audit, tmp_path):
@@ -229,6 +240,39 @@ def test_same_mutation_twice_results_in_a_single_write(draft, audit, tmp_path):
     assert second.status == "skipped"
     assert cell_value(draft, "F2") == "once"
     assert len(audit_rows(tmp_path / "audit.sqlite", "applied")) == 1
+
+
+def test_same_mutation_twice_within_one_batch_is_a_single_write(draft, audit, tmp_path):
+    outcomes = apply_mutations(
+        draft,
+        [mutation("F2", "once"), mutation("F2", "once")],
+        SCHEMA,
+        ALLOWED,
+        audit,
+        RUN_ID,
+    )
+
+    assert [outcome.status for outcome in outcomes] == ["applied", "skipped"]
+    assert cell_value(draft, "F2") == "once"
+    assert len(audit_rows(tmp_path / "audit.sqlite", "applied")) == 1
+
+
+def test_intra_batch_same_source_different_value_conflicts_without_saving(
+    draft, audit, tmp_path
+):
+    before = draft.read_bytes()
+    with pytest.raises(MutationConflictError):
+        apply_mutations(
+            draft,
+            [mutation("F2", "first"), mutation("F2", "second")],
+            SCHEMA,
+            ALLOWED,
+            audit,
+            RUN_ID,
+        )
+    # The conflict aborts the batch before any save or audit.
+    assert draft.read_bytes() == before
+    assert audit_rows(tmp_path / "audit.sqlite") == []
 
 
 def test_replaying_same_source_with_different_value_is_a_conflict(draft, audit):
