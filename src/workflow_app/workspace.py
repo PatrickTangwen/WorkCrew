@@ -18,6 +18,9 @@ class RunInputs:
     # Optional pre-provided scoping answers (plan section 20): when set,
     # the scoping pass and its pause are skipped.
     scoping_answers: Path | None = None
+    # Optional review policy YAML (plan section 25): when unset, the
+    # default policy applies.
+    review_policy: Path | None = None
 
     def validate(self):
         if not self.source.is_dir():
@@ -33,6 +36,10 @@ class RunInputs:
         if self.scoping_answers is not None and not self.scoping_answers.is_file():
             raise FileNotFoundError(
                 f"scoping answers file not found: {self.scoping_answers}"
+            )
+        if self.review_policy is not None and not self.review_policy.is_file():
+            raise FileNotFoundError(
+                f"review policy file not found: {self.review_policy}"
             )
 
 
@@ -106,6 +113,14 @@ class Workspace:
     @property
     def scoping_answers_md(self):
         return self.artifacts / "scoping_answers.md"
+
+    @property
+    def review_policy_yaml(self):
+        return self.root / "input" / "review_policy.yaml"
+
+    @property
+    def review_policy_json(self):
+        return self.artifacts / "review_policy.json"
 
     @property
     def workbook_schema_json(self):
@@ -201,3 +216,5 @@ class Workspace:
         shutil.copy2(inputs.workbook, self.input_workbook / inputs.workbook.name)
         if inputs.scoping_answers is not None:
             shutil.copy2(inputs.scoping_answers, self.scoping_answers_md)
+        if inputs.review_policy is not None:
+            shutil.copy2(inputs.review_policy, self.review_policy_yaml)

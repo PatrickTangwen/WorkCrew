@@ -223,3 +223,54 @@ def test_missing_source_folder_fails_before_creating_a_run(inputs):
             runtimes={"filler": runtime, "reviewer": runtime},
         )
     assert not inputs["runs_root"].exists()
+
+
+def test_review_policy_reaches_reviewer_inputs(inputs, tmp_path):
+    # A provided policy YAML (plan section 25) is copied into the
+    # workspace, stored canonically, and passed into the Reviewer inputs.
+    policy_yaml = tmp_path / "review_policy.yaml"
+    policy_yaml.write_text(
+        "review:\n"
+        "  strict_fields: ['Project ID*']\n"
+        "  high_confidence_sampling_per_record: 3\n"
+    )
+    runtime = FakeAgentRuntime(
+        {"filler": filler_fixture(), "reviewer": {"findings": []}}
+    )
+    state = run_workflow(
+        inputs=run_inputs(inputs, review_policy=policy_yaml),
+        runs_root=inputs["runs_root"],
+        runtimes={"filler": runtime, "reviewer": runtime},
+    )
+    workspace = workspace_of(inputs, state)
+
+    canonical = json.loads((workspace / "artifacts" / "review_policy.json").read_text())
+    assert canonical["strict_fields"] == ["Project ID*"]
+    assert canonical["high_confidence_sampling_per_record"] == 3
+    assert canonical["low_confidence_threshold"] == 0.60
+
+    reviewer_inputs = json.loads(
+        (workspace / "agent_outputs" / "reviewer" / "inputs.json").read_text()
+    )
+    assert reviewer_inputs["review_policy"] == canonical
+    assert reviewer_inputs["draft_workbook"] == "working/draft.xlsx"
+
+
+def test_default_review_policy_applies_when_none_is_provided(inputs):
+    state = start_run(inputs)
+    workspace = workspace_of(inputs, state)
+    canonical = json.loads((workspace / "artifacts" / "review_policy.json").read_text())
+    assert canonical["strict_fields"] == []
+    assert canonical["medium_confidence_threshold"] == 0.85
+
+
+def test_unknown_strict_field_fails_before_any_agent_runs(inputs, tmp_path):
+    policy_yaml = tmp_path / "review_policy.yaml"
+    policy_yaml.write_text("review:\n  strict_fields: ['No Such Field']\n")
+    with pytest.raises(ValueError, match="No Such Field"):
+        run_workflow(
+            inputs=run_inputs(inputs, review_policy=policy_yaml),
+            runs_root=inputs["runs_root"],
+            runtimes={},
+        )
+    assert not (inputs["runs_root"]).exists() or not any(inputs["runs_root"].iterdir())

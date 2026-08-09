@@ -16,6 +16,7 @@ from langgraph.types import Command
 
 from workflow_app.audit.db import AuditStore
 from workflow_app.progress import emit
+from workflow_app.review_policy import check_strict_fields, load_review_policy
 from workflow_app.workbook.schema import load_workbook_schema
 from workflow_app.workflow.graph import build_graph
 from workflow_app.workspace import RunInputs, Workspace
@@ -27,9 +28,10 @@ def new_run_id():
 
 def run_workflow(inputs, runs_root, runtimes):
     inputs.validate()
-    # Fail fast on a malformed schema config — before the workspace
-    # exists and long before any agent could be invoked (ticket #3).
-    load_workbook_schema(inputs.workbook_schema)
+    # Fail fast on malformed configs — before the workspace exists and
+    # long before any agent could be invoked (tickets #3, #11).
+    schema = load_workbook_schema(inputs.workbook_schema)
+    check_strict_fields(load_review_policy(inputs.review_policy), schema)
 
     run_id = new_run_id()
     # Resolved so the paths persisted into checkpointed state stay valid
@@ -94,6 +96,9 @@ def resume_workflow(run_id, runs_root, runtimes):
         scoping_answers=None
         if run["scoping_answers_path"] is None
         else Path(run["scoping_answers_path"]),
+        review_policy=None
+        if run["review_policy_path"] is None
+        else Path(run["review_policy_path"]),
     )
 
     emit(f"Resuming run {run_id}...")

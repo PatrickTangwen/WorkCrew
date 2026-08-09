@@ -47,6 +47,7 @@ from workflow_app.reports import (
     render_scoping_questions_md,
     verdict_counts,
 )
+from workflow_app.review_policy import ReviewPolicy, load_review_policy
 from workflow_app.runtimes.base import AgentRequest
 from workflow_app.validation.rules import check_proposal
 from workflow_app.workbook import writer
@@ -130,11 +131,20 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         return {"manifest_path": str(workspace.manifest_json)}
 
     def load_schema(state):
-        # The engine already validated the config as a fail-fast gate;
-        # this node loads it again and stores the canonical form.
-        emit("Loading workbook schema...")
+        # The engine already validated the configs as a fail-fast gate;
+        # this node loads them again and stores the canonical forms. The
+        # review policy is read from the workspace copy so a resumed run
+        # never depends on the original path (ADR 0014).
+        emit("Loading workbook schema and review policy...")
         schema = load_workbook_schema(inputs.workbook_schema)
         workspace.workbook_schema_json.write_text(schema.model_dump_json(indent=2))
+        policy_yaml = (
+            workspace.review_policy_yaml
+            if workspace.review_policy_yaml.is_file()
+            else None
+        )
+        policy = load_review_policy(policy_yaml)
+        workspace.review_policy_json.write_text(policy.model_dump_json(indent=2))
         return {"schema_path": str(workspace.workbook_schema_json)}
 
     def claude_scope(state):
@@ -380,6 +390,29 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
 
     def codex_review(state):
         emit("Starting Reviewer...")
+        # The Reviewer's explicit inputs (plan section 23): the review
+        # policy plus workspace-relative paths of everything to verify.
+        policy = ReviewPolicy.model_validate_json(
+            workspace.review_policy_json.read_text()
+        )
+
+        def relative(path):
+            return str(path.relative_to(workspace.root))
+
+        reviewer_inputs = {
+            "review_policy": policy.model_dump(),
+            "draft_workbook": relative(workspace.draft_xlsx),
+            "extraction": relative(workspace.extraction_json),
+            "provenance": relative(workspace.provenance_json),
+            "handoff": relative(workspace.handoff_json),
+            "manifest": relative(workspace.manifest_json),
+            "workbook_schema": relative(workspace.workbook_schema_json),
+            "rules_dir": relative(workspace.input_rules),
+            "sources_dir": relative(workspace.input_sources),
+        }
+        (workspace.reviewer_outputs / "inputs.json").write_text(
+            json.dumps(reviewer_inputs, indent=2)
+        )
         try:
             review = run_agent(
                 state,
