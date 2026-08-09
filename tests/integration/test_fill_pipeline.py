@@ -168,6 +168,7 @@ def test_handoff_summarizes_the_fill(inputs):
     assert unreadable["status"] == "UNSUPPORTED"
 
     assert handoff["populated_cells"] == len(APPLIED_CELLS)
+    assert handoff["records_evaluated"] == 3  # rows 2, 3, and 4
     assert handoff["confidence_distribution"] == {"low": 1, "medium": 3, "high": 2}
     assert handoff["evidence_summary"] == {"direct": 8, "external_web": 1}
 

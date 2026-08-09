@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from workflow_app.models import Evidence
+from workflow_app.workbook.safety import cell_key
 
 
 class ProvenanceEntry(BaseModel):
@@ -35,7 +36,7 @@ def build_provenance(applied, run_id, agent_role, agent_runtime):
     # applied: (proposal, normalized cell ref) pairs actually written.
     entries = [
         ProvenanceEntry(
-            cell=f"{proposal.sheet}!{cell_ref}",
+            cell=cell_key(proposal.sheet, cell_ref),
             value=proposal.value,
             agent_role=agent_role,
             agent_runtime=agent_runtime,

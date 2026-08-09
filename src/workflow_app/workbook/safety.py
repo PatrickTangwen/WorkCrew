@@ -5,14 +5,17 @@ to upper case so authorization cannot be dodged by case games.
 """
 
 
+def cell_key(sheet, cell):
+    """The canonical "<sheet>!<CELL>" identity used across artifacts."""
+    return f"{sheet}!{cell.upper()}"
+
+
 class Allowlist:
     def __init__(self, cells):
-        self._cells = {self._normalize(entry) for entry in cells}
-
-    @staticmethod
-    def _normalize(entry):
-        sheet, _, cell = entry.rpartition("!")
-        return f"{sheet}!{cell.upper()}"
+        self._cells = set()
+        for entry in cells:
+            sheet, _, cell = entry.rpartition("!")
+            self._cells.add(cell_key(sheet, cell))
 
     def permits(self, sheet, cell_ref):
-        return f"{sheet}!{cell_ref.upper()}" in self._cells
+        return cell_key(sheet, cell_ref) in self._cells

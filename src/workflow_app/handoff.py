@@ -9,6 +9,7 @@ machine artifact; handoff.md is its human rendering.
 from collections import Counter
 
 from workflow_app.validation.rules import classify_confidence
+from workflow_app.workbook.safety import cell_key
 
 
 def build_handoff(manifest, extraction, rejections, outcomes, schema):
@@ -29,14 +30,14 @@ def build_handoff(manifest, extraction, rejections, outcomes, schema):
         ]
         + [
             {
-                "cell": f"{o.mutation.sheet}!{o.cell_ref}",
+                "cell": cell_key(o.mutation.sheet, o.cell_ref),
                 "reason": o.reason,
             }
             for o in safety_rejected
         ]
         + [
             {
-                "cell": f"{p.sheet}!{p.cell}",
+                "cell": cell_key(p.sheet, p.cell),
                 "reason": (f"written at low confidence ({p.confidence})"),
             }
             for p in proposed
@@ -64,7 +65,7 @@ def build_handoff(manifest, extraction, rejections, outcomes, schema):
         "evidence_summary": dict(sorted(evidence_types.items())),
         "missing_fields": [
             {
-                "cell": f"{p.sheet}!{p.cell}",
+                "cell": cell_key(p.sheet, p.cell),
                 "column_name": p.column_name,
                 "required": _is_required(p, schema),
             }
@@ -78,8 +79,8 @@ def build_handoff(manifest, extraction, rejections, outcomes, schema):
 
 
 def _was_applied(proposal, applied):
-    cell = f"{proposal.sheet}!{proposal.cell.upper()}"
-    return any(f"{o.mutation.sheet}!{o.cell_ref}" == cell for o in applied)
+    cell = cell_key(proposal.sheet, proposal.cell)
+    return any(cell_key(o.mutation.sheet, o.cell_ref) == cell for o in applied)
 
 
 def _is_required(proposal, schema):
@@ -91,7 +92,7 @@ def _is_required(proposal, schema):
 def _uncertainty(proposals, status):
     return [
         {
-            "cell": f"{p.sheet}!{p.cell}",
+            "cell": cell_key(p.sheet, p.cell),
             "column_name": p.column_name,
             "notes": p.notes,
         }

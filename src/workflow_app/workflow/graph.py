@@ -21,7 +21,7 @@ from workflow_app.provenance.store import build_provenance
 from workflow_app.runtimes.base import AgentRequest
 from workflow_app.validation.rules import check_proposal
 from workflow_app.workbook.mutations import CellMutation, apply_mutations
-from workflow_app.workbook.safety import Allowlist
+from workflow_app.workbook.safety import Allowlist, cell_key
 from workflow_app.workbook.schema import WorkbookSchema, load_workbook_schema
 from workflow_app.workflow.state import WorkflowState
 
@@ -65,19 +65,22 @@ def build_graph(workspace, inputs, runtimes, audit):
         if result.status != "ok":
             raise RuntimeError(f"Filler runtime failed: {result.error}")
         # Raw agent output only; contract + rule validation happens in the
-        # VALIDATE node (guardrail 49.11), which lands with ticket #5.
+        # VALIDATE node (guardrail 49.11).
         extraction_path = workspace.filler_outputs / "extraction.json"
         extraction_path.write_text(json.dumps(result.output, indent=2))
         emit("Filler complete.")
         return {"extraction_path": str(extraction_path)}
 
+    def schema_from(state):
+        return WorkbookSchema.model_validate(
+            json.loads(Path(state["schema_path"]).read_text())
+        )
+
     def validate(state):
         emit("Validating proposals...")
         raw = json.loads(Path(state["extraction_path"]).read_text())
         extraction = ExtractionResult.model_validate(raw)
-        schema = WorkbookSchema.model_validate(
-            json.loads(Path(state["schema_path"]).read_text())
-        )
+        schema = schema_from(state)
 
         rejections = []
         for index, proposal in enumerate(extraction.proposals):
@@ -86,7 +89,7 @@ def build_graph(workspace, inputs, runtimes, audit):
                 rejections.append(
                     {
                         "index": index,
-                        "cell": f"{proposal.sheet}!{proposal.cell}",
+                        "cell": cell_key(proposal.sheet, proposal.cell),
                         "reason": reason,
                     }
                 )
@@ -108,9 +111,7 @@ def build_graph(workspace, inputs, runtimes, audit):
         )
         rejections = json.loads(workspace.validation_json.read_text())["rejections"]
         rejected_indexes = {rejection["index"] for rejection in rejections}
-        schema = WorkbookSchema.model_validate(
-            json.loads(Path(state["schema_path"]).read_text())
-        )
+        schema = schema_from(state)
 
         shutil.copy2(
             workspace.input_workbook / inputs.workbook.name, workspace.draft_xlsx
@@ -122,7 +123,7 @@ def build_graph(workspace, inputs, runtimes, audit):
             if proposal.status == "proposed" and index not in rejected_indexes
         ]
         allowlist = Allowlist(
-            f"{proposal.sheet}!{proposal.cell}" for _, proposal in writable
+            cell_key(proposal.sheet, proposal.cell) for _, proposal in writable
         )
         mutations = [
             CellMutation(
