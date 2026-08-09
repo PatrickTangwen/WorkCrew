@@ -53,7 +53,18 @@ class SheetSchema(BaseModel):
 
     name: str
     target: bool = False
+    # Field name of this sheet's Notes column; enables note_append
+    # companion edits (plan section 28).
+    notes_field: str | None = None
     fields: dict[str, FieldSpec] = {}
+
+    @model_validator(mode="after")
+    def _notes_field_must_exist(self):
+        if self.notes_field is not None and self.notes_field not in self.fields:
+            raise ValueError(
+                f"notes_field {self.notes_field!r} is not a declared field"
+            )
+        return self
 
     @model_validator(mode="after")
     def _columns_must_be_unique(self):
@@ -86,6 +97,19 @@ class WorkbookSchema(BaseModel):
             if sheet.name == name:
                 return sheet
         return None
+
+    def target_sheet(self):
+        (sheet,) = [sheet for sheet in self.sheets if sheet.target]
+        return sheet
+
+    @model_validator(mode="after")
+    def _exactly_one_target_sheet(self):
+        targets = [sheet.name for sheet in self.sheets if sheet.target]
+        if len(targets) != 1:
+            raise ValueError(
+                f"exactly one target sheet is required in V1, found {targets}"
+            )
+        return self
 
 
 def load_workbook_schema(path):
