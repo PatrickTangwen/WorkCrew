@@ -38,6 +38,7 @@ def run_workflow(inputs, runs_root, runtimes):
         "manifest_path": None,
         "schema_path": None,
         "extraction_path": None,
+        "draft_xlsx_path": None,
         "phase": "",
     }
     try:

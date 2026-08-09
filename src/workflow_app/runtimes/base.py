@@ -22,4 +22,8 @@ class AgentResult:
 
 
 class AgentRuntime(Protocol):
+    # Short runtime identifier recorded in provenance (plan section 19),
+    # e.g. "claude-code", "codex", "fake".
+    name: str
+
     def run(self, request: AgentRequest) -> AgentResult: ...

@@ -36,6 +36,8 @@ EXPECTED_STAGES = [
     "BUILD_MANIFEST",
     "LOAD_SCHEMA",
     "CLAUDE_FILL",
+    "VALIDATE",
+    "WRITE_DRAFT",
     "FINALIZE",
 ]
 
@@ -94,7 +96,7 @@ def test_copies_inputs_into_workspace(inputs):
     assert copied_brief.read_text() == "Community healthcare delivery project."
     assert (workspace / "input/sources/archive_notes.md").is_file()
     assert (workspace / "input/workbook/template.xlsx").read_bytes() == (
-        b"placeholder workbook bytes"
+        inputs["workbook"].read_bytes()
     )
     assert (workspace / "input/rules/naming.md").read_text() == "Naming conventions."
 
@@ -116,9 +118,10 @@ def test_fake_runtime_output_is_replayed_through_the_graph(inputs):
     state = start_run(inputs, fixture=fixture)
     workspace = workspace_of(inputs, state)
 
-    extraction_path = workspace / "agent_outputs/filler/extraction.json"
-    assert Path(state["extraction_path"]) == extraction_path
-    assert json.loads(extraction_path.read_text()) == fixture
+    raw_path = workspace / "agent_outputs/filler/extraction.json"
+    assert json.loads(raw_path.read_text()) == fixture
+    # After VALIDATE the state points at the canonical artifact.
+    assert Path(state["extraction_path"]) == workspace / "artifacts/extraction.json"
 
 
 def test_audit_store_records_run_and_stages(inputs):
@@ -173,11 +176,16 @@ def test_manifest_artifact_lists_all_copied_sources(inputs):
     manifest = json.loads((workspace / "artifacts/manifest.json").read_text())
     entries = {entry["path"]: entry for entry in manifest["files"]}
 
-    assert set(entries) == {"India 2008/Project_Brief.txt", "archive_notes.md"}
+    assert set(entries) == {
+        "India 2008/Project_Brief.txt",
+        "archive_notes.md",
+        "legacy_archive.zip",
+    }
     brief = entries["India 2008/Project_Brief.txt"]
     assert brief["status"] == "ok"
     assert brief["type"] == "txt"
     assert len(brief["sha256"]) == 64
+    assert entries["legacy_archive.zip"]["status"] == "UNSUPPORTED"
     assert Path(state["manifest_path"]) == workspace / "artifacts/manifest.json"
 
 

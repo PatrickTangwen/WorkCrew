@@ -81,6 +81,30 @@ class Workspace:
         return self.artifacts / "workbook_schema.json"
 
     @property
+    def extraction_json(self):
+        return self.artifacts / "extraction.json"
+
+    @property
+    def validation_json(self):
+        return self.artifacts / "validation.json"
+
+    @property
+    def provenance_json(self):
+        return self.artifacts / "provenance.json"
+
+    @property
+    def handoff_json(self):
+        return self.artifacts / "handoff.json"
+
+    @property
+    def handoff_md(self):
+        return self.artifacts / "handoff.md"
+
+    @property
+    def draft_xlsx(self):
+        return self.root / "working" / "draft.xlsx"
+
+    @property
     def run_summary(self):
         return self.artifacts / "run_summary.md"
 
