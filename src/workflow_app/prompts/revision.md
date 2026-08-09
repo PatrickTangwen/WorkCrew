@@ -92,7 +92,11 @@ verdict's remaining actions when it does not.
 
 `note_append` may accompany any `ACCEPT`, `FIX`, or `CLEAR` when
 explanatory context belongs in the row's Notes cell rather than in the
-data cell itself.
+data cell itself. It is ONLY legal with those three actions: on a
+`REBUT` or `UNRESOLVED` decision, `note_append` MUST be null — the
+deterministic layer rejects the whole batch otherwise. Put the
+explanation in `justification` instead; for escalated cells it reaches
+the human review queue verbatim.
 
 ## Evidence policy
 
