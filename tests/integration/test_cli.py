@@ -7,6 +7,7 @@ default (asserted below) and is exercised by the smoke tests.
 
 import pytest
 
+from workflow_app import cli
 from workflow_app.cli import build_parser, main
 
 
@@ -124,3 +125,21 @@ def test_pinned_model_defaults(inputs):
     assert args.claude_model == "claude-opus-4-6[1m]"
     assert args.codex_model == "gpt-5.6-sol"
     assert args.codex_effort == "high"
+
+
+def test_ui_command_starts_the_web_server(monkeypatch):
+    calls = []
+    monkeypatch.setattr(cli, "run_ui", lambda: calls.append("started"))
+
+    assert main(["ui"]) == 0
+    assert calls == ["started"]
+
+
+def test_ui_keyboard_interrupt_stops_without_a_traceback(monkeypatch, capsys):
+    def interrupt():
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "run_ui", interrupt)
+
+    assert main(["ui"]) == 130
+    assert capsys.readouterr().err == "[workflow] WorkCrew UI stopped.\n"

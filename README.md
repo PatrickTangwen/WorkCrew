@@ -30,3 +30,25 @@ uv run pytest
 uv run ruff check .
 uv run ruff format --check .
 ```
+
+### Local web UI
+
+Build the React frontend, then launch the production-mode local server:
+
+```bash
+cd frontend
+pnpm install
+pnpm build
+cd ..
+uv run workflow ui
+```
+
+`workflow ui` binds only to `127.0.0.1`, starting at port 8470 and advancing
+to the next available port when necessary. For frontend development with HMR,
+run `pnpm dev` in `frontend/`. Run the FastAPI backend with Python hot reload
+in a second terminal:
+
+```bash
+uv run uvicorn workflow_app.server:create_app \
+  --factory --reload --host 127.0.0.1 --port 8470
+```
