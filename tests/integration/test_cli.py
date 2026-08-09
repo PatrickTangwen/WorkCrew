@@ -1,12 +1,13 @@
 """CLI tests: `workflow run` is a thin shell over the engine entry.
 
-Tests call main() directly with no mocking of internals; during
-fake-first development the CLI wires in the FakeAgentRuntime itself.
+Tests call main() directly with no mocking of internals, always with
+`--runtimes fake` so no test spends agent quota; live is the CLI
+default (asserted below) and is exercised by the smoke tests.
 """
 
 import pytest
 
-from workflow_app.cli import main
+from workflow_app.cli import build_parser, main
 
 
 def run_args(inputs):
@@ -22,6 +23,8 @@ def run_args(inputs):
         str(inputs["workbook_schema"]),
         "--runs-root",
         str(inputs["runs_root"]),
+        "--runtimes",
+        "fake",
     ]
 
 
@@ -48,6 +51,8 @@ def test_run_pauses_then_resume_completes(inputs, capsys):
         workspace.name,
         "--runs-root",
         str(inputs["runs_root"]),
+        "--runtimes",
+        "fake",
     ]
     assert main(resume_args) == 0
 
@@ -77,6 +82,8 @@ def test_resume_unknown_run_id_reports_error_and_nonzero_exit(inputs, capsys):
             "20990101-000000-aaaaaa",
             "--runs-root",
             str(inputs["runs_root"]),
+            "--runtimes",
+            "fake",
         ]
     )
     assert exit_code == 2
@@ -101,3 +108,10 @@ def test_missing_required_arguments_exit_nonzero(inputs, capsys):
     with pytest.raises(SystemExit) as excinfo:
         main(["run", "--source", str(inputs["source"])])
     assert excinfo.value.code != 0
+
+
+def test_live_runtimes_are_the_default(inputs):
+    # The product default is the live pipeline (plan section 32: fake
+    # first, "only then connect real agents"); parsed without invoking.
+    args = build_parser().parse_args(run_args(inputs)[:-2])
+    assert args.runtimes == "live"

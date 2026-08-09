@@ -26,7 +26,7 @@ from workflow_app.runtimes.base import AgentResult
 # authenticate via `codex login` and never falls back to API billing.
 API_KEY_ENV_VARS = ("CODEX_API_KEY", "CODEX_ACCESS_TOKEN")
 
-_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 # Role key -> (prompt file, structured-output contract). Role keys name
 # invocation kinds (ADR 0014); both Codex roles map to this one runtime.
@@ -104,7 +104,7 @@ class CodexRuntime:
         # An unknown role raises (KeyError): the invocation itself is
         # impossible, which is the engine's invocation_failure class.
         prompt_file, contract = ROLES[request.role]
-        prompt = (_PROMPTS_DIR / prompt_file).read_text()
+        prompt = (PROMPTS_DIR / prompt_file).read_text()
 
         # --output-schema takes a file; the final message lands in a
         # file as well. Both live outside the workspace so the run
