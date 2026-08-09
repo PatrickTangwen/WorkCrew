@@ -1,11 +1,19 @@
 import { create } from "zustand"
 
-type AppStatus = "starting" | "ready"
+import type { RunRecord } from "@/lib/api"
+
+type AppView = "empty" | "new-run" | "run"
 
 type AppState = {
-  status: AppStatus
+  view: AppView
+  currentRun: RunRecord | null
+  openNewRun: () => void
+  showRun: (run: RunRecord) => void
 }
 
 export const useAppStore = create<AppState>(() => ({
-  status: "ready",
+  view: "empty",
+  currentRun: null,
+  openNewRun: () => useAppStore.setState({ view: "new-run" }),
+  showRun: (run) => useAppStore.setState({ view: "run", currentRun: run }),
 }))

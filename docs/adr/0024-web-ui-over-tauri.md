@@ -46,3 +46,13 @@ entry points as the CLI. No engine API changes are required for the
 delivery-format decision itself. (Scoping-question schema extension
 and progress callback injection are separate, UI-driven changes
 recorded in the spec issue.)
+
+## Implementation note — 2026-08-09 (#17)
+
+The run-creation API must return its run ID before the engine thread
+finishes, while the original engine entry point generated that ID
+internally. `run_workflow` therefore accepts an optional, keyword-only
+`run_id`; callers that omit it retain the original behavior. This
+supersedes only the no-signature-change part of the decision above.
+The server still calls the same engine entry point, and workflow state
+and execution semantics remain unchanged.
