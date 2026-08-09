@@ -75,6 +75,9 @@ def build_handoff(manifest, extraction, rejections, outcomes, schema):
         "ambiguities": _uncertainty(proposals, "ambiguous"),
         "source_conflicts": _uncertainty(proposals, "conflict"),
         "extra_review": extra_review,
+        # Explicit duplicate-folder declarations (ADR 0015): the
+        # explorer renders these instead of inferring merges.
+        "merges": [merge.model_dump() for merge in extraction.merges],
     }
 
 
@@ -140,6 +143,13 @@ def render_handoff_markdown(handoff):
             note = item.get("notes") or ""
             suffix = f" — {note}" if note else ""
             lines.append(f"- {item['cell']} ({item['column_name']}){suffix}")
+
+    lines += ["", "## Declared duplicate merges", ""]
+    if not handoff["merges"]:
+        lines.append("- none")
+    for merge in handoff["merges"]:
+        folders = ", ".join(merge["folders"])
+        lines.append(f"- {folders} -> row {merge['row']}: {merge['reason']}")
 
     lines += ["", "## Recommended for extra review", ""]
     if not handoff["extra_review"]:

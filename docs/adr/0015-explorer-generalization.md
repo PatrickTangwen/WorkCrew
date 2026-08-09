@@ -37,19 +37,20 @@ rows" group, and manifest folders no row cites stay visible with zero
 rows. The overview's folder column shows the row's first evidence
 folder in manifest order.
 
-### Merged folders are inferred, and the UI states only the evidence
+### Merged folders are declared, not inferred (superseded 2026-08-09)
 
-No contract records the Filler's duplicate-folder merges (plan
-section 22 sources findings from handoff.json, which has no duplicates
-field). V1 infers: a folder is "merged into" row R when the folder's
-entire cited evidence feeds exactly R and R's first-order folder is a
-different one. Failure mode: a folder that merely cross-cites one cell
-of a row primarily owned by an earlier folder is flagged the same way.
-The UI therefore claims only what the data shows — the badge points at
-the surviving row ("↦ row N") and the callout reads "all of their
-cited evidence feeds this row" — not that the Filler decided a merge.
-When a later ticket adds an explicit duplicate/merge declaration to
-the Filler outputs, that signal replaces this inference.
+Originally no contract recorded the Filler's duplicate-folder merges,
+and V1 inferred them from evidence shape — with a documented
+cross-citation false positive. That inference is now deleted:
+`ExtractionResult` carries explicit `merges` declarations
+(`FolderMerge`: duplicate folders, surviving row, reason), the
+handoff records them (`handoff.json["merges"]`, a section in
+handoff.md), and the explorer renders only declarations whose
+surviving row exists — the badge still points at the row and the
+callout now states that the Filler declared the merge, with its
+reason. A folder whose evidence merely feeds another folder's row is
+no longer marked at all; handoffs persisted before the field existed
+render with no merge markings.
 
 ### Overview findings are the handoff's attention items
 
