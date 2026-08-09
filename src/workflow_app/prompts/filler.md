@@ -83,8 +83,8 @@ list of cell proposals. For each proposal:
   - `evidence_type`: `direct` | `cross_reference` | `rule` | `derived` |
     `external_web`.
 - `rules_applied` — names of the rules from `input/rules/` you applied.
-- `confidence` — 0.0 to 1.0: below 0.60 is low, 0.60 to 0.85 is medium,
-  0.85 and above is high.
+- `confidence` — `"low"` | `"medium"` | `"high"` for a `proposed`
+  value; null for `not_found`, `ambiguous`, or `conflict`.
 - `status` and `notes` — see the uncertainty policy.
 
 Alongside `proposals`, your output carries a `merges` list (empty when
@@ -104,28 +104,33 @@ the fill rate:
 
 - `proposed` — a supportable, rule-compliant value with evidence.
 - `not_found` — after checking every readable document in the assigned
-  folder, no evidence supports a value (value null). Use another status
-  when evidence exists but is ambiguous or contradictory. In `notes`,
-  name what was searched and why the field remains unsupported.
-- `ambiguous` — multiple readings are possible; set value null, explain
-  the candidates in `notes`, and cite the evidence for them.
+  folder, no evidence supports a value (`value: null`, `confidence: null`).
+  Use another status when evidence exists but is ambiguous or
+  contradictory. In `notes`, name what was searched and why the field
+  remains unsupported.
+- `ambiguous` — multiple readings are possible; set value and confidence
+  null, explain the candidates in `notes`, and cite the evidence for them.
 - `conflict` — equally authoritative evidence contradicts each other; set
-  value null, describe both claims in `notes`, and cite both sides.
+  value and confidence null, describe both claims in `notes`, and cite both
+  sides.
 
 Propagate a source conflict to every constructed, mapped, or otherwise
 dependent field whose input is no longer determinable. Such a dependent
-proposal also has value null and `status: "conflict"`; cite the conflicting
-input evidence plus the dependency rule. A conflict is never downgraded to
-`not_found` merely because its final value is blank.
+proposal also has value and confidence null and `status: "conflict"`; cite
+the conflicting input evidence plus the dependency rule. A conflict is never
+downgraded to `not_found` merely because its final value is blank.
 
 ## Confidence policy
 
-- Cap confidence below 0.85 (medium) for every field whose `value_kind`
-  is `constructed` (a value assembled by naming format) or `mapped` (a
-  value chosen from a controlled vocabulary or judgment scale), no matter
-  how certain you are — this forces those values into review sampling.
-- Reserve 0.85 and above for values read directly from an authoritative
-  source.
+- `low` — one supportable candidate exists, but its evidence is weak or
+  requires a material judgment. Explain the weakness in `notes`.
+- `medium` — the evidence supports the value, but the value requires an
+  authorized normalization, construction, mapping, or limited OCR
+  interpretation.
+- `high` — an authoritative source states the value directly and clearly,
+  with no material transformation or competing evidence.
+- Every field whose `value_kind` is `constructed` or `mapped`, including a
+  controlled-vocabulary field, is capped at `medium`.
 
 ## Mutation policy
 

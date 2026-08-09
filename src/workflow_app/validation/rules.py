@@ -1,25 +1,13 @@
 """Proposal-level deterministic validation (plan sections 20, 25).
 
-Confidence thresholds are the spec's fixed buckets:
-low < 0.60 <= medium < 0.85 <= high. Constructed fields (values
-assembled by naming format) and mapped fields (values chosen from a
-controlled vocabulary or judgment scale) are capped at medium so they
-always land in prioritized review sampling. Value-level checks (type,
-vocabulary, pattern, date) stay in the mutation safety layer.
+Constructed fields (values assembled by naming format) and mapped fields
+(values chosen from a controlled vocabulary or judgment scale) are capped
+at medium confidence so they always land in prioritized review sampling.
+Value-level checks (type, vocabulary, pattern, date) stay in the mutation
+safety layer.
 """
 
 from workflow_app.workbook import writer
-
-LOW_CONFIDENCE_THRESHOLD = 0.60
-HIGH_CONFIDENCE_THRESHOLD = 0.85
-
-
-def classify_confidence(confidence):
-    if confidence < LOW_CONFIDENCE_THRESHOLD:
-        return "low"
-    if confidence < HIGH_CONFIDENCE_THRESHOLD:
-        return "medium"
-    return "high"
 
 
 def is_confidence_capped(field):
@@ -50,12 +38,11 @@ def check_proposal(proposal, schema):
     if row != proposal.row:
         return f"cell {cell_ref} does not match the declared row {proposal.row}"
 
-    if is_confidence_capped(field) and proposal.confidence >= HIGH_CONFIDENCE_THRESHOLD:
+    if is_confidence_capped(field) and proposal.confidence == "high":
         kind = field.value_kind or "mapped"
         return (
             f"{kind} field {proposal.column_name!r} is capped at medium"
-            f" confidence (< {HIGH_CONFIDENCE_THRESHOLD}), got"
-            f" {proposal.confidence}"
+            f" confidence, got {proposal.confidence}"
         )
 
     return None

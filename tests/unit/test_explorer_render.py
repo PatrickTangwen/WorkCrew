@@ -103,7 +103,7 @@ def provenance_entry(cell, value, source_file, reason="Stated in brief."):
             }
         ],
         "rules_applied": [],
-        "confidence": 0.9,
+        "confidence": "high",
         "run_id": "run-1",
     }
 
@@ -268,7 +268,7 @@ def test_findings_collect_handoff_attention_items(tmp_path):
         {"cell": f"{SHEET}!G2", "column_name": "Main Issue Area(s)", "notes": None}
     ]
     handoff["extra_review"] = [
-        {"cell": f"{SHEET}!A2", "reason": "written at low confidence (0.2)"}
+        {"cell": f"{SHEET}!A2", "reason": "written at low confidence"}
     ]
 
     data = build(tmp_path, {"A2": "PRJ-0001"}, handoff=handoff)
@@ -288,7 +288,7 @@ def test_findings_collect_handoff_attention_items(tmp_path):
         {
             "kind": "extra_review",
             "ref": f"{SHEET}!A2",
-            "detail": "written at low confidence (0.2)",
+            "detail": "written at low confidence",
         },
     ]
 

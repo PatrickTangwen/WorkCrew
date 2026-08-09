@@ -84,6 +84,7 @@ def test_cell_proposal_accepts_null_value():
     data = load("cell_proposal.json")
     data["value"] = None
     data["status"] = "not_found"
+    data["confidence"] = None
     assert CellProposal.model_validate(data).value is None
 
 
@@ -94,11 +95,45 @@ def test_cell_proposal_rejects_unknown_status():
         CellProposal.model_validate(data)
 
 
-def test_cell_proposal_rejects_non_numeric_confidence():
+def test_cell_proposal_rejects_numeric_confidence():
     data = load("cell_proposal.json")
-    data["confidence"] = "high"
+    data["confidence"] = 0.93
     with pytest.raises(ValidationError):
         CellProposal.model_validate(data)
+
+
+def test_cell_proposal_rejects_unknown_confidence_level():
+    data = load("cell_proposal.json")
+    data["confidence"] = "very_high"
+    with pytest.raises(ValidationError):
+        CellProposal.model_validate(data)
+
+
+def test_cell_proposal_schema_exposes_only_categorical_confidence():
+    confidence = CellProposal.model_json_schema()["properties"]["confidence"]
+    branches = confidence["anyOf"]
+
+    assert any(set(branch.get("enum", [])) == {"low", "medium", "high"} for branch in branches)
+    assert any(branch.get("type") == "null" for branch in branches)
+
+
+def test_proposed_cell_requires_a_confidence_level():
+    data = load("cell_proposal.json")
+    data["confidence"] = None
+    with pytest.raises(ValidationError, match="proposed"):
+        CellProposal.model_validate(data)
+
+
+@pytest.mark.parametrize("status", ["not_found", "ambiguous", "conflict"])
+def test_non_proposed_cell_requires_null_confidence(status):
+    data = load("cell_proposal.json")
+    data["value"] = None
+    data["status"] = status
+    with pytest.raises(ValidationError, match="non-proposed"):
+        CellProposal.model_validate(data)
+
+    data["confidence"] = None
+    assert CellProposal.model_validate(data).confidence is None
 
 
 def test_cell_proposal_rejects_malformed_nested_evidence():

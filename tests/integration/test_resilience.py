@@ -68,7 +68,7 @@ FILLER_OUTPUT = {
             "value": "First note.",
             "evidence": [evidence("Stated in the brief.")],
             "rules_applied": [],
-            "confidence": 0.9,
+            "confidence": "high",
             "status": "proposed",
         },
         {
@@ -79,7 +79,7 @@ FILLER_OUTPUT = {
             "value": "PRJ-0001",
             "evidence": [evidence("Constructed from the folder name.")],
             "rules_applied": [],
-            "confidence": 0.7,
+            "confidence": "medium",
             "status": "proposed",
         },
     ]
@@ -113,7 +113,7 @@ FILLER_OUTPUT["proposals"].append(
         "value": "Education",
         "evidence": [evidence("Mentioned once in the archive notes.")],
         "rules_applied": [],
-        "confidence": 0.7,
+        "confidence": "medium",
         "status": "proposed",
     }
 )

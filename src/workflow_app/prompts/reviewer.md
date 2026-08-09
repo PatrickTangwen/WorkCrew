@@ -53,9 +53,9 @@ folder assigned to that same row.
 ## Review depth (the policy in inputs.json)
 
 - Every filled cell of a field listed in `strict_fields`: verify, always.
-- Confidence below `low_confidence_threshold`: verify fully.
-- Confidence between the thresholds: verify with priority.
-- Confidence at or above `medium_confidence_threshold`: spot-check
+- Every `low`-confidence proposal: verify fully.
+- Every `medium`-confidence proposal: verify with priority.
+- For `high`-confidence proposals: spot-check
   `high_confidence_sampling_per_record` cells per row.
 - Risk-order the sample before choosing high-confidence cells. Prefer
   values transformed from their evidence text, convention-sensitive

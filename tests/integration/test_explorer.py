@@ -41,8 +41,8 @@ FILLER_OUTPUT = {
                 }
             ],
             "rules_applied": [],
-            # Constructed fields cap at medium confidence (ADR 0012).
-            "confidence": 0.7 if column_name == "Project ID*" else 0.9,
+            # Constructed fields cap at medium confidence (ADR 0024).
+            "confidence": "medium" if column_name == "Project ID*" else "high",
             "status": "proposed",
         }
         for column_name, cell, value in (

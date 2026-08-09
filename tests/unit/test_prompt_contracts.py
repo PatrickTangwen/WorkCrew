@@ -15,12 +15,32 @@ def test_filler_keeps_row_folder_identity_and_propagates_conflicts():
     assert "Propagate a source conflict" in text
 
 
+def test_filler_uses_categorical_confidence_and_null_for_uncertainty():
+    text = prompt("filler.md")
+
+    assert '`"low"` | `"medium"` | `"high"`' in text
+    assert "confidence: null" in text
+    assert "capped at `medium`" in text
+    assert "0.60" not in text
+    assert "0.85" not in text
+
+
 def test_reviewer_prioritizes_risky_cells_and_escalates_uncertainty():
     text = prompt("reviewer.md")
 
     assert "Risk-order the sample" in text
     assert "A conflict cannot receive PASS" in text
     assert "OCR-confusable" in text
+
+
+def test_reviewer_routes_categories_without_numeric_thresholds():
+    text = prompt("reviewer.md")
+
+    assert "Every `low`-confidence proposal" in text
+    assert "Every `medium`-confidence proposal" in text
+    assert "For `high`-confidence proposals" in text
+    assert "low_confidence_threshold" not in text
+    assert "medium_confidence_threshold" not in text
 
 
 def test_revision_requires_corroboration_before_character_level_changes():

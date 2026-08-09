@@ -1,10 +1,10 @@
 """Review policy configuration (plan section 25).
 
-Hand-authored YAML controlling review depth: strict fields always
-verified, confidence-stratified verification thresholds, and per-record
-spot checks for high-confidence values. Review depth is configuration,
-not agent whim: the policy is loaded and validated before any agent
-runs, and its canonical JSON form is passed into the Reviewer inputs.
+Hand-authored YAML controlling review depth: strict fields are always
+verified, low/medium/high confidence levels route directly, and per-record
+spot checks cover high-confidence values. Review depth is configuration,
+not agent whim: the policy is loaded and validated before any agent runs,
+and its canonical JSON form is passed into the Reviewer inputs.
 """
 
 from pathlib import Path
@@ -17,23 +17,10 @@ class ReviewPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     strict_fields: list[str] = []
-    # Default thresholds are the frozen confidence bands (plan section 18).
-    low_confidence_threshold: float = 0.60
-    medium_confidence_threshold: float = 0.85
     high_confidence_sampling_per_record: int = 2
 
     @model_validator(mode="after")
-    def _check_bounds(self):
-        ordered = (
-            0 <= self.low_confidence_threshold < self.medium_confidence_threshold <= 1
-        )
-        if not ordered:
-            raise ValueError(
-                "confidence thresholds must satisfy"
-                " 0 <= low < medium <= 1, got"
-                f" low={self.low_confidence_threshold},"
-                f" medium={self.medium_confidence_threshold}"
-            )
+    def _check_sampling(self):
         if self.high_confidence_sampling_per_record < 0:
             raise ValueError("high_confidence_sampling_per_record must not be negative")
         return self

@@ -49,11 +49,11 @@ def proposal(row, column_name, cell, value, confidence):
 
 FILLER_OUTPUT = {
     "proposals": [
-        proposal(2, "Notes", "F2", "First draft note.", 0.90),
-        proposal(2, "Main Issue Area(s)", "G2", "Healthcare", 0.80),
-        proposal(2, "Project ID*", "A2", "PRJ-0001", 0.70),
-        proposal(2, "Start Date", "D2", "2026-01-01", 0.70),
-        proposal(4, "Main Issue Area(s)", "G4", "Education", 0.70),
+        proposal(2, "Notes", "F2", "First draft note.", "high"),
+        proposal(2, "Main Issue Area(s)", "G2", "Healthcare", "medium"),
+        proposal(2, "Project ID*", "A2", "PRJ-0001", "medium"),
+        proposal(2, "Start Date", "D2", "2026-01-01", "medium"),
+        proposal(4, "Main Issue Area(s)", "G4", "Education", "medium"),
     ]
 }
 

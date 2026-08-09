@@ -32,25 +32,19 @@ def write_schema(tmp_path):
 def test_no_path_yields_default_policy():
     policy = load_review_policy(None)
     assert policy.strict_fields == []
-    assert policy.low_confidence_threshold == 0.60
-    assert policy.medium_confidence_threshold == 0.85
     assert policy.high_confidence_sampling_per_record == 2
 
 
-def test_loads_the_plan_example_shape(tmp_path):
+def test_loads_the_categorical_policy_shape(tmp_path):
     path = tmp_path / "policy.yaml"
     path.write_text(
         "review:\n"
         "  strict_fields:\n"
         "    - Project ID*\n"
-        "  low_confidence_threshold: 0.5\n"
-        "  medium_confidence_threshold: 0.9\n"
         "  high_confidence_sampling_per_record: 3\n"
     )
     policy = load_review_policy(path)
     assert policy.strict_fields == ["Project ID*"]
-    assert policy.low_confidence_threshold == 0.5
-    assert policy.medium_confidence_threshold == 0.9
     assert policy.high_confidence_sampling_per_record == 3
 
 
@@ -59,7 +53,7 @@ def test_partial_policy_keeps_defaults(tmp_path):
     path.write_text("review:\n  strict_fields: [Notes]\n")
     policy = load_review_policy(path)
     assert policy.strict_fields == ["Notes"]
-    assert policy.medium_confidence_threshold == 0.85
+    assert policy.high_confidence_sampling_per_record == 2
 
 
 @pytest.mark.parametrize(
@@ -93,17 +87,12 @@ def test_rejects_unknown_keys(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "low,medium",
-    [(0.9, 0.6), (0.6, 0.6), (-0.1, 0.85), (0.6, 1.5)],
+    "legacy_key", ["low_confidence_threshold", "medium_confidence_threshold"]
 )
-def test_rejects_misordered_thresholds(tmp_path, low, medium):
+def test_rejects_legacy_numeric_thresholds(tmp_path, legacy_key):
     path = tmp_path / "policy.yaml"
-    path.write_text(
-        "review:\n"
-        f"  low_confidence_threshold: {low}\n"
-        f"  medium_confidence_threshold: {medium}\n"
-    )
-    with pytest.raises(ValueError, match="thresholds"):
+    path.write_text(f"review:\n  {legacy_key}: 0.5\n")
+    with pytest.raises(ValueError):
         load_review_policy(path)
 
 
