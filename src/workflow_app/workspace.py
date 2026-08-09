@@ -65,6 +65,14 @@ class Workspace:
         return self.root / "agent_outputs" / "filler"
 
     @property
+    def reviewer_outputs(self):
+        return self.root / "agent_outputs" / "reviewer"
+
+    @property
+    def revision_outputs(self):
+        return self.root / "agent_outputs" / "revision"
+
+    @property
     def artifacts(self):
         return self.root / "artifacts"
 
@@ -101,8 +109,44 @@ class Workspace:
         return self.artifacts / "handoff.md"
 
     @property
+    def review_json(self):
+        return self.artifacts / "review.json"
+
+    @property
+    def review_md(self):
+        return self.artifacts / "review.md"
+
+    @property
+    def revision_json(self):
+        return self.artifacts / "revision.json"
+
+    @property
+    def revision_log_md(self):
+        return self.artifacts / "revision_log.md"
+
+    @property
+    def re_review_json(self):
+        return self.artifacts / "re_review.json"
+
+    @property
+    def unresolved_json(self):
+        return self.artifacts / "unresolved.json"
+
+    @property
+    def human_review_json(self):
+        return self.artifacts / "human_review.json"
+
+    @property
+    def human_review_md(self):
+        return self.artifacts / "human_review.md"
+
+    @property
     def draft_xlsx(self):
         return self.root / "working" / "draft.xlsx"
+
+    @property
+    def final_xlsx(self):
+        return self.root / "output" / "final.xlsx"
 
     @property
     def run_summary(self):

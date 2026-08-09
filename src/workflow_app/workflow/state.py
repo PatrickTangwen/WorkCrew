@@ -16,4 +16,7 @@ class WorkflowState(TypedDict):
     schema_path: str | None
     extraction_path: str | None
     draft_xlsx_path: str | None
+    review_path: str | None
+    revision_path: str | None
+    re_review_path: str | None
     phase: str

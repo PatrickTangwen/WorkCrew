@@ -7,6 +7,9 @@ revision actions are legal per verdict; the unresolved set feeds human
 review.
 """
 
+from workflow_app.workbook import writer
+from workflow_app.workbook.safety import cell_key
+
 ACTIONS_BY_VERDICT = {
     "WARN": {"ACCEPT", "REBUT"},
     "FAIL": {"FIX", "CLEAR", "UNRESOLVED"},
@@ -61,6 +64,36 @@ def check_re_review_coverage(rebutted, verdicts):
     if extra:
         return f"re-review added verdicts for non-rebutted cells: {extra}"
     return None
+
+
+def check_finding_cells(findings):
+    for finding in findings:
+        if writer.normalize_cell(finding.cell) is None:
+            return f"finding has a malformed cell address {finding.cell!r}"
+    return None
+
+
+def notes_cell_for(sheet_schema, cell_ref):
+    if sheet_schema.notes_field is None:
+        return None
+    notes_column = sheet_schema.fields[sheet_schema.notes_field].column
+    row = cell_ref[len(writer.column_of(cell_ref)) :]
+    return f"{notes_column}{row}"
+
+
+def derive_revision_allowlist(findings, schema):
+    # Flagged cells plus each flagged row's Notes cell, so note_append
+    # companion edits are always authorized (plan section 28). PASS
+    # cells never enter the list — they stay frozen.
+    sheet = schema.target_sheet()
+    cells = set()
+    for finding in non_pass_findings(findings):
+        cell_ref = writer.normalize_cell(finding.cell)
+        cells.add(cell_key(sheet.name, cell_ref))
+        notes_cell = notes_cell_for(sheet, cell_ref)
+        if notes_cell is not None:
+            cells.add(cell_key(sheet.name, notes_cell))
+    return sorted(cells)
 
 
 def collect_unresolved(findings, decisions, verdicts):

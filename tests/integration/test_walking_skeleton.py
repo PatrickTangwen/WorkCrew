@@ -38,6 +38,7 @@ EXPECTED_STAGES = [
     "CLAUDE_FILL",
     "VALIDATE",
     "WRITE_DRAFT",
+    "CODEX_REVIEW",
     "FINALIZE",
 ]
 
@@ -59,11 +60,13 @@ def run_inputs(inputs, **overrides):
 
 
 def start_run(inputs, fixture=None):
-    runtime = FakeAgentRuntime({"filler": fixture or filler_fixture()})
+    runtime = FakeAgentRuntime(
+        {"filler": fixture or filler_fixture(), "reviewer": {"findings": []}}
+    )
     return run_workflow(
         inputs=run_inputs(inputs),
         runs_root=inputs["runs_root"],
-        runtimes={"filler": runtime},
+        runtimes={"filler": runtime, "reviewer": runtime},
     )
 
 
@@ -209,10 +212,13 @@ def test_malformed_schema_config_fails_before_any_agent_runs(inputs):
 
 
 def test_missing_source_folder_fails_before_creating_a_run(inputs):
+    runtime = FakeAgentRuntime(
+        {"filler": filler_fixture(), "reviewer": {"findings": []}}
+    )
     with pytest.raises(FileNotFoundError):
         run_workflow(
             inputs=run_inputs(inputs, source=inputs["source"] / "does-not-exist"),
             runs_root=inputs["runs_root"],
-            runtimes={"filler": FakeAgentRuntime({"filler": filler_fixture()})},
+            runtimes={"filler": runtime, "reviewer": runtime},
         )
     assert not inputs["runs_root"].exists()
