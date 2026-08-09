@@ -26,14 +26,14 @@ def new_run_id():
     return f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
 
-def run_workflow(inputs, runs_root, runtimes):
+def run_workflow(inputs, runs_root, runtimes, *, run_id=None):
     inputs.validate()
     # Fail fast on malformed configs — before the workspace exists and
     # long before any agent could be invoked (tickets #3, #11).
     schema = load_workbook_schema(inputs.workbook_schema)
     check_strict_fields(load_review_policy(inputs.review_policy), schema)
 
-    run_id = new_run_id()
+    run_id = run_id or new_run_id()
     # Resolved so the paths persisted into checkpointed state stay valid
     # when the run is resumed from a different working directory.
     workspace = Workspace((Path(runs_root) / run_id).resolve())
