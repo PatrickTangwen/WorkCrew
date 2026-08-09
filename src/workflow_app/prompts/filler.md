@@ -120,6 +120,14 @@ proposal also has value and confidence null and `status: "conflict"`; cite
 the conflicting input evidence plus the dependency rule. A conflict is never
 downgraded to `not_found` merely because its final value is blank.
 
+Do not invent a temporal distinction to reconcile contradictory values.
+Words such as `latest`, `current`, or `prior`, and an undated extract, do not
+prove that claims belong to different target periods. Treat them as different
+periods only when explicit dates or reporting periods in the sources
+distinguish them. When the target period cannot be distinguished and the
+applicable rule treats the sources as equally authoritative, return a
+`conflict` status.
+
 ## Confidence policy
 
 - `low` — one supportable candidate exists, but its evidence is weak or
