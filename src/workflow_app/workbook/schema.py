@@ -76,6 +76,12 @@ class WorkbookSchema(BaseModel):
 
     sheets: list[SheetSchema] = Field(min_length=1)
 
+    def sheet_named(self, name):
+        for sheet in self.sheets:
+            if sheet.name == name:
+                return sheet
+        return None
+
 
 def load_workbook_schema(path):
     path = Path(path)

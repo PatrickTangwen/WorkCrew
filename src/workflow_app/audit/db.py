@@ -1,9 +1,10 @@
-"""SQLite audit store (plan section 36): runs and stages for ticket #2.
+"""SQLite audit store (plan section 36): runs, stages, and mutations.
 
-Mutation and finding tables arrive with the workbook safety layer (#4)
-and review routing (#6).
+Finding tables arrive with review routing (#6). Cell values in mutation
+rows are JSON-encoded so their types survive the round trip.
 """
 
+import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -27,6 +28,20 @@ CREATE TABLE IF NOT EXISTS stages (
     status TEXT NOT NULL,
     started_at TEXT NOT NULL,
     finished_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS mutations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    sheet TEXT NOT NULL,
+    cell TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    actor_role TEXT NOT NULL,
+    source_ref TEXT NOT NULL,
+    status TEXT NOT NULL,
+    reason TEXT,
+    created_at TEXT NOT NULL
 );
 """
 
@@ -95,6 +110,43 @@ class AuditStore:
                 " WHERE run_id = ? AND stage = ? AND finished_at IS NULL",
                 (_now(), run_id, stage),
             )
+
+    def record_mutation(self, run_id, record):
+        conn = self._connect()
+        with conn:
+            conn.execute(
+                "INSERT INTO mutations (run_id, sheet, cell, old_value, new_value,"
+                " actor_role, source_ref, status, reason, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    run_id,
+                    record["sheet"],
+                    record["cell"],
+                    json.dumps(record["old_value"]),
+                    json.dumps(record["new_value"]),
+                    record["actor_role"],
+                    record["source_ref"],
+                    record["status"],
+                    record["reason"],
+                    _now(),
+                ),
+            )
+
+    def find_applied_mutation(self, run_id, sheet, cell, actor_role, source_ref):
+        row = (
+            self._connect()
+            .execute(
+                "SELECT new_value FROM mutations"
+                " WHERE run_id = ? AND sheet = ? AND cell = ?"
+                " AND actor_role = ? AND source_ref = ? AND status = 'applied'"
+                " ORDER BY id DESC LIMIT 1",
+                (run_id, sheet, cell, actor_role, source_ref),
+            )
+            .fetchone()
+        )
+        if row is None:
+            return None
+        return {"new_value": json.loads(row[0])}
 
     def get_run(self, run_id):
         row = (

@@ -42,7 +42,9 @@ def _check_date(spec, value):
         return f"expected a date string, got {type(value).__name__}"
     date_format = spec.date_format or DEFAULT_DATE_FORMAT
     try:
-        datetime.strptime(value, date_format)
+        # Format check only — the parsed datetime is discarded, so
+        # timezone-awareness is irrelevant here.
+        datetime.strptime(value, date_format)  # noqa: DTZ007
     except ValueError:
         return f"date {value!r} does not match format {date_format!r}"
     return None
