@@ -311,7 +311,7 @@ def test_failed_resume_no_longer_reports_the_run_as_paused(inputs):
     # resumed leg after the pause has been consumed.
     runtimes = make_runtimes()
     runtimes["filler"] = FakeAgentRuntime({"filler": {"proposals": [{"bad": 1}]}})
-    with pytest.raises(Exception, match="validation error"):
+    with pytest.raises(Exception, match="filler failed"):
         resume_workflow(
             run_id=paused["run_id"],
             runs_root=inputs["runs_root"],
@@ -319,4 +319,4 @@ def test_failed_resume_no_longer_reports_the_run_as_paused(inputs):
         )
 
     # The answers were ingested, so 'paused' would be a false fact.
-    assert run_status(workspace, paused["run_id"]) == "running"
+    assert run_status(workspace, paused["run_id"]) == "failed"

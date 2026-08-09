@@ -1,6 +1,6 @@
 # 0011 — Mutation-layer semantics
 
-Status: accepted
+Status: accepted (replay semantics amended by 0016)
 Date: 2026-08-08
 Ticket: #4 (deterministic workbook safety layer)
 

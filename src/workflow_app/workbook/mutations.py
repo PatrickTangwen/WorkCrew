@@ -5,9 +5,18 @@ checked in the plan-section-14 order — value validation, then
 authorization — plus the per-run idempotency check of section 37,
 before openpyxl writes anything. Idempotency covers both earlier runs
 (via the audit store) and earlier mutations in the same batch. Every
-applied or rejected mutation is audited; idempotent replays are skipped
-without side effects. A MutationConflictError aborts the whole batch
-before any save or audit — no partial application.
+first-time applied or rejected mutation is audited; an idempotent
+replay (same key, same value) writes the value again — a crash-resume
+may have reset the workbook — but adds no audit record, so downstream
+consumers see the same outcomes as an uninterrupted run. The audit
+records land BEFORE the workbook save: a crash in between leaves
+audited-but-unsaved writes that the next resume replays from the audit
+(the invariant a resume relies on is "audited implies replayable",
+which a save-first order cannot provide for values derived from
+workbook state, e.g. note appends). Re-applied *rejected* mutations do
+re-audit — each refused attempt is its own event. A
+MutationConflictError aborts the whole batch before any save or audit
+— no partial application.
 
 Only the Filler and Revision roles may mutate the workbook (guardrails
 49.8/49.9); the routing layer never hands other roles a mutation path,
@@ -35,11 +44,13 @@ class CellMutation:
 @dataclass(frozen=True)
 class MutationOutcome:
     mutation: CellMutation
-    status: Literal["applied", "rejected", "skipped"]
+    status: Literal["applied", "rejected"]
     reason: str | None = None
     old_value: Any = None
     # Normalized A1 address; None only when the address was malformed.
     cell_ref: str | None = None
+    # True when this application re-ran an already-audited write.
+    replayed: bool = False
 
 
 class MutationConflictError(Exception):
@@ -54,15 +65,16 @@ def apply_mutations(draft_path, mutations, schema, allowlist, audit, run_id):
         for mutation in mutations
     ]
 
+    # Audit before the save: a crash between the two leaves audited
+    # writes the next resume replays onto a fresh workbook, with the
+    # true old values preserved in the pre-crash records. Replays leave
+    # no new applied trail.
+    for outcome in outcomes:
+        if not outcome.replayed:
+            audit.record_mutation(run_id, _record(outcome))
+
     if any(outcome.status == "applied" for outcome in outcomes):
         writer.save_draft(workbook, draft_path)
-
-    # Audit after a successful save: a crash before this point replays
-    # the same idempotent writes on resume; a crash after it is fully
-    # recorded. Skipped replays leave no new trail.
-    for outcome in outcomes:
-        if outcome.status != "skipped":
-            audit.record_mutation(run_id, _record(outcome))
     return outcomes
 
 
@@ -110,21 +122,23 @@ def _apply_one(workbook, mutation, schema, allowlist, audit, run_id, written):
 
     key = (mutation.sheet, cell_ref, mutation.actor_role, mutation.source_ref)
     prior = _prior_value(key, written, audit, run_id)
-    if prior is not None:
-        if prior["new_value"] != mutation.value:
-            raise MutationConflictError(
-                f"{mutation.sheet}!{cell_ref} was already written as"
-                f" {prior['new_value']!r} by {mutation.actor_role}/"
-                f"{mutation.source_ref}; refusing to replay it as"
-                f" {mutation.value!r}"
-            )
-        return MutationOutcome(mutation=mutation, status="skipped", cell_ref=cell_ref)
+    if prior is not None and prior["new_value"] != mutation.value:
+        raise MutationConflictError(
+            f"{mutation.sheet}!{cell_ref} was already written as"
+            f" {prior['new_value']!r} by {mutation.actor_role}/"
+            f"{mutation.source_ref}; refusing to replay it as"
+            f" {mutation.value!r}"
+        )
 
     old_value = writer.read_cell(workbook, mutation.sheet, cell_ref)
     writer.write_cell(workbook, mutation.sheet, cell_ref, mutation.value)
     written[key] = mutation.value
     return MutationOutcome(
-        mutation=mutation, status="applied", old_value=old_value, cell_ref=cell_ref
+        mutation=mutation,
+        status="applied",
+        old_value=old_value,
+        cell_ref=cell_ref,
+        replayed=prior is not None,
     )
 
 
