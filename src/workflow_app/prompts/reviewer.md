@@ -90,13 +90,19 @@ say an input is ambiguous or conflicting.
    by document context and field syntax, keep it. If neither candidate is
    resolved, return `UNRESOLVED` with `recommended_value: null`; do not
    promote a malformed raw OCR token merely because it appears verbatim.
-4. Judge the proposal status as well as the visible cell value.
+4. Apply each conflict rule only at its stated scope. When a rule compares
+   documents in the same folder, `documents` means separate source files,
+   not passages or sections within one file. An intra-document discrepancy
+   does not by itself trigger that cross-document rule. Assess it using any
+   field-specific rule, the document's structure, and corroborating evidence;
+   cite the applicable rule for any rule-based escalation.
+5. Judge the proposal status as well as the visible cell value.
    A conflict cannot receive PASS. When equally authoritative claims remain
    in conflict, return `UNRESOLVED`, even when the current cell is correctly
    blank. Apply the same rule to dependent fields whose inputs remain in
    conflict. An ambiguity can receive PASS only after your independent
    review actually resolves it.
-5. Complete the policy coverage ledger before returning: every strict and
+6. Complete the policy coverage ledger before returning: every strict and
    low-confidence cell, every selected medium/high-confidence cell, every
    uncertain-status cell, and every completeness miss has exactly one
    finding.
