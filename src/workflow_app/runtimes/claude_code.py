@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 
 from workflow_app.models.extraction import ExtractionResult
+from workflow_app.models.revision import RevisionResult
 from workflow_app.models.scoping import ScopingQuestions
 from workflow_app.progress import emit
 from workflow_app.runtimes.base import AgentResult
@@ -24,13 +25,14 @@ from workflow_app.runtimes.base import AgentResult
 # keychain login and never silently falls back to API billing.
 API_KEY_ENV_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 
-_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 # Role key -> (prompt file, structured-output contract). Role keys name
 # invocation kinds (ADR 0014); every Claude role maps to this one runtime.
 ROLES = {
     "scoping": ("scoping.md", ScopingQuestions),
     "filler": ("filler.md", ExtractionResult),
+    "revision": ("revision.md", RevisionResult),
 }
 
 # Tail lengths keep stderr/stdout excerpts in error strings bounded.
@@ -71,7 +73,7 @@ class ClaudeCodeRuntime:
         # An unknown role raises (KeyError): the invocation itself is
         # impossible, which is the engine's invocation_failure class.
         prompt_file, contract = ROLES[request.role]
-        prompt = (_PROMPTS_DIR / prompt_file).read_text()
+        prompt = (PROMPTS_DIR / prompt_file).read_text()
         schema = json.dumps(contract.model_json_schema())
 
         process = subprocess.run(

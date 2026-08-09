@@ -1,8 +1,10 @@
 """CLI entry (plan section 4): `workflow run` and `workflow resume`.
 
-A thin shell over the engine — no business logic here. During fake-first
-development (tickets #2-#9, plan section 32) the CLI wires in a
-FakeAgentRuntime; live runtime adapters replace it in later tickets.
+A thin shell over the engine — no business logic here. Runs use the
+live agent runtimes by default (Claude Code for scoping/fill/revision,
+Codex for review/re-review); `--runtimes fake` replays the degenerate
+walking-skeleton fixtures instead, for wiring checks and tests that
+must not spend agent quota (plan section 32).
 """
 
 import argparse
@@ -10,13 +12,18 @@ import sys
 from pathlib import Path
 
 from workflow_app.progress import emit
+from workflow_app.runtimes.claude_code import ClaudeCodeRuntime
+from workflow_app.runtimes.codex import CodexRuntime
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.workflow.engine import resume_workflow, run_workflow
 from workflow_app.workspace import RunInputs
 
 # Degenerate walking-skeleton payloads: one placeholder scoping
-# question, an empty fill, and an all-clear review, so the whole graph
-# short-circuits to FINALIZE. Live runtimes land in #10/#11.
+# question, an empty fill, and an all-clear review, so a pure fake run
+# short-circuits to FINALIZE. The revision/re-review fixtures cover a
+# live run resumed with --runtimes fake (runtime choice is
+# per-invocation, ADR 0019): zero decisions and zero verdicts degrade
+# every open finding into the UNRESOLVED / human-review pipeline.
 FAKE_OUTPUTS = {
     "scoping": {
         "questions": [
@@ -30,7 +37,25 @@ FAKE_OUTPUTS = {
     },
     "filler": {"proposals": []},
     "reviewer": {"findings": []},
+    "revision": {"decisions": []},
+    "re_review": {"verdicts": []},
 }
+
+
+def build_runtimes(choice):
+    if choice == "fake":
+        emit("Using fake agent runtimes (walking-skeleton fixtures).")
+        fake = FakeAgentRuntime(FAKE_OUTPUTS)
+        return {role: fake for role in FAKE_OUTPUTS}
+    claude = ClaudeCodeRuntime()
+    codex = CodexRuntime()
+    return {
+        "scoping": claude,
+        "filler": claude,
+        "revision": claude,
+        "reviewer": codex,
+        "re_review": codex,
+    }
 
 
 def build_parser():
@@ -72,15 +97,23 @@ def build_parser():
         default="runs",
         help="directory holding per-run workspaces (default: ./runs)",
     )
+    for subparser in (run, resume):
+        subparser.add_argument(
+            "--runtimes",
+            choices=("live", "fake"),
+            default="live",
+            help=(
+                "agent runtimes: live CLIs (default) or the fake"
+                " walking-skeleton fixtures"
+            ),
+        )
     return parser
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
 
-    emit("Using fake agent runtimes (live runtimes arrive in later tickets).")
-    fake = FakeAgentRuntime(FAKE_OUTPUTS)
-    runtimes = {role: fake for role in FAKE_OUTPUTS}
+    runtimes = build_runtimes(args.runtimes)
     try:
         if args.command == "run":
             inputs = RunInputs(
