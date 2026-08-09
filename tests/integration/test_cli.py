@@ -115,3 +115,12 @@ def test_live_runtimes_are_the_default(inputs):
     # first, "only then connect real agents"); parsed without invoking.
     args = build_parser().parse_args(run_args(inputs)[:-2])
     assert args.runtimes == "live"
+
+
+def test_pinned_model_defaults(inputs):
+    # Models and review effort are pinned (ADR 0020) so CLI upgrades or
+    # account-default changes never silently shift engine behavior.
+    args = build_parser().parse_args(run_args(inputs)[:-2])
+    assert args.claude_model == "claude-opus-4-6[1m]"
+    assert args.codex_model == "gpt-5.6-sol"
+    assert args.codex_effort == "high"

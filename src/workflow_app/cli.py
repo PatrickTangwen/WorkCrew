@@ -42,13 +42,39 @@ FAKE_OUTPUTS = {
 }
 
 
-def build_runtimes(choice):
+# Product default models and review effort (ADR 0020). Pinned so a CLI
+# upgrade or account-default change never silently shifts engine
+# behavior; overridable per run via the CLI flags below.
+DEFAULT_CLAUDE_MODEL = "claude-opus-4-6[1m]"
+DEFAULT_CODEX_MODEL = "gpt-5.6-sol"
+DEFAULT_CODEX_EFFORT = "high"
+
+CODEX_EFFORT_CHOICES = (
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+    "ultra",
+)
+
+
+def build_runtimes(
+    choice,
+    claude_model=DEFAULT_CLAUDE_MODEL,
+    codex_model=DEFAULT_CODEX_MODEL,
+    codex_effort=DEFAULT_CODEX_EFFORT,
+):
     if choice == "fake":
         emit("Using fake agent runtimes (walking-skeleton fixtures).")
         fake = FakeAgentRuntime(FAKE_OUTPUTS)
         return {role: fake for role in FAKE_OUTPUTS}
-    claude = ClaudeCodeRuntime()
-    codex = CodexRuntime()
+    emit(f"Claude model: {claude_model}")
+    emit(f"Codex model: {codex_model} (reasoning effort: {codex_effort})")
+    claude = ClaudeCodeRuntime(model=claude_model)
+    codex = CodexRuntime(model=codex_model, effort=codex_effort)
     return {
         "scoping": claude,
         "filler": claude,
@@ -107,13 +133,43 @@ def build_parser():
                 " walking-skeleton fixtures"
             ),
         )
+        subparser.add_argument(
+            "--claude-model",
+            default=DEFAULT_CLAUDE_MODEL,
+            help=(
+                "model for the Claude roles (scoping/fill/revision);"
+                f" a [1m] suffix selects 1M context (default: {DEFAULT_CLAUDE_MODEL})"
+            ),
+        )
+        subparser.add_argument(
+            "--codex-model",
+            default=DEFAULT_CODEX_MODEL,
+            help=(
+                "model for the Codex roles (review/re-review)"
+                f" (default: {DEFAULT_CODEX_MODEL})"
+            ),
+        )
+        subparser.add_argument(
+            "--codex-effort",
+            choices=CODEX_EFFORT_CHOICES,
+            default=DEFAULT_CODEX_EFFORT,
+            help=(
+                "Codex reasoning effort for the review roles"
+                f" (default: {DEFAULT_CODEX_EFFORT})"
+            ),
+        )
     return parser
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
 
-    runtimes = build_runtimes(args.runtimes)
+    runtimes = build_runtimes(
+        args.runtimes,
+        claude_model=args.claude_model,
+        codex_model=args.codex_model,
+        codex_effort=args.codex_effort,
+    )
     try:
         if args.command == "run":
             inputs = RunInputs(
