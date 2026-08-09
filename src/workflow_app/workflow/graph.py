@@ -1,20 +1,23 @@
 """Thin workflow graph (plan section 30).
 
 INIT -> PREPARE_WORKSPACE -> BUILD_MANIFEST -> LOAD_SCHEMA ->
-CLAUDE_FILL -> VALIDATE -> WRITE_DRAFT -> CODEX_REVIEW, then the
-conditional second half: no actionable findings finalizes directly;
-otherwise CLAUDE_REVISE -> APPLY_ALLOWED_REVISIONS, one CODEX_REREVIEW
-round when rebuttals exist, HUMAN_REVIEW when anything stays
-unresolved, then FINALIZE. The scoping pause (#7) is still missing.
+CLAUDE_SCOPE -> AWAIT_SCOPING_ANSWERS (LangGraph interrupt; both
+skipped when answers are pre-provided) -> CLAUDE_FILL -> VALIDATE ->
+WRITE_DRAFT -> CODEX_REVIEW, then the conditional second half: no
+actionable findings finalizes directly; otherwise CLAUDE_REVISE ->
+APPLY_ALLOWED_REVISIONS, one CODEX_REREVIEW round when rebuttals
+exist, HUMAN_REVIEW when anything stays unresolved, then FINALIZE.
 Dependencies (workspace, inputs, runtimes, audit) are closed over;
 LangGraph state carries file paths and plain values only.
 """
 
+import hashlib
 import json
 import shutil
 from pathlib import Path
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import interrupt
 
 from workflow_app.handoff import build_handoff, render_handoff_markdown
 from workflow_app.ingestion.manifest import Manifest, build_manifest
@@ -23,6 +26,7 @@ from workflow_app.models import (
     ReReviewResult,
     ReviewResult,
     RevisionResult,
+    ScopingQuestions,
 )
 from workflow_app.progress import emit
 from workflow_app.provenance.store import build_provenance, resync_provenance
@@ -31,6 +35,8 @@ from workflow_app.reports import (
     render_human_review_md,
     render_review_md,
     render_revision_log_md,
+    render_scoping_answers_template,
+    render_scoping_questions_md,
     verdict_counts,
 )
 from workflow_app.runtimes.base import AgentRequest
@@ -43,7 +49,7 @@ from workflow_app.workflow import routing
 from workflow_app.workflow.state import WorkflowState
 
 
-def build_graph(workspace, inputs, runtimes, audit):
+def build_graph(workspace, inputs, runtimes, audit, checkpointer):
     def stage(name, body):
         def node(state):
             audit.record_stage_started(state["run_id"], name)
@@ -60,6 +66,8 @@ def build_graph(workspace, inputs, runtimes, audit):
     def prepare_workspace(state):
         emit("Copying inputs into the workspace...")
         workspace.copy_inputs(inputs)
+        if inputs.scoping_answers is not None:
+            return {"scoping_answers_path": str(workspace.scoping_answers_md)}
 
     def build_manifest_node(state):
         manifest = build_manifest(workspace.input_sources)
@@ -75,8 +83,53 @@ def build_graph(workspace, inputs, runtimes, audit):
         workspace.workbook_schema_json.write_text(schema.model_dump_json(indent=2))
         return {"schema_path": str(workspace.workbook_schema_json)}
 
+    def claude_scope(state):
+        emit("Starting scoping pass...")
+        raw = run_agent("scoping", workspace.filler_outputs / "scoping_questions.json")
+        questions = ScopingQuestions.model_validate(raw)
+        workspace.scoping_questions_json.write_text(questions.model_dump_json(indent=2))
+        workspace.scoping_questions_md.write_text(
+            render_scoping_questions_md(questions)
+        )
+        # Pre-created template the user edits before resuming.
+        workspace.scoping_answers_md.write_text(
+            render_scoping_answers_template(questions)
+        )
+        emit(f"Scoping complete: {len(questions.questions)} questions")
+        return {"scoping_questions_path": str(workspace.scoping_questions_json)}
+
+    def await_scoping_answers(state):
+        # First execution pauses here; on resume the node re-runs from
+        # the top and interrupt() returns immediately, so the agent-free
+        # answer intake below happens exactly once.
+        interrupt({"answers_path": str(workspace.scoping_answers_md)})
+        if not workspace.scoping_answers_md.is_file():
+            raise FileNotFoundError(
+                f"scoping answers file not found: {workspace.scoping_answers_md}"
+            )
+        text = workspace.scoping_answers_md.read_text()
+        audit.record_event(
+            state["run_id"],
+            "scoping_answers_received",
+            {
+                "path": "artifacts/scoping_answers.md",
+                "sha256": hashlib.sha256(text.encode()).hexdigest(),
+            },
+        )
+        emit("Scoping answers received.")
+        return {"scoping_answers_path": str(workspace.scoping_answers_md)}
+
     def claude_fill(state):
         emit("Starting Filler...")
+        # The scoping answers are an explicit Filler input (plan
+        # section 20), recorded relative to the workspace root.
+        answers_path = Path(state["scoping_answers_path"])
+        (workspace.filler_outputs / "inputs.json").write_text(
+            json.dumps(
+                {"scoping_answers_path": str(answers_path.relative_to(workspace.root))},
+                indent=2,
+            )
+        )
         # Raw agent output only; contract + rule validation happens in the
         # VALIDATE node (guardrail 49.11).
         raw_path = workspace.filler_outputs / "extraction.json"
@@ -449,6 +502,13 @@ def build_graph(workspace, inputs, runtimes, audit):
             return "CLAUDE_REVISE"
         return "FINALIZE"
 
+    def route_after_load_schema(state):
+        # Plan section 20: pre-provided answers skip the scoping pass
+        # and its pause entirely.
+        if inputs.scoping_answers is not None:
+            return "CLAUDE_FILL"
+        return "CLAUDE_SCOPE"
+
     def route_after_apply(state):
         if routing.rebutted_cells(load_revision(state).decisions):
             return "CODEX_REREVIEW"
@@ -459,6 +519,11 @@ def build_graph(workspace, inputs, runtimes, audit):
     graph.add_node("PREPARE_WORKSPACE", stage("PREPARE_WORKSPACE", prepare_workspace))
     graph.add_node("BUILD_MANIFEST", stage("BUILD_MANIFEST", build_manifest_node))
     graph.add_node("LOAD_SCHEMA", stage("LOAD_SCHEMA", load_schema))
+    graph.add_node("CLAUDE_SCOPE", stage("CLAUDE_SCOPE", claude_scope))
+    graph.add_node(
+        "AWAIT_SCOPING_ANSWERS",
+        stage("AWAIT_SCOPING_ANSWERS", await_scoping_answers),
+    )
     graph.add_node("CLAUDE_FILL", stage("CLAUDE_FILL", claude_fill))
     graph.add_node("VALIDATE", stage("VALIDATE", validate))
     graph.add_node("WRITE_DRAFT", stage("WRITE_DRAFT", write_draft))
@@ -476,7 +541,13 @@ def build_graph(workspace, inputs, runtimes, audit):
     graph.add_edge("INIT", "PREPARE_WORKSPACE")
     graph.add_edge("PREPARE_WORKSPACE", "BUILD_MANIFEST")
     graph.add_edge("BUILD_MANIFEST", "LOAD_SCHEMA")
-    graph.add_edge("LOAD_SCHEMA", "CLAUDE_FILL")
+    graph.add_conditional_edges(
+        "LOAD_SCHEMA",
+        route_after_load_schema,
+        {"CLAUDE_SCOPE": "CLAUDE_SCOPE", "CLAUDE_FILL": "CLAUDE_FILL"},
+    )
+    graph.add_edge("CLAUDE_SCOPE", "AWAIT_SCOPING_ANSWERS")
+    graph.add_edge("AWAIT_SCOPING_ANSWERS", "CLAUDE_FILL")
     graph.add_edge("CLAUDE_FILL", "VALIDATE")
     graph.add_edge("VALIDATE", "WRITE_DRAFT")
     graph.add_edge("WRITE_DRAFT", "CODEX_REVIEW")
@@ -503,7 +574,7 @@ def build_graph(workspace, inputs, runtimes, audit):
     graph.add_edge("HUMAN_REVIEW", "FINALIZE")
     graph.add_edge("FINALIZE", END)
 
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
 
 
 def _write_run_summary(workspace, audit, run_id):

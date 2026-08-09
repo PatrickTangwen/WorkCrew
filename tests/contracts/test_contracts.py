@@ -18,6 +18,8 @@ from workflow_app.models import (
     ReviewResult,
     RevisionDecision,
     RevisionResult,
+    ScopingQuestion,
+    ScopingQuestions,
 )
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "contracts"
@@ -28,6 +30,7 @@ CONTRACT_FIXTURES = [
     (ReviewFinding, "review_finding.json"),
     (RevisionDecision, "revision_decision.json"),
     (ReReviewVerdict, "re_review_verdict.json"),
+    (ScopingQuestion, "scoping_question.json"),
 ]
 
 
@@ -145,12 +148,20 @@ def test_extraction_result_wraps_proposals():
     assert len(result.proposals) == 1
 
 
+def test_scoping_question_rejects_missing_question_text():
+    data = load("scoping_question.json")
+    del data["question"]
+    with pytest.raises(ValidationError):
+        ScopingQuestion.model_validate(data)
+
+
 @pytest.mark.parametrize(
     ("model", "key", "fixture_name"),
     [
         (ReviewResult, "findings", "review_finding.json"),
         (RevisionResult, "decisions", "revision_decision.json"),
         (ReReviewResult, "verdicts", "re_review_verdict.json"),
+        (ScopingQuestions, "questions", "scoping_question.json"),
     ],
 )
 def test_result_containers_wrap_their_items(model, key, fixture_name):

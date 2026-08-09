@@ -1,4 +1,4 @@
-"""CLI entry (plan section 4): `workflow run`.
+"""CLI entry (plan section 4): `workflow run` and `workflow resume`.
 
 A thin shell over the engine — no business logic here. During fake-first
 development (tickets #2-#9, plan section 32) the CLI wires in a
@@ -11,13 +11,23 @@ from pathlib import Path
 
 from workflow_app.progress import emit
 from workflow_app.runtimes.fake import FakeAgentRuntime
-from workflow_app.workflow.engine import run_workflow
+from workflow_app.workflow.engine import resume_workflow, run_workflow
 from workflow_app.workspace import RunInputs
 
-# Degenerate walking-skeleton payloads: an empty fill and an all-clear
-# review, so the whole graph short-circuits to FINALIZE. Live runtimes
-# land in #10/#11.
+# Degenerate walking-skeleton payloads: one placeholder scoping
+# question, an empty fill, and an all-clear review, so the whole graph
+# short-circuits to FINALIZE. Live runtimes land in #10/#11.
 FAKE_OUTPUTS = {
+    "scoping": {
+        "questions": [
+            {
+                "id": "Q1",
+                "question": (
+                    "Confirm the source folders are the complete set to process."
+                ),
+            }
+        ]
+    },
     "filler": {"proposals": []},
     "reviewer": {"findings": []},
 }
@@ -40,6 +50,20 @@ def build_parser():
         help="hand-authored workbook schema config (JSON)",
     )
     run.add_argument(
+        "--scoping-answers",
+        help="pre-provided scoping answers file (skips the scoping pause)",
+    )
+    run.add_argument(
+        "--runs-root",
+        default="runs",
+        help="directory holding per-run workspaces (default: ./runs)",
+    )
+
+    resume = subparsers.add_parser("resume", help="resume a paused workflow run")
+    resume.add_argument(
+        "--run-id", required=True, help="run id printed when the run paused"
+    )
+    resume.add_argument(
         "--runs-root",
         default="runs",
         help="directory holding per-run workspaces (default: ./runs)",
@@ -51,19 +75,24 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
 
     emit("Using fake agent runtimes (live runtimes arrive in later tickets).")
-    inputs = RunInputs(
-        source=Path(args.source),
-        workbook=Path(args.workbook),
-        rules=Path(args.rules),
-        workbook_schema=Path(args.workbook_schema),
-    )
     fake = FakeAgentRuntime(FAKE_OUTPUTS)
+    runtimes = {role: fake for role in FAKE_OUTPUTS}
     try:
-        run_workflow(
-            inputs=inputs,
-            runs_root=args.runs_root,
-            runtimes={"filler": fake, "reviewer": fake},
-        )
+        if args.command == "run":
+            inputs = RunInputs(
+                source=Path(args.source),
+                workbook=Path(args.workbook),
+                rules=Path(args.rules),
+                workbook_schema=Path(args.workbook_schema),
+                scoping_answers=None
+                if args.scoping_answers is None
+                else Path(args.scoping_answers),
+            )
+            run_workflow(inputs=inputs, runs_root=args.runs_root, runtimes=runtimes)
+        else:
+            resume_workflow(
+                run_id=args.run_id, runs_root=args.runs_root, runtimes=runtimes
+            )
     except (FileNotFoundError, ValueError) as exc:
         print(f"[workflow] Error: {exc}", file=sys.stderr)
         return 2

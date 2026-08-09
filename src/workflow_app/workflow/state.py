@@ -14,6 +14,8 @@ class WorkflowState(TypedDict):
     workspace_path: str
     manifest_path: str | None
     schema_path: str | None
+    scoping_questions_path: str | None
+    scoping_answers_path: str | None
     extraction_path: str | None
     draft_xlsx_path: str | None
     review_path: str | None

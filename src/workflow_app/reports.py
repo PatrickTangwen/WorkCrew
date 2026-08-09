@@ -32,6 +32,39 @@ def action_counts(decisions):
     return sorted(counts.items())
 
 
+def render_scoping_questions_md(questions):
+    lines = [
+        "# Scoping questions",
+        "",
+        "The Filler needs these answered before extraction starts.",
+        "Write your answers into scoping_answers.md next to this file,",
+        "then resume the run with the command printed when it paused.",
+        "",
+    ]
+    for question in questions.questions:
+        lines += [f"## {question.id}", "", question.question, ""]
+    return "\n".join(lines)
+
+
+def render_scoping_answers_template(questions):
+    lines = [
+        "# Scoping answers",
+        "",
+        "Replace each placeholder with your answer, then resume the run.",
+        "",
+    ]
+    for question in questions.questions:
+        lines += [
+            f"## {question.id}",
+            "",
+            f"> {question.question}",
+            "",
+            "(your answer here)",
+            "",
+        ]
+    return "\n".join(lines)
+
+
 def render_review_md(review):
     lines = ["# Review", ""]
     for verdict, count in verdict_counts(review.findings):

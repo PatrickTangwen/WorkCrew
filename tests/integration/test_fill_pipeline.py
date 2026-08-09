@@ -96,6 +96,7 @@ def start_run(inputs):
             workbook=inputs["workbook"],
             rules=inputs["rules"],
             workbook_schema=inputs["workbook_schema"],
+            scoping_answers=inputs["scoping_answers"],
         ),
         runs_root=inputs["runs_root"],
         runtimes={"filler": fake, "reviewer": fake},

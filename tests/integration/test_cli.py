@@ -25,22 +25,62 @@ def run_args(inputs):
     ]
 
 
-def test_run_completes_and_produces_a_workspace(inputs):
+def test_run_pauses_then_resume_completes(inputs, capsys):
     assert main(run_args(inputs)) == 0
 
     run_dirs = list(inputs["runs_root"].iterdir())
     assert len(run_dirs) == 1
     workspace = run_dirs[0]
-    assert (workspace / "artifacts/run_summary.md").is_file()
+    assert (workspace / "artifacts/scoping_questions.md").is_file()
     assert (workspace / "state/audit.sqlite").is_file()
-    assert (workspace / "agent_outputs/filler/extraction.json").is_file()
+    assert not (workspace / "output/final.xlsx").exists()
 
-
-def test_run_emits_progress_on_stderr(inputs, capsys):
-    main(run_args(inputs))
     err = capsys.readouterr().err
     assert "[workflow] Starting run " in err
+    assert "Run paused" in err
+    resume_command = f"workflow resume --run-id {workspace.name}"
+    assert resume_command in err
+
+    (workspace / "artifacts/scoping_answers.md").write_text("Q1: Confirmed.\n")
+    resume_args = [
+        "resume",
+        "--run-id",
+        workspace.name,
+        "--runs-root",
+        str(inputs["runs_root"]),
+    ]
+    assert main(resume_args) == 0
+
+    assert (workspace / "artifacts/run_summary.md").is_file()
+    assert (workspace / "agent_outputs/filler/extraction.json").is_file()
+    assert (workspace / "output/final.xlsx").is_file()
+    assert "[workflow] Run complete." in capsys.readouterr().err
+
+
+def test_run_with_preprovided_answers_completes_without_pause(inputs, capsys):
+    args = run_args(inputs) + ["--scoping-answers", str(inputs["scoping_answers"])]
+    assert main(args) == 0
+
+    workspace = next(inputs["runs_root"].iterdir())
+    assert (workspace / "output/final.xlsx").is_file()
+    err = capsys.readouterr().err
+    assert "Run paused" not in err
     assert "[workflow] Run complete." in err
+
+
+def test_resume_unknown_run_id_reports_error_and_nonzero_exit(inputs, capsys):
+    inputs["runs_root"].mkdir()
+    exit_code = main(
+        [
+            "resume",
+            "--run-id",
+            "20990101-000000-aaaaaa",
+            "--runs-root",
+            str(inputs["runs_root"]),
+        ]
+    )
+    assert exit_code == 2
+    assert "run workspace" in capsys.readouterr().err
 
 
 def test_missing_source_reports_error_and_nonzero_exit(inputs, capsys):

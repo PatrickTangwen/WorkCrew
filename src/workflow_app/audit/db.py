@@ -1,7 +1,8 @@
-"""SQLite audit store (plan section 36): runs, stages, and mutations.
+"""SQLite audit store (plan section 36): runs, stages, mutations, events.
 
 Finding tables arrive with review routing (#6). Cell values in mutation
-rows are JSON-encoded so their types survive the round trip.
+rows and event payloads are JSON-encoded so their types survive the
+round trip.
 """
 
 import json
@@ -18,7 +19,8 @@ CREATE TABLE IF NOT EXISTS runs (
     source_path TEXT NOT NULL,
     workbook_path TEXT NOT NULL,
     rules_path TEXT NOT NULL,
-    workbook_schema_path TEXT NOT NULL
+    workbook_schema_path TEXT NOT NULL,
+    scoping_answers_path TEXT
 );
 
 CREATE TABLE IF NOT EXISTS stages (
@@ -28,6 +30,14 @@ CREATE TABLE IF NOT EXISTS stages (
     status TEXT NOT NULL,
     started_at TEXT NOT NULL,
     finished_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
+    kind TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS mutations (
@@ -73,8 +83,9 @@ class AuditStore:
         with conn:
             conn.execute(
                 "INSERT INTO runs (run_id, status, started_at, source_path,"
-                " workbook_path, rules_path, workbook_schema_path)"
-                " VALUES (?, 'running', ?, ?, ?, ?, ?)",
+                " workbook_path, rules_path, workbook_schema_path,"
+                " scoping_answers_path)"
+                " VALUES (?, 'running', ?, ?, ?, ?, ?, ?)",
                 (
                     run_id,
                     _now(),
@@ -82,6 +93,9 @@ class AuditStore:
                     str(inputs.workbook),
                     str(inputs.rules),
                     str(inputs.workbook_schema),
+                    None
+                    if inputs.scoping_answers is None
+                    else str(inputs.scoping_answers),
                 ),
             )
 
@@ -91,6 +105,13 @@ class AuditStore:
             conn.execute(
                 "UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ?",
                 (status, _now(), run_id),
+            )
+
+    def record_run_status(self, run_id, status):
+        conn = self._connect()
+        with conn:
+            conn.execute(
+                "UPDATE runs SET status = ? WHERE run_id = ?", (status, run_id)
             )
 
     def record_stage_started(self, run_id, stage):
@@ -103,12 +124,25 @@ class AuditStore:
             )
 
     def record_stage_finished(self, run_id, stage):
+        # Only the most recent unfinished entry completes: earlier
+        # dangling 'started' rows record entries that were interrupted
+        # (paused or crashed) and stay that way as audit facts.
         conn = self._connect()
         with conn:
             conn.execute(
                 "UPDATE stages SET status = 'completed', finished_at = ?"
-                " WHERE run_id = ? AND stage = ? AND finished_at IS NULL",
+                " WHERE id = (SELECT MAX(id) FROM stages"
+                "  WHERE run_id = ? AND stage = ? AND finished_at IS NULL)",
                 (_now(), run_id, stage),
+            )
+
+    def record_event(self, run_id, kind, payload):
+        conn = self._connect()
+        with conn:
+            conn.execute(
+                "INSERT INTO events (run_id, kind, payload, created_at)"
+                " VALUES (?, ?, ?, ?)",
+                (run_id, kind, json.dumps(payload), _now()),
             )
 
     def record_mutation(self, run_id, record):
@@ -153,7 +187,8 @@ class AuditStore:
             self._connect()
             .execute(
                 "SELECT run_id, status, started_at, finished_at, source_path,"
-                " workbook_path, rules_path, workbook_schema_path"
+                " workbook_path, rules_path, workbook_schema_path,"
+                " scoping_answers_path"
                 " FROM runs WHERE run_id = ?",
                 (run_id,),
             )
@@ -170,6 +205,7 @@ class AuditStore:
             "workbook_path",
             "rules_path",
             "workbook_schema_path",
+            "scoping_answers_path",
         )
         return dict(zip(keys, row, strict=True))
 
