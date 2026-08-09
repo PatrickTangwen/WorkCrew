@@ -113,7 +113,9 @@ def test_cell_proposal_schema_exposes_only_categorical_confidence():
     confidence = CellProposal.model_json_schema()["properties"]["confidence"]
     branches = confidence["anyOf"]
 
-    assert any(set(branch.get("enum", [])) == {"low", "medium", "high"} for branch in branches)
+    assert any(
+        set(branch.get("enum", [])) == {"low", "medium", "high"} for branch in branches
+    )
     assert any(branch.get("type") == "null" for branch in branches)
 
 
