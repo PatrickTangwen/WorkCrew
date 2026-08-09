@@ -335,6 +335,63 @@ def test_a_later_primary_edit_to_the_notes_cell_overwrites_composed_notes():
     ]
 
 
+def test_self_targeting_note_append_composes_into_one_mutation():
+    # A primary edit on the Notes cell itself carrying its own note:
+    # one mutation with the note composed onto the new value — a second
+    # write under the same idempotency key would abort the batch.
+    findings = [finding("F4", "FAIL")]
+    decisions = [
+        decision("F4", "FIX", proposed="Rewritten note.", note_append="context")
+    ]
+
+    mutations, _ = compose(decisions, findings, current={"F4": "stale original"})
+
+    assert [(m.cell, m.value, m.source_ref) for m in mutations] == [
+        ("F4", "Rewritten note.\ncontext", "decisions[0]")
+    ]
+
+
+def test_self_targeting_clear_keeps_only_the_note():
+    # CLEAR on the Notes cell + note: the note alone survives.
+    findings = [finding("F4", "FAIL")]
+    decisions = [decision("F4", "CLEAR", note_append="why it was cleared")]
+
+    mutations, _ = compose(decisions, findings, current={"F4": "old notes"})
+
+    assert [(m.cell, m.value) for m in mutations] == [("F4", "why it was cleared")]
+
+
+def test_self_targeting_note_replays_the_audited_prior():
+    findings = [finding("F4", "FAIL")]
+    decisions = [
+        decision("F4", "FIX", proposed="Rewritten note.", note_append="context")
+    ]
+    priors = {("F4", "decisions[0]"): {"new_value": "Rewritten note.\ncontext"}}
+
+    mutations, _ = compose(decisions, findings, priors=priors)
+
+    assert [(m.cell, m.value) for m in mutations] == [
+        ("F4", "Rewritten note.\ncontext")
+    ]
+
+
+def test_companion_append_composes_onto_a_self_targeting_edit():
+    # A later decision's companion note lands on top of the merged
+    # self-target write, under its own idempotency key.
+    findings = [finding("F4", "FAIL"), finding("D4", "FAIL")]
+    decisions = [
+        decision("F4", "FIX", proposed="Rewritten note.", note_append="one"),
+        decision("D4", "FIX", proposed="2026-04-04", note_append="two"),
+    ]
+
+    mutations, _ = compose(decisions, findings)
+
+    assert [(m.cell, m.value, m.source_ref) for m in mutations if m.cell == "F4"] == [
+        ("F4", "Rewritten note.\none", "decisions[0]"),
+        ("F4", "Rewritten note.\none\ntwo", "decisions[1]"),
+    ]
+
+
 def test_note_append_without_a_notes_field_is_refused():
     bare = SheetSchema.model_validate(
         {"name": "Sheet", "fields": {"Issue": {"column": "G", "writable": True}}}

@@ -446,6 +446,37 @@ def test_partially_audited_two_note_batch_resumes_identically(draft, audit, tmp_
     ]
 
 
+def test_self_targeting_note_decision_applies_without_conflict(draft, audit, tmp_path):
+    # A primary edit on the Notes cell carrying its own note used to
+    # emit two same-key writes and abort the batch (ADR 0021).
+    decisions = [
+        decision("F2", "FIX", proposed="Rewritten note.", note_append="kept context")
+    ]
+
+    outcomes = compose_and_apply(draft, audit, decisions=decisions)
+
+    assert [outcome.status for outcome in outcomes] == ["applied"]
+    assert cell_value(draft, "F2") == "Rewritten note.\nkept context"
+    assert len(audit_rows(tmp_path / "audit.sqlite", "applied")) == 1
+
+
+def test_self_targeting_note_decision_replays_after_workbook_reset(
+    draft, audit, tmp_path
+):
+    decisions = [
+        decision("F2", "FIX", proposed="Rewritten note.", note_append="kept context")
+    ]
+    template = draft.read_bytes()
+    compose_and_apply(draft, audit, decisions=decisions)
+    draft.write_bytes(template)
+
+    outcomes = compose_and_apply(draft, audit, decisions=decisions)
+
+    assert [outcome.replayed for outcome in outcomes] == [True]
+    assert cell_value(draft, "F2") == "Rewritten note.\nkept context"
+    assert len(audit_rows(tmp_path / "audit.sqlite", "applied")) == 1
+
+
 # --- the draft stays a sane workbook ------------------------------------
 
 

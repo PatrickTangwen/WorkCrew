@@ -370,6 +370,36 @@ def test_same_batch_note_appends_share_one_notes_cell(inputs):
     ]
 
 
+def test_clear_on_the_notes_cell_itself_completes_the_run(inputs):
+    # The revision prompt REQUIRES a note_append on every CLEAR — so a
+    # FAIL finding on a Notes cell steers straight into the
+    # self-targeting shape. The batch must apply, not abort.
+    review = {"findings": [finding("F2", "FAIL")]}
+    revision = {
+        "decisions": [
+            decision(
+                "F2",
+                "CLEAR",
+                note_append=NOTE_TEXT,
+                justification="Unsupported note; context preserved here.",
+            )
+        ]
+    }
+    outputs = {"filler": FILLER_OUTPUT, "reviewer": review, "revision": revision}
+    runtimes = {role: FakeAgentRuntime(outputs) for role in outputs}
+    state = start_run(inputs, runtimes=runtimes)
+
+    sheet = load_workbook(workspace_of(state) / "output/final.xlsx")[SHEET]
+    assert sheet["F2"].value == NOTE_TEXT
+
+    with sqlite3.connect(workspace_of(state) / "state/audit.sqlite") as conn:
+        rows = conn.execute(
+            "SELECT new_value FROM mutations WHERE cell = 'F2'"
+            " AND actor_role = 'revision' AND status = 'applied'",
+        ).fetchall()
+    assert [json.loads(value) for (value,) in rows] == [NOTE_TEXT]
+
+
 def test_illegal_decision_fails_the_run(inputs):
     bad_revision = {
         "decisions": [
