@@ -65,8 +65,11 @@ def print_auth_diagnostic():
 class ClaudeCodeRuntime:
     name = "claude-code"
 
-    def __init__(self, command="claude"):
+    def __init__(self, command="claude", model=None):
+        # model: full model name (a "[1m]" suffix selects the 1M-context
+        # variant); None uses the CLI's own default.
         self._command = command
+        self._model = model
         print_auth_diagnostic()
 
     def run(self, request):
@@ -76,20 +79,24 @@ class ClaudeCodeRuntime:
         prompt = (PROMPTS_DIR / prompt_file).read_text()
         schema = json.dumps(contract.model_json_schema())
 
+        argv = [
+            self._command,
+            "--print",
+            "--output-format",
+            "json",
+            "--json-schema",
+            schema,
+            # Headless runs cannot answer permission prompts. Tool
+            # access is deliberately unrestricted; READ/WRITE
+            # boundaries are prompt-instructed (plan section 13).
+            "--permission-mode",
+            "bypassPermissions",
+        ]
+        if self._model is not None:
+            argv += ["--model", self._model]
+
         process = subprocess.run(
-            [
-                self._command,
-                "--print",
-                "--output-format",
-                "json",
-                "--json-schema",
-                schema,
-                # Headless runs cannot answer permission prompts. Tool
-                # access is deliberately unrestricted; READ/WRITE
-                # boundaries are prompt-instructed (plan section 13).
-                "--permission-mode",
-                "bypassPermissions",
-            ],
+            argv,
             input=prompt,
             cwd=request.workspace_path,
             env=child_env(),

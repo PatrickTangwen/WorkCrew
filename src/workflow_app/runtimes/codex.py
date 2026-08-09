@@ -96,8 +96,15 @@ def print_auth_diagnostic():
 class CodexRuntime:
     name = "codex"
 
-    def __init__(self, command="codex"):
+    def __init__(self, command="codex", model=None, effort=None):
+        # model: codex model name; effort: model_reasoning_effort value
+        # (none/minimal/low/medium/high/xhigh/max/ultra). None leaves
+        # the CLI's own default in place. --ignore-user-config skips
+        # ~/.codex/config.toml, so these are the only way an engine
+        # invocation picks a model or effort deliberately.
         self._command = command
+        self._model = model
+        self._effort = effort
         print_auth_diagnostic()
 
     def run(self, request):
@@ -116,26 +123,32 @@ class CodexRuntime:
             )
             message_file = Path(scratch) / "last_message.json"
 
+            argv = [
+                self._command,
+                "exec",
+                # OS-enforced read-only sandbox (plan sections 13, 23).
+                "--sandbox",
+                "read-only",
+                "--output-schema",
+                str(schema_file),
+                "--output-last-message",
+                str(message_file),
+                # Run workspaces are not git repositories.
+                "--skip-git-repo-check",
+                # No session persistence outside the workspace.
+                "--ephemeral",
+                # The agent's instructions come exclusively from the
+                # version-controlled prompt files (ADR 0017); auth
+                # still resolves through CODEX_HOME.
+                "--ignore-user-config",
+            ]
+            if self._model is not None:
+                argv += ["--model", self._model]
+            if self._effort is not None:
+                argv += ["-c", f'model_reasoning_effort="{self._effort}"']
+
             process = subprocess.run(
-                [
-                    self._command,
-                    "exec",
-                    # OS-enforced read-only sandbox (plan sections 13, 23).
-                    "--sandbox",
-                    "read-only",
-                    "--output-schema",
-                    str(schema_file),
-                    "--output-last-message",
-                    str(message_file),
-                    # Run workspaces are not git repositories.
-                    "--skip-git-repo-check",
-                    # No session persistence outside the workspace.
-                    "--ephemeral",
-                    # The agent's instructions come exclusively from the
-                    # version-controlled prompt files (ADR 0017); auth
-                    # still resolves through CODEX_HOME.
-                    "--ignore-user-config",
-                ],
+                argv,
                 input=prompt,
                 cwd=request.workspace_path,
                 env=child_env(),
