@@ -1,5 +1,6 @@
 import { Clock3, FolderOpen, PackageOpen } from "lucide-react"
 
+import { ArtifactViewer } from "@/components/artifact-viewer"
 import { RunStatusBadge } from "@/components/run-status-badge"
 import {
   Card,
@@ -58,18 +59,22 @@ function RunDetail({ run }: { run: RunRecord }) {
         </CardContent>
       </Card>
 
-      <Card className="bg-muted/18">
-        <CardHeader className="border-b">
-          <CardTitle className="flex items-center gap-2">
-            <PackageOpen className="size-4" /> Artifacts
-          </CardTitle>
-          <CardDescription>Outputs will appear here as the workflow advances.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex items-center gap-3 text-sm text-muted-foreground">
-          <FolderOpen className="size-4" />
-          No artifacts available yet.
-        </CardContent>
-      </Card>
+      {run.status === "completed" ? (
+        <ArtifactViewer runId={run.run_id} />
+      ) : (
+        <Card className="bg-muted/18">
+          <CardHeader className="border-b">
+            <CardTitle className="flex items-center gap-2">
+              <PackageOpen className="size-4" /> Artifacts
+            </CardTitle>
+            <CardDescription>Outputs will appear here as the workflow advances.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-center gap-3 text-sm text-muted-foreground">
+            <FolderOpen className="size-4" />
+            No artifacts available yet.
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

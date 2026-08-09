@@ -10,6 +10,7 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { browseFiles, type BrowseListing } from "@/lib/api"
+import { formatBytes } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 type FileBrowserModalProps = {
@@ -22,12 +23,6 @@ type FileBrowserModalProps = {
 
 function joinPath(parent: string, name: string) {
   return `${parent.replace(/\/$/, "")}/${name}`
-}
-
-function formatSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function FileBrowserModal({
@@ -185,7 +180,7 @@ function FileBrowserModal({
                     <span className="truncate font-medium">{entry.name}</span>
                   </span>
                   <span className="hidden font-mono text-xs opacity-70 sm:block">
-                    {entry.type === "directory" ? "—" : formatSize(entry.size)}
+                    {entry.type === "directory" ? "—" : formatBytes(entry.size)}
                   </span>
                   <span className="hidden truncate font-mono text-xs opacity-70 sm:block">
                     {new Date(entry.modified).toLocaleString()}

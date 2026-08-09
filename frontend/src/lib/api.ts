@@ -32,6 +32,15 @@ export type RunRecord = {
   workbook_name: string
 }
 
+export type ArtifactType = "html" | "md" | "xlsx" | "json"
+
+export type ArtifactSummary = {
+  name: string
+  type: ArtifactType
+  size: number
+  path: string
+}
+
 export type CreateRunInput = {
   source: string
   workbook: string
@@ -41,13 +50,14 @@ export type CreateRunInput = {
   review_policy: string | null
 }
 
-async function readResponse<T>(response: Response) {
-  if (response.ok) {
-    return (await response.json()) as T
-  }
-
+async function responseError(response: Response) {
   const body = (await response.json()) as { detail?: string }
-  throw new Error(body.detail ?? `Request failed with status ${response.status}`)
+  return new Error(body.detail ?? `Request failed with status ${response.status}`)
+}
+
+async function readResponse<T>(response: Response) {
+  if (response.ok) return (await response.json()) as T
+  throw await responseError(response)
 }
 
 export async function browseFiles(path?: string) {
@@ -73,4 +83,19 @@ export async function listRuns() {
 export async function getRun(runId: string) {
   const response = await fetch(`/api/runs/${encodeURIComponent(runId)}`)
   return readResponse<RunRecord>(response)
+}
+
+export function artifactUrl(runId: string, name: string) {
+  return `/api/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(name)}`
+}
+
+export async function listArtifacts(runId: string) {
+  const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/artifacts`)
+  return readResponse<ArtifactSummary[]>(response)
+}
+
+export async function readArtifactText(runId: string, name: string) {
+  const response = await fetch(artifactUrl(runId, name))
+  if (response.ok) return response.text()
+  throw await responseError(response)
 }

@@ -12,9 +12,15 @@ from typing import Literal
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from workflow_app.artifacts import (
+    ArtifactCatalog,
+    ArtifactNotFoundError,
+    RunNotFoundError,
+)
 from workflow_app.audit.db import AuditStore
 from workflow_app.progress import emit
 from workflow_app.workflow.engine import new_run_id, run_workflow
@@ -328,6 +334,7 @@ def create_app(static_dir=DEFAULT_STATIC_DIR, require_frontend=False, options=No
     app = FastAPI(title="WorkCrew")
     coordinator = RunCoordinator(options)
     history = RunHistory(options.runs_root)
+    artifacts = ArtifactCatalog(options.runs_root)
     browser = HomeBrowser(options.home_dir)
 
     @app.post("/api/runs", status_code=201)
@@ -351,6 +358,28 @@ def create_app(static_dir=DEFAULT_STATIC_DIR, require_frontend=False, options=No
         if current is not None:
             return current
         return await asyncio.to_thread(history.get_record, run_id)
+
+    @app.get("/api/runs/{run_id}/artifacts")
+    def list_artifacts(run_id: str):
+        try:
+            return artifacts.list(run_id)
+        except RunNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Run not found") from exc
+
+    @app.get("/api/runs/{run_id}/artifacts/{name}")
+    def get_artifact(run_id: str, name: str):
+        try:
+            artifact = artifacts.get(run_id, name)
+        except RunNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Run not found") from exc
+        except ArtifactNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Artifact not found") from exc
+        filename = artifact.path.name if artifact.type == "xlsx" else None
+        return FileResponse(
+            artifact.path,
+            media_type=artifact.media_type,
+            filename=filename,
+        )
 
     @app.get("/api/browse")
     def browse(path: str | None = None):
