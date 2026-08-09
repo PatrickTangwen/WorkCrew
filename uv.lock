@@ -847,6 +847,7 @@ dependencies = [
     { name = "openpyxl" },
     { name = "pydantic" },
     { name = "pypdf" },
+    { name = "pyyaml" },
 ]
 
 [package.dev-dependencies]
@@ -862,6 +863,7 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pypdf", specifier = ">=6.15.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 
 [package.metadata.requires-dev]

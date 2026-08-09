@@ -54,6 +54,10 @@ def build_parser():
         help="pre-provided scoping answers file (skips the scoping pause)",
     )
     run.add_argument(
+        "--review-policy",
+        help="review policy YAML (default: built-in policy)",
+    )
+    run.add_argument(
         "--runs-root",
         default="runs",
         help="directory holding per-run workspaces (default: ./runs)",
@@ -87,6 +91,9 @@ def main(argv=None):
                 scoping_answers=None
                 if args.scoping_answers is None
                 else Path(args.scoping_answers),
+                review_policy=None
+                if args.review_policy is None
+                else Path(args.review_policy),
             )
             run_workflow(inputs=inputs, runs_root=args.runs_root, runtimes=runtimes)
         else:

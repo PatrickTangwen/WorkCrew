@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS runs (
     workbook_path TEXT NOT NULL,
     rules_path TEXT NOT NULL,
     workbook_schema_path TEXT NOT NULL,
-    scoping_answers_path TEXT
+    scoping_answers_path TEXT,
+    review_policy_path TEXT
 );
 
 CREATE TABLE IF NOT EXISTS stages (
@@ -73,7 +74,19 @@ class AuditStore:
         if self._conn is None:
             self._conn = sqlite3.connect(self._db_path)
             self._conn.executescript(SCHEMA)
+            self._migrate()
         return self._conn
+
+    def _migrate(self):
+        # CREATE TABLE IF NOT EXISTS never alters an existing table, so
+        # audit databases from runs started before a column landed must
+        # be upgraded here or those runs become unresumable (#9).
+        columns = {row[1] for row in self._conn.execute("PRAGMA table_info(runs)")}
+        if "review_policy_path" not in columns:
+            with self._conn:
+                self._conn.execute(
+                    "ALTER TABLE runs ADD COLUMN review_policy_path TEXT"
+                )
 
     def close(self):
         if self._conn is not None:
@@ -86,8 +99,8 @@ class AuditStore:
             conn.execute(
                 "INSERT INTO runs (run_id, status, started_at, source_path,"
                 " workbook_path, rules_path, workbook_schema_path,"
-                " scoping_answers_path)"
-                " VALUES (?, 'running', ?, ?, ?, ?, ?, ?)",
+                " scoping_answers_path, review_policy_path)"
+                " VALUES (?, 'running', ?, ?, ?, ?, ?, ?, ?)",
                 (
                     run_id,
                     _now(),
@@ -98,6 +111,7 @@ class AuditStore:
                     None
                     if inputs.scoping_answers is None
                     else str(inputs.scoping_answers),
+                    None if inputs.review_policy is None else str(inputs.review_policy),
                 ),
             )
 
@@ -224,7 +238,7 @@ class AuditStore:
             .execute(
                 "SELECT run_id, status, started_at, finished_at, source_path,"
                 " workbook_path, rules_path, workbook_schema_path,"
-                " scoping_answers_path"
+                " scoping_answers_path, review_policy_path"
                 " FROM runs WHERE run_id = ?",
                 (run_id,),
             )
@@ -242,6 +256,7 @@ class AuditStore:
             "rules_path",
             "workbook_schema_path",
             "scoping_answers_path",
+            "review_policy_path",
         )
         return dict(zip(keys, row, strict=True))
 
