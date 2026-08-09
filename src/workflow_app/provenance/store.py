@@ -6,11 +6,10 @@ the proposal that produced it.
 """
 
 import json
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from workflow_app.models import Evidence
+from workflow_app.models import CellValue, Evidence
 from workflow_app.workbook.safety import cell_key
 
 
@@ -18,7 +17,7 @@ class ProvenanceEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     cell: str  # "<sheet>!<CELL>"
-    value: Any
+    value: CellValue
     agent_role: str
     agent_runtime: str
     evidence: list[Evidence]

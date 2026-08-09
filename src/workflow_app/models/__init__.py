@@ -10,9 +10,11 @@ from workflow_app.models.review import (
 )
 from workflow_app.models.revision import RevisionDecision, RevisionResult
 from workflow_app.models.scoping import ScopingQuestion, ScopingQuestions
+from workflow_app.models.values import CellValue
 
 __all__ = [
     "CellProposal",
+    "CellValue",
     "Evidence",
     "ExtractionResult",
     "ReReviewResult",

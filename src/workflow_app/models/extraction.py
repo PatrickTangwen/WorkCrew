@@ -1,10 +1,11 @@
 """Cell proposal and extraction container contracts (plan sections 18, 21)."""
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
 from workflow_app.models.evidence import Evidence
+from workflow_app.models.values import CellValue
 
 
 class CellProposal(BaseModel):
@@ -15,7 +16,7 @@ class CellProposal(BaseModel):
     column_name: str
     cell: str
 
-    value: Any | None
+    value: CellValue
 
     evidence: list[Evidence]
     rules_applied: list[str]

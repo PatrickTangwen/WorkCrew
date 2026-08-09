@@ -1,10 +1,11 @@
 """Revision decision contract (plan section 18)."""
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
 from workflow_app.models.evidence import Evidence
+from workflow_app.models.values import CellValue
 
 
 class RevisionDecision(BaseModel):
@@ -21,8 +22,8 @@ class RevisionDecision(BaseModel):
         "UNRESOLVED",
     ]
 
-    original_value: Any | None = None
-    proposed_value: Any | None = None
+    original_value: CellValue = None
+    proposed_value: CellValue = None
 
     note_append: str | None = None
 
