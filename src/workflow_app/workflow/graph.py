@@ -7,8 +7,12 @@ WRITE_DRAFT -> CODEX_REVIEW, then the conditional second half: no
 actionable findings finalizes directly; otherwise CLAUDE_REVISE ->
 APPLY_ALLOWED_REVISIONS, one CODEX_REREVIEW round when rebuttals
 exist, HUMAN_REVIEW when anything stays unresolved, then FINALIZE.
-Dependencies (workspace, inputs, runtimes, audit) are closed over;
-LangGraph state carries file paths and plain values only.
+Agent invocations get two lenient retries (plan section 37); exhausted
+retries fail the run for the scoping/fill stages and degrade into the
+UNRESOLVED / human-review pipeline for the review-cycle stages, while
+deterministic failures are never retried. Dependencies (workspace,
+inputs, runtimes, audit) are closed over; LangGraph state carries file
+paths and plain values only.
 """
 
 import hashlib
@@ -16,8 +20,10 @@ import json
 import shutil
 from pathlib import Path
 
+from langgraph.errors import GraphBubbleUp
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
+from pydantic import ValidationError
 
 from workflow_app.handoff import build_handoff, render_handoff_markdown
 from workflow_app.ingestion.manifest import Manifest, build_manifest
@@ -44,22 +50,68 @@ from workflow_app.reports import (
 from workflow_app.runtimes.base import AgentRequest
 from workflow_app.validation.rules import check_proposal
 from workflow_app.workbook import writer
-from workflow_app.workbook.mutations import CellMutation, apply_mutations
+from workflow_app.workbook.mutations import (
+    CellMutation,
+    MutationConflictError,
+    apply_mutations,
+)
 from workflow_app.workbook.safety import Allowlist, cell_key
 from workflow_app.workbook.schema import WorkbookSchema, load_workbook_schema
 from workflow_app.workflow import routing
 from workflow_app.workflow.state import WorkflowState
+
+# One initial attempt plus two lenient retries (plan section 37).
+MAX_AGENT_ATTEMPTS = 3
+
+
+class AgentStageFailure(Exception):
+    """An agent invocation kept failing after the lenient retries."""
+
+    def __init__(self, role, classification, detail):
+        super().__init__(
+            f"{role} failed after {MAX_AGENT_ATTEMPTS} attempts"
+            f" ({classification}): {detail}"
+        )
+        self.role = role
+        self.classification = classification
 
 
 def build_graph(workspace, inputs, runtimes, audit, checkpointer):
     def stage(name, body):
         def node(state):
             audit.record_stage_started(state["run_id"], name)
-            update = body(state) or {}
+            try:
+                update = body(state) or {}
+            except GraphBubbleUp:
+                # LangGraph control flow (the scoping interrupt), not a
+                # failure: the dangling 'started' row records the pause.
+                raise
+            except AgentStageFailure as failure:
+                audit.record_stage_failed(state["run_id"], name, failure.classification)
+                raise
+            except (ValueError, MutationConflictError):
+                # Never blindly retried (plan section 37): contradictory
+                # evidence, invalid workbook structure, rule failures.
+                audit.record_stage_failed(state["run_id"], name, "deterministic")
+                raise
+            except Exception:
+                # Environment problems (a deleted answers file, a full
+                # disk) still deserve a classified stage row; kills are
+                # BaseException and pass through, leaving the dangling
+                # 'started' row that marks an interrupted entry.
+                audit.record_stage_failed(state["run_id"], name, "unclassified")
+                raise
             audit.record_stage_finished(state["run_id"], name)
             return {"phase": name, **update}
 
         return node
+
+    def degrade(state, stage_name, failure):
+        # Fail-soft (plan section 37): retries are exhausted, the
+        # stage's output degrades, and the run continues into the
+        # UNRESOLVED / human-review pipeline.
+        audit.record_stage_degraded(state["run_id"], stage_name, failure.classification)
+        emit(f"{stage_name} did not complete after retries; continuing degraded.")
 
     def init(state):
         emit(f"Registering run {state['run_id']} in the audit store...")
@@ -87,8 +139,13 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
 
     def claude_scope(state):
         emit("Starting scoping pass...")
-        raw = run_agent("scoping", workspace.filler_outputs / "scoping_questions.json")
-        questions = ScopingQuestions.model_validate(raw)
+        questions = run_agent(
+            state,
+            "CLAUDE_SCOPE",
+            "scoping",
+            workspace.filler_outputs / "scoping_questions.json",
+            ScopingQuestions,
+        )
         workspace.scoping_questions_json.write_text(questions.model_dump_json(indent=2))
         workspace.scoping_questions_md.write_text(
             render_scoping_questions_md(questions)
@@ -132,10 +189,11 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
                 indent=2,
             )
         )
-        # Raw agent output only; contract + rule validation happens in the
-        # VALIDATE node (guardrail 49.11).
+        # Contract validation happens here because it gates the lenient
+        # retry; rule validation stays in the VALIDATE node (guardrail
+        # 49.11 as amended by ADR 0016).
         raw_path = workspace.filler_outputs / "extraction.json"
-        run_agent("filler", raw_path)
+        run_agent(state, "CLAUDE_FILL", "filler", raw_path, ExtractionResult)
         emit("Filler complete.")
         return {"extraction_path": str(raw_path)}
 
@@ -256,14 +314,48 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         for path, lang in zip(targets, ("en", "zh"), strict=True):
             path.write_text(render_explorer_html(data, lang, version=version))
 
-    def run_agent(role, raw_output_path):
-        result = runtimes[role].run(
-            AgentRequest(role=role, workspace_path=str(workspace.root))
-        )
-        if result.status != "ok":
-            raise RuntimeError(f"{role} runtime failed: {result.error}")
-        raw_output_path.write_text(json.dumps(result.output, indent=2))
-        return result.output
+    def run_agent(state, stage, role, raw_output_path, model):
+        # Lenient retries (plan section 37): a failed process, a raised
+        # invocation, or contract-violating output re-invokes the agent
+        # up to twice. Contract validation gates the retry here; rule
+        # validation stays in its deterministic node and is never
+        # retried. KeyboardInterrupt (a kill) passes straight through.
+        failure = None
+        for attempt in range(MAX_AGENT_ATTEMPTS):
+            if attempt:
+                audit.record_stage_retry(state["run_id"], stage)
+                # The transient classification would otherwise vanish
+                # once the stage eventually succeeds.
+                audit.record_event(
+                    state["run_id"],
+                    "stage_retry",
+                    {
+                        "stage": stage,
+                        "classification": failure[0],
+                        "detail": failure[1],
+                    },
+                )
+                emit(f"Retrying {role} (attempt {attempt + 1})...")
+            try:
+                result = runtimes[role].run(
+                    AgentRequest(role=role, workspace_path=str(workspace.root))
+                )
+            # Any runtime exception is a temporary invocation failure
+            # by plan section 37; kills are BaseException and pass.
+            except Exception as exc:  # noqa: BLE001
+                failure = ("invocation_failure", str(exc))
+                continue
+            if result.status != "ok":
+                failure = ("runtime_process_failure", str(result.error))
+                continue
+            # The most recent attempt that returned output stays on
+            # disk, whether or not it validates below.
+            raw_output_path.write_text(json.dumps(result.output, indent=2))
+            try:
+                return model.model_validate(result.output)
+            except ValidationError as exc:
+                failure = ("schema_validation_failure", str(exc))
+        raise AgentStageFailure(role, *failure)
 
     def load_review(state):
         return ReviewResult.model_validate(
@@ -271,6 +363,9 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         )
 
     def load_revision(state):
+        # A degraded revision stage produced no decisions.
+        if state.get("revision_path") is None:
+            return RevisionResult(decisions=[])
         return RevisionResult.model_validate(
             json.loads(Path(state["revision_path"]).read_text())
         )
@@ -285,8 +380,17 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
 
     def codex_review(state):
         emit("Starting Reviewer...")
-        raw = run_agent("reviewer", workspace.reviewer_outputs / "review.json")
-        review = ReviewResult.model_validate(raw)
+        try:
+            review = run_agent(
+                state,
+                "CODEX_REVIEW",
+                "reviewer",
+                workspace.reviewer_outputs / "review.json",
+                ReviewResult,
+            )
+        except AgentStageFailure as failure:
+            degrade(state, "CODEX_REVIEW", failure)
+            return {"review_path": None}
         reason = routing.check_finding_cells(review.findings)
         if reason is not None:
             raise ValueError(reason)
@@ -332,8 +436,17 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
             json.dumps(restricted_inputs, indent=2)
         )
 
-        raw = run_agent("revision", workspace.revision_outputs / "decisions.json")
-        revision = RevisionResult.model_validate(raw)
+        try:
+            revision = run_agent(
+                state,
+                "CLAUDE_REVISE",
+                "revision",
+                workspace.revision_outputs / "decisions.json",
+                RevisionResult,
+            )
+        except AgentStageFailure as failure:
+            degrade(state, "CLAUDE_REVISE", failure)
+            return {"revision_path": None}
         reason = routing.check_decisions(review.findings, revision.decisions)
         if reason is not None:
             raise ValueError(reason)
@@ -382,11 +495,10 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
                         " the target sheet declares no notes_field"
                     )
                 current = writer.read_cell(draft, sheet.name, notes_ref)
-                text = (
-                    f"{current}\n{decision.note_append}"
-                    if current
-                    else decision.note_append
+                prior = audit.find_applied_mutation(
+                    state["run_id"], sheet.name, notes_ref, "revision", source_ref
                 )
+                text = routing.note_append_value(current, decision.note_append, prior)
                 mutations.append(
                     CellMutation(
                         sheet=sheet.name,
@@ -449,8 +561,19 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
             json.dumps(restricted_inputs, indent=2)
         )
 
-        raw = run_agent("re_review", workspace.reviewer_outputs / "re_review.json")
-        result = ReReviewResult.model_validate(raw)
+        try:
+            result = run_agent(
+                state,
+                "CODEX_REREVIEW",
+                "re_review",
+                workspace.reviewer_outputs / "re_review.json",
+                ReReviewResult,
+            )
+        except AgentStageFailure as failure:
+            degrade(state, "CODEX_REREVIEW", failure)
+            # No verdicts: every rebuttal stays unadjudicated and the
+            # routing layer escalates it to human review.
+            return {}
         reason = routing.check_re_review_coverage(rebutted, result.verdicts)
         if reason is not None:
             raise ValueError(reason)
@@ -459,6 +582,8 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
 
     def human_review(state):
         emit("Generating human review artifacts...")
+        if state.get("review_path") is None:
+            return unreviewed_human_review(state)
         review = load_review(state)
         revision = load_revision(state)
         verdicts = load_verdicts(state)
@@ -512,6 +637,38 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         workspace.human_review_json.write_text(json.dumps({"items": items}, indent=2))
         workspace.human_review_md.write_text(render_human_review_md(items))
 
+    def unreviewed_human_review(state):
+        # The review stage never completed: every agent-written cell is
+        # unreviewed and escalates with both agents' columns empty.
+        provenance = json.loads(workspace.provenance_json.read_text())
+        sheet_name = schema_from(state).target_sheet().name
+        draft = writer.open_draft(workspace.draft_xlsx)
+        reason = "the review stage did not complete after retries"
+
+        items = []
+        for entry in provenance["entries"]:
+            entry_sheet, cell_ref = entry["cell"].split("!", 1)
+            if entry_sheet != sheet_name:
+                continue
+            items.append(
+                {
+                    "cell": cell_ref,
+                    "current_value": writer.read_cell(draft, sheet_name, cell_ref),
+                    "reviewer": None,
+                    "revision": None,
+                    "re_review": None,
+                    "reason": reason,
+                }
+            )
+        workspace.unresolved_json.write_text(
+            json.dumps(
+                {"cells": [{"cell": item["cell"], "reason": reason} for item in items]},
+                indent=2,
+            )
+        )
+        workspace.human_review_json.write_text(json.dumps({"items": items}, indent=2))
+        workspace.human_review_md.write_text(render_human_review_md(items))
+
     def finalize(state):
         emit("Finalizing run...")
         shutil.copy2(workspace.draft_xlsx, workspace.final_xlsx)
@@ -527,6 +684,10 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         return "HUMAN_REVIEW" if unresolved else "FINALIZE"
 
     def route_after_review(state):
+        # A degraded review must not pass for all-clear: everything the
+        # run wrote goes straight to human review.
+        if state.get("review_path") is None:
+            return "HUMAN_REVIEW"
         if routing.has_actionable_findings(load_review(state).findings):
             return "CLAUDE_REVISE"
         return "FINALIZE"
@@ -583,7 +744,11 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
     graph.add_conditional_edges(
         "CODEX_REVIEW",
         route_after_review,
-        {"CLAUDE_REVISE": "CLAUDE_REVISE", "FINALIZE": "FINALIZE"},
+        {
+            "CLAUDE_REVISE": "CLAUDE_REVISE",
+            "HUMAN_REVIEW": "HUMAN_REVIEW",
+            "FINALIZE": "FINALIZE",
+        },
     )
     graph.add_edge("CLAUDE_REVISE", "APPLY_ALLOWED_REVISIONS")
     graph.add_conditional_edges(
@@ -610,7 +775,8 @@ def _write_run_summary(workspace, audit, run_id):
     run = audit.get_run(run_id)
     stage_lines = [
         f"| {entry['stage']} | {entry['status']} | {entry['started_at']} |"
-        f" {entry['finished_at'] or ''} |"
+        f" {entry['finished_at'] or ''} | {entry['retry_count']} |"
+        f" {entry['failure'] or ''} |"
         for entry in audit.list_stages(run_id)
     ]
     summary = "\n".join(
@@ -631,8 +797,8 @@ def _write_run_summary(workspace, audit, run_id):
             "",
             "## Stages",
             "",
-            "| Stage | Status | Started | Finished |",
-            "| --- | --- | --- | --- |",
+            "| Stage | Status | Started | Finished | Retries | Failure |",
+            "| --- | --- | --- | --- | --- | --- |",
             *stage_lines,
             "",
         ]

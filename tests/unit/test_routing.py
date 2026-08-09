@@ -12,6 +12,7 @@ from workflow_app.workflow.routing import (
     check_re_review_coverage,
     collect_unresolved,
     has_actionable_findings,
+    note_append_value,
     rebutted_cells,
 )
 
@@ -181,3 +182,26 @@ def test_nothing_unresolved_when_all_closed():
     findings = [finding("F2", "WARN", recommended="x")]
     decisions = [decision("F2", "ACCEPT")]
     assert collect_unresolved(findings, decisions, []) == []
+
+
+def test_rebuttal_without_any_verdict_is_unresolved():
+    unresolved = collect_unresolved(
+        [finding("A2", "WARN", recommended="x")],
+        [decision("A2", "REBUT")],
+        [],
+    )
+    assert unresolved == [
+        {"cell": "A2", "reason": "rebuttal received no re-review verdict"}
+    ]
+
+
+def test_note_append_value_replays_the_audited_prior():
+    assert note_append_value("old", "note", {"new_value": "old\nnote"}) == "old\nnote"
+
+
+def test_note_append_value_appends_to_existing_text():
+    assert note_append_value("old", "note", None) == "old\nnote"
+
+
+def test_note_append_value_starts_an_empty_notes_cell():
+    assert note_append_value(None, "note", None) == "note"

@@ -232,17 +232,19 @@ def test_validator_violations_reject_before_any_write(draft, audit, cell, value)
 # --- idempotency (plan section 37) --------------------------------------
 
 
-def test_same_mutation_twice_results_in_a_single_write(draft, audit, tmp_path):
+def test_same_mutation_twice_audits_once_and_replays_the_value(draft, audit, tmp_path):
     first = apply_one(draft, audit, mutation("F2", "once"))
     second = apply_one(draft, audit, mutation("F2", "once"))
 
-    assert first.status == "applied"
-    assert second.status == "skipped"
+    assert first.status == "applied" and first.replayed is False
+    # Downstream consumers see the same outcome as the first run; only
+    # the audit trail knows it was a replay.
+    assert second.status == "applied" and second.replayed is True
     assert cell_value(draft, "F2") == "once"
     assert len(audit_rows(tmp_path / "audit.sqlite", "applied")) == 1
 
 
-def test_same_mutation_twice_within_one_batch_is_a_single_write(draft, audit, tmp_path):
+def test_same_mutation_twice_within_one_batch_audits_once(draft, audit, tmp_path):
     outcomes = apply_mutations(
         draft,
         [mutation("F2", "once"), mutation("F2", "once")],
@@ -252,7 +254,24 @@ def test_same_mutation_twice_within_one_batch_is_a_single_write(draft, audit, tm
         RUN_ID,
     )
 
-    assert [outcome.status for outcome in outcomes] == ["applied", "skipped"]
+    assert [outcome.status for outcome in outcomes] == ["applied", "applied"]
+    assert [outcome.replayed for outcome in outcomes] == [False, True]
+    assert cell_value(draft, "F2") == "once"
+    assert len(audit_rows(tmp_path / "audit.sqlite", "applied")) == 1
+
+
+def test_replay_after_workbook_reset_restores_the_value(draft, audit, tmp_path):
+    template = draft.read_bytes()
+    apply_one(draft, audit, mutation("F2", "once"))
+
+    # A crash-resume re-copies the template: the audit remembers the
+    # write but the workbook no longer holds it.
+    draft.write_bytes(template)
+    assert cell_value(draft, "F2") is None
+
+    outcome = apply_one(draft, audit, mutation("F2", "once"))
+
+    assert outcome.status == "applied" and outcome.replayed is True
     assert cell_value(draft, "F2") == "once"
     assert len(audit_rows(tmp_path / "audit.sqlite", "applied")) == 1
 

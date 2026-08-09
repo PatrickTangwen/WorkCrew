@@ -74,6 +74,8 @@ def resume_workflow(run_id, runs_root, runtimes):
             raise FileNotFoundError(
                 f"run {run_id!r} has no recorded start; it cannot be resumed"
             ) from exc
+        if run["status"] == "completed":
+            raise ValueError(f"run {run_id!r} already completed; nothing to resume")
         if not workspace.checkpoint_db.is_file():
             raise FileNotFoundError(f"run {run_id!r} has no resumable checkpoint")
         # The pause is over once resumption starts; FINALIZE records the
@@ -95,10 +97,10 @@ def resume_workflow(run_id, runs_root, runtimes):
     )
 
     emit(f"Resuming run {run_id}...")
-    return _invoke(workspace, inputs, runtimes, runs_root, run_id, Command(resume=True))
+    return _invoke(workspace, inputs, runtimes, runs_root, run_id, None)
 
 
-def _invoke(workspace, inputs, runtimes, runs_root, run_id, graph_input):
+def _invoke(workspace, inputs, runtimes, runs_root, run_id, initial_state):
     audit = AuditStore(workspace.audit_db)
     checkpoint_conn = sqlite3.connect(workspace.checkpoint_db, check_same_thread=False)
     try:
@@ -106,7 +108,22 @@ def _invoke(workspace, inputs, runtimes, runs_root, run_id, graph_input):
             workspace, inputs, runtimes, audit, SqliteSaver(checkpoint_conn)
         )
         config = {"configurable": {"thread_id": run_id}}
-        final_state = graph.invoke(graph_input, config)
+        if initial_state is not None:
+            graph_input = initial_state
+        elif graph.get_state(config).interrupts:
+            # A pending pause consumes a resume value; a crashed run
+            # continues from its checkpoint with no input.
+            graph_input = Command(resume=True)
+        else:
+            graph_input = None
+
+        try:
+            final_state = graph.invoke(graph_input, config)
+        except BaseException:
+            # Kill or failure: the checkpoint survives for a later
+            # resume; the run row records the abnormal exit.
+            audit.record_run_finished(run_id, "failed")
+            raise
 
         if "__interrupt__" in final_state:
             audit.record_run_status(run_id, "paused")

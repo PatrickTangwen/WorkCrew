@@ -110,18 +110,19 @@ def render_human_review_md(items):
             "",
             f"- Current value: {item['current_value']!r}",
             f"- Why automation stopped: {item['reason']}",
-            (
+        ]
+        if reviewer is not None:
+            lines.append(
                 f"- Reviewer ({reviewer['verdict']}):"
                 f" recommended {reviewer['recommended_value']!r}"
                 f" — {reviewer['comment']}"
-            ),
-        ]
-        lines += [
-            f"  - Evidence: {e['source_file']}"
-            + (f" ({e['source_location']})" if e.get("source_location") else "")
-            + f" [{e['evidence_type']}] — {e['evidence_text']}"
-            for e in reviewer["evidence"]
-        ]
+            )
+            lines += [
+                f"  - Evidence: {e['source_file']}"
+                + (f" ({e['source_location']})" if e.get("source_location") else "")
+                + f" [{e['evidence_type']}] — {e['evidence_text']}"
+                for e in reviewer["evidence"]
+            ]
         if revision is not None:
             lines.append(
                 f"- Revision ({revision['action']}):"

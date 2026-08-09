@@ -29,7 +29,9 @@ CREATE TABLE IF NOT EXISTS stages (
     stage TEXT NOT NULL,
     status TEXT NOT NULL,
     started_at TEXT NOT NULL,
-    finished_at TEXT
+    finished_at TEXT,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    failure TEXT
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -108,10 +110,13 @@ class AuditStore:
             )
 
     def record_run_status(self, run_id, status):
+        # Non-terminal transitions (paused, running) clear any
+        # finished_at stamped by an earlier abnormal exit.
         conn = self._connect()
         with conn:
             conn.execute(
-                "UPDATE runs SET status = ? WHERE run_id = ?", (status, run_id)
+                "UPDATE runs SET status = ?, finished_at = NULL WHERE run_id = ?",
+                (status, run_id),
             )
 
     def record_stage_started(self, run_id, stage):
@@ -135,6 +140,37 @@ class AuditStore:
                 "  WHERE run_id = ? AND stage = ? AND finished_at IS NULL)",
                 (_now(), run_id, stage),
             )
+
+    def _update_latest_unfinished_stage(self, run_id, stage, assignments, params):
+        conn = self._connect()
+        with conn:
+            conn.execute(
+                f"UPDATE stages SET {assignments}"
+                " WHERE id = (SELECT MAX(id) FROM stages"
+                "  WHERE run_id = ? AND stage = ? AND finished_at IS NULL)",
+                (*params, run_id, stage),
+            )
+
+    def record_stage_retry(self, run_id, stage):
+        self._update_latest_unfinished_stage(
+            run_id, stage, "retry_count = retry_count + 1", ()
+        )
+
+    def record_stage_failed(self, run_id, stage, classification):
+        self._update_latest_unfinished_stage(
+            run_id,
+            stage,
+            "status = 'failed', failure = ?, finished_at = ?",
+            (classification, _now()),
+        )
+
+    def record_stage_degraded(self, run_id, stage, classification):
+        # The stage completes (the run continues), but its output was
+        # degraded after exhausted retries; the classification records
+        # why. record_stage_finished still stamps completion.
+        self._update_latest_unfinished_stage(
+            run_id, stage, "failure = ?", (classification,)
+        )
 
     def record_event(self, run_id, kind, payload):
         conn = self._connect()
@@ -213,11 +249,18 @@ class AuditStore:
         rows = (
             self._connect()
             .execute(
-                "SELECT stage, status, started_at, finished_at"
-                " FROM stages WHERE run_id = ? ORDER BY id",
+                "SELECT stage, status, started_at, finished_at, retry_count,"
+                " failure FROM stages WHERE run_id = ? ORDER BY id",
                 (run_id,),
             )
             .fetchall()
         )
-        keys = ("stage", "status", "started_at", "finished_at")
+        keys = (
+            "stage",
+            "status",
+            "started_at",
+            "finished_at",
+            "retry_count",
+            "failure",
+        )
         return [dict(zip(keys, row, strict=True)) for row in rows]

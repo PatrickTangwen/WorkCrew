@@ -82,6 +82,16 @@ def check_finding_cells(findings):
     return None
 
 
+def note_append_value(current, note, prior):
+    # Idempotent composition (plan section 37): a crash-resume re-runs
+    # the apply node against a draft that already holds the appended
+    # note; the audited prior value is replayed instead of appending a
+    # second copy.
+    if prior is not None:
+        return prior["new_value"]
+    return f"{current}\n{note}" if current else note
+
+
 def notes_cell_for(sheet_schema, cell_ref):
     if sheet_schema.notes_field is None:
         return None
@@ -106,6 +116,7 @@ def derive_revision_allowlist(findings, schema):
 
 def collect_unresolved(findings, decisions, verdicts):
     decisions_by_cell = {decision.cell: decision for decision in decisions}
+    verdict_cells = {verdict.cell for verdict in verdicts}
     upheld = {verdict.cell for verdict in verdicts if verdict.verdict == "UPHELD"}
 
     unresolved = []
@@ -127,6 +138,15 @@ def collect_unresolved(findings, decisions, verdicts):
                 {
                     "cell": finding.cell,
                     "reason": "rebuttal upheld by the targeted re-review",
+                }
+            )
+        elif decision.action == "REBUT" and finding.cell not in verdict_cells:
+            # A rebuttal that never received adjudication (the targeted
+            # re-review did not complete) must not pass silently.
+            unresolved.append(
+                {
+                    "cell": finding.cell,
+                    "reason": "rebuttal received no re-review verdict",
                 }
             )
     return unresolved
