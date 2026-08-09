@@ -8,6 +8,7 @@ WORKBOOK_SCHEMA_CONFIG = {
         {
             "name": "7) Practicum Courses",
             "target": True,
+            "notes_field": "Notes",
             "fields": {
                 "Project ID*": {
                     "required": True,
@@ -17,6 +18,7 @@ WORKBOOK_SCHEMA_CONFIG = {
                     "value_kind": "constructed",
                     "writable": True,
                 },
+                "Start Date": {"type": "date", "column": "D", "writable": True},
                 "Maturity": {
                     "type": "string",
                     "column": "E",

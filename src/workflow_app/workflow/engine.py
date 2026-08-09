@@ -39,6 +39,9 @@ def run_workflow(inputs, runs_root, runtimes):
         "schema_path": None,
         "extraction_path": None,
         "draft_xlsx_path": None,
+        "review_path": None,
+        "revision_path": None,
+        "re_review_path": None,
         "phase": "",
     }
     try:

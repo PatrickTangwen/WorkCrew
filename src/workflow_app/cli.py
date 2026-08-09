@@ -14,9 +14,13 @@ from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.workflow.engine import run_workflow
 from workflow_app.workspace import RunInputs
 
-# Degenerate walking-skeleton payload. Ticket #5 wires realistic fixture
-# flows through the fake pipeline; live runtimes land in #10.
-FAKE_OUTPUTS = {"filler": {"proposals": []}}
+# Degenerate walking-skeleton payloads: an empty fill and an all-clear
+# review, so the whole graph short-circuits to FINALIZE. Live runtimes
+# land in #10/#11.
+FAKE_OUTPUTS = {
+    "filler": {"proposals": []},
+    "reviewer": {"findings": []},
+}
 
 
 def build_parser():
@@ -53,11 +57,12 @@ def main(argv=None):
         rules=Path(args.rules),
         workbook_schema=Path(args.workbook_schema),
     )
+    fake = FakeAgentRuntime(FAKE_OUTPUTS)
     try:
         run_workflow(
             inputs=inputs,
             runs_root=args.runs_root,
-            runtimes={"filler": FakeAgentRuntime(FAKE_OUTPUTS)},
+            runtimes={"filler": fake, "reviewer": fake},
         )
     except (FileNotFoundError, ValueError) as exc:
         print(f"[workflow] Error: {exc}", file=sys.stderr)

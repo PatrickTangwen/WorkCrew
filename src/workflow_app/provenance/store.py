@@ -22,7 +22,9 @@ class ProvenanceEntry(BaseModel):
     agent_runtime: str
     evidence: list[Evidence]
     rules_applied: list[str]
-    confidence: float
+    # Revision decisions carry no confidence score (plan section 18),
+    # so revision-authored entries record None.
+    confidence: float | None
     run_id: str
 
 

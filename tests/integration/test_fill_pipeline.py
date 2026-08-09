@@ -89,6 +89,7 @@ BLOCKED_CELLS = ["E2", "G3", "A3", "E3", "F4"]
 
 
 def start_run(inputs):
+    fake = FakeAgentRuntime({"filler": FILLER_OUTPUT, "reviewer": {"findings": []}})
     return run_workflow(
         inputs=RunInputs(
             source=inputs["source"],
@@ -97,7 +98,7 @@ def start_run(inputs):
             workbook_schema=inputs["workbook_schema"],
         ),
         runs_root=inputs["runs_root"],
-        runtimes={"filler": FakeAgentRuntime({"filler": FILLER_OUTPUT})},
+        runtimes={"filler": fake, "reviewer": fake},
     )
 
 
