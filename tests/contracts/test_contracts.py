@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from workflow_app.models import (
     CellProposal,
     Evidence,
+    ExtractionResult,
     ReReviewVerdict,
     ReviewFinding,
     RevisionDecision,
@@ -133,3 +134,20 @@ def test_re_review_verdict_rejects_unknown_verdict():
     data["verdict"] = "PARTIAL"
     with pytest.raises(ValidationError):
         ReReviewVerdict.model_validate(data)
+
+
+def test_extraction_result_wraps_proposals():
+    container = {"proposals": [load("cell_proposal.json")]}
+    result = ExtractionResult.model_validate(container)
+    assert len(result.proposals) == 1
+
+
+def test_extraction_result_requires_proposals_key():
+    with pytest.raises(ValidationError):
+        ExtractionResult.model_validate({})
+
+
+def test_extraction_result_rejects_extra_keys():
+    container = {"proposals": [], "summary": "chatty agent prose"}
+    with pytest.raises(ValidationError):
+        ExtractionResult.model_validate(container)
