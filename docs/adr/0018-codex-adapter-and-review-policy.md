@@ -34,10 +34,10 @@ object must list all of its properties in `required` (optionality is
 expressed only through null-type unions, which pydantic already
 emits), and every schema needs a `type` — a 400 names each violation.
 The adapter therefore applies `strict_schema`: `required` is set to
-all properties on every object node, and the empty schema pydantic
-emits for a contract `Any` (`current_value`, `recommended_value`)
-becomes the concrete cell-value union `string | number | boolean |
-null` — workbook cell values are scalars, dates travel as strings.
+all properties on every object node. (The original version also
+rewrote the empty schema a contract `Any` emitted into a hardcoded
+scalar union; ADR 0023 moved that knowledge into the contracts
+themselves as the `CellValue` alias, and the special case is gone.)
 The pydantic contracts stay vendor-neutral; dialect translation is
 runtime-specific invocation and belongs in the adapter (plan
 section 31). Verified live: the full ReviewResult schema round-trips.
