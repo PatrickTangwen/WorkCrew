@@ -66,10 +66,16 @@ def inputs(tmp_path):
     workbook_schema = tmp_path / "workbook_schema.json"
     workbook_schema.write_text(json.dumps(WORKBOOK_SCHEMA_CONFIG))
 
+    # Pre-provided scoping answers keep straight-through runs (most
+    # tests) from pausing; scoping-pause tests simply omit this input.
+    scoping_answers = tmp_path / "scoping_answers.md"
+    scoping_answers.write_text("Q1: One row per source folder.\n")
+
     return {
         "source": source,
         "workbook": workbook,
         "rules": rules,
         "workbook_schema": workbook_schema,
+        "scoping_answers": scoping_answers,
         "runs_root": tmp_path / "runs",
     }

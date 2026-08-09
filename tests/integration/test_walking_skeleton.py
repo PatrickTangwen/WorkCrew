@@ -54,6 +54,7 @@ def run_inputs(inputs, **overrides):
         "workbook": inputs["workbook"],
         "rules": inputs["rules"],
         "workbook_schema": inputs["workbook_schema"],
+        "scoping_answers": inputs["scoping_answers"],
         **overrides,
     }
     return RunInputs(**values)

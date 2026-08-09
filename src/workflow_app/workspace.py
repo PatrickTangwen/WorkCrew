@@ -15,6 +15,9 @@ class RunInputs:
     workbook: Path
     rules: Path
     workbook_schema: Path
+    # Optional pre-provided scoping answers (plan section 20): when set,
+    # the scoping pass and its pause are skipped.
+    scoping_answers: Path | None = None
 
     def validate(self):
         if not self.source.is_dir():
@@ -26,6 +29,10 @@ class RunInputs:
         if not self.workbook_schema.is_file():
             raise FileNotFoundError(
                 f"workbook schema config not found: {self.workbook_schema}"
+            )
+        if self.scoping_answers is not None and not self.scoping_answers.is_file():
+            raise FileNotFoundError(
+                f"scoping answers file not found: {self.scoping_answers}"
             )
 
 
@@ -81,8 +88,24 @@ class Workspace:
         return self.root / "state" / "audit.sqlite"
 
     @property
+    def checkpoint_db(self):
+        return self.root / "state" / "checkpoints.sqlite"
+
+    @property
     def manifest_json(self):
         return self.artifacts / "manifest.json"
+
+    @property
+    def scoping_questions_json(self):
+        return self.artifacts / "scoping_questions.json"
+
+    @property
+    def scoping_questions_md(self):
+        return self.artifacts / "scoping_questions.md"
+
+    @property
+    def scoping_answers_md(self):
+        return self.artifacts / "scoping_answers.md"
 
     @property
     def workbook_schema_json(self):
@@ -160,3 +183,5 @@ class Workspace:
         shutil.copytree(inputs.source, self.input_sources, dirs_exist_ok=True)
         shutil.copytree(inputs.rules, self.input_rules, dirs_exist_ok=True)
         shutil.copy2(inputs.workbook, self.input_workbook / inputs.workbook.name)
+        if inputs.scoping_answers is not None:
+            shutil.copy2(inputs.scoping_answers, self.scoping_answers_md)
