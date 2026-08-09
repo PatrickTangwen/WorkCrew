@@ -1,11 +1,12 @@
 """Review finding, re-review verdict, and container contracts
 (plan sections 18, 23, 26)."""
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
 from workflow_app.models.evidence import Evidence
+from workflow_app.models.values import CellValue
 
 
 class ReviewFinding(BaseModel):
@@ -22,8 +23,8 @@ class ReviewFinding(BaseModel):
 
     issue_type: str | None = None
 
-    current_value: Any | None = None
-    recommended_value: Any | None = None
+    current_value: CellValue = None
+    recommended_value: CellValue = None
 
     evidence: list[Evidence]
     reviewer_comment: str

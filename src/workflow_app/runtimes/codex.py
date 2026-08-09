@@ -37,20 +37,15 @@ ROLES = {
 
 _ERROR_EXCERPT = 500
 
-# Wire representation of a contract `Any` cell value: workbook cell
-# values are scalars (dates travel as strings).
-_CELL_VALUE_TYPES = {"type": ["string", "number", "boolean", "null"]}
-
 
 def strict_schema(node):
     # OpenAI structured outputs demand a stricter dialect than pydantic
     # emits: every object must list all of its properties as required
     # (optionality is expressed by a null type union, which pydantic
-    # already produces), and every schema needs a type — a contract
-    # `Any` (no constraint) becomes the concrete cell-value union.
+    # already produces). Cell values are the CellValue scalar union at
+    # the contract level, so no unconstrained schema reaches this
+    # transform.
     if isinstance(node, dict):
-        if not node:
-            return dict(_CELL_VALUE_TYPES)
         transformed = {key: strict_schema(value) for key, value in node.items()}
         if transformed.get("type") == "object" and "properties" in transformed:
             transformed["required"] = sorted(transformed["properties"])

@@ -1,7 +1,7 @@
 """strict_schema normalizes contract schemas to the OpenAI structured-
 output dialect (ADR 0018): every object lists all properties as
-required, and unconstrained (Any) schemas become the scalar cell-value
-union."""
+required. Cell values are the CellValue scalar union at the contract
+level, so no unconstrained (empty) schema ever reaches the dialect."""
 
 from workflow_app.models.review import ReReviewResult, ReviewResult
 from workflow_app.runtimes.codex import strict_schema
@@ -37,13 +37,14 @@ def test_every_object_requires_all_its_properties():
             assert node["required"] == sorted(node["properties"])
 
 
-def test_any_valued_fields_become_the_scalar_cell_union():
+def test_cell_value_fields_are_the_scalar_union():
+    # The CellValue contract alias emits the concrete scalar union
+    # itself; the dialect never sees an unconstrained schema.
     schema = strict_schema(ReviewResult.model_json_schema())
     finding = schema["$defs"]["ReviewFinding"]["properties"]
     for field in ("current_value", "recommended_value"):
-        branches = finding[field]["anyOf"]
-        assert {"type": ["string", "number", "boolean", "null"]} in branches
-    # No unconstrained schema survives anywhere.
+        types = {branch["type"] for branch in finding[field]["anyOf"]}
+        assert types == {"string", "integer", "number", "boolean", "null"}
     assert all(node != {} for node in walk_dicts(schema))
 
 

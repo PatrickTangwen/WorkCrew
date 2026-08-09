@@ -6,6 +6,7 @@ confidence with the spec thresholds (low < 0.60 <= medium < 0.85 <= high).
 """
 
 import pytest
+from pydantic import ValidationError
 
 from workflow_app.models import CellProposal
 from workflow_app.validation.rules import (
@@ -151,3 +152,19 @@ def test_cell_row_must_match_declared_row():
 def test_malformed_cell_address_is_rejected():
     reason = check_proposal(proposal(cell="12F"), SCHEMA)
     assert reason is not None and "address" in reason
+
+
+# --- the cell-value scalar contract --------------------------------------
+
+
+def test_scalar_cell_values_are_accepted():
+    for value in ("text", 42, 3.14, True, None):
+        assert proposal(value=value).value == value
+
+
+def test_non_scalar_cell_values_are_a_contract_violation():
+    # A structured value from a rogue agent must fail contract
+    # validation (and so be retried), never reach the workbook layer.
+    for value in ({"nested": 1}, ["list"]):
+        with pytest.raises(ValidationError):
+            proposal(value=value)
