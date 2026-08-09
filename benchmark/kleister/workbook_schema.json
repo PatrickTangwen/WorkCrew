@@ -1,0 +1,92 @@
+{
+  "sheets": [
+    {
+      "name": "Charity Reports",
+      "target": true,
+      "notes_field": "Notes",
+      "title_field": "Charity Name",
+      "overview_fields": [
+        "Registration Number",
+        "Income Size Band"
+      ],
+      "fields": {
+        "Charity ID*": {
+          "required": true,
+          "type": "id",
+          "column": "A",
+          "pattern": "^CHA-\\d{6,7}$",
+          "value_kind": "constructed",
+          "writable": true,
+          "gloss_zh": "机构编号（按规则构造）"
+        },
+        "Charity Name": {
+          "type": "string",
+          "column": "B",
+          "writable": true,
+          "gloss_zh": "慈善机构名称"
+        },
+        "Registration Number": {
+          "type": "id",
+          "column": "C",
+          "pattern": "^\\d{6,7}$",
+          "writable": true,
+          "gloss_zh": "注册号"
+        },
+        "Report Date": {
+          "type": "date",
+          "column": "D",
+          "writable": true,
+          "gloss_zh": "报告期截止日期"
+        },
+        "Street Line": {
+          "type": "string",
+          "column": "E",
+          "writable": true,
+          "gloss_zh": "街道地址"
+        },
+        "Post Town": {
+          "type": "string",
+          "column": "F",
+          "writable": true,
+          "gloss_zh": "邮镇"
+        },
+        "Postcode": {
+          "type": "string",
+          "column": "G",
+          "writable": true,
+          "gloss_zh": "邮政编码"
+        },
+        "Annual Income GBP": {
+          "type": "number",
+          "column": "H",
+          "writable": true,
+          "gloss_zh": "年度收入（英镑）"
+        },
+        "Annual Spending GBP": {
+          "type": "number",
+          "column": "I",
+          "writable": true,
+          "gloss_zh": "年度支出（英镑）"
+        },
+        "Income Size Band": {
+          "type": "controlled_vocabulary",
+          "column": "J",
+          "values": [
+            "Small",
+            "Medium",
+            "Large"
+          ],
+          "value_kind": "mapped",
+          "writable": true,
+          "gloss_zh": "收入规模档（按规则映射）"
+        },
+        "Notes": {
+          "type": "string",
+          "column": "K",
+          "writable": true,
+          "gloss_zh": "备注"
+        }
+      }
+    }
+  ]
+}
