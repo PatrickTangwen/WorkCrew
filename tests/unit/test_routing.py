@@ -7,10 +7,12 @@ legal for which verdicts, which cells end up unresolved.
 import pytest
 
 from workflow_app.models import ReReviewVerdict, ReviewFinding, RevisionDecision
+from workflow_app.workbook.schema import SheetSchema
 from workflow_app.workflow.routing import (
     check_decisions,
     check_re_review_coverage,
     collect_unresolved,
+    compose_revision_mutations,
     has_actionable_findings,
     note_append_value,
     rebutted_cells,
@@ -29,12 +31,13 @@ def finding(cell, verdict, recommended=None, comment="because"):
     )
 
 
-def decision(cell, action, proposed=None, justification="reasoned"):
+def decision(cell, action, proposed=None, note_append=None, justification="reasoned"):
     return RevisionDecision.model_validate(
         {
             "cell": cell,
             "action": action,
             "proposed_value": proposed,
+            "note_append": note_append,
             "evidence": [],
             "justification": justification,
         }
@@ -193,6 +196,157 @@ def test_rebuttal_without_any_verdict_is_unresolved():
     assert unresolved == [
         {"cell": "A2", "reason": "rebuttal received no re-review verdict"}
     ]
+
+
+# --- revision mutation composition (same-batch note appends) -------------
+
+
+SHEET_SCHEMA = SheetSchema.model_validate(
+    {
+        "name": "Sheet",
+        "notes_field": "Notes",
+        "fields": {
+            "Start Date": {"type": "date", "column": "D", "writable": True},
+            "Notes": {"type": "string", "column": "F", "writable": True},
+            "Issue": {"type": "string", "column": "G", "writable": True},
+        },
+    }
+)
+
+
+def compose(decisions, findings, current=None, priors=None):
+    return compose_revision_mutations(
+        decisions,
+        findings,
+        SHEET_SCHEMA,
+        lambda ref: (current or {}).get(ref),
+        lambda ref, source_ref: (priors or {}).get((ref, source_ref)),
+    )
+
+
+def test_same_batch_note_appends_compose_cumulatively():
+    findings = [finding("G4", "FAIL"), finding("D4", "FAIL")]
+    decisions = [
+        decision("G4", "CLEAR", note_append="note one"),
+        decision("D4", "FIX", proposed="2026-04-04", note_append="note two"),
+    ]
+
+    mutations, by_ref = compose(decisions, findings)
+
+    assert [(m.cell, m.value) for m in mutations] == [
+        ("G4", None),
+        ("F4", "note one"),
+        ("D4", "2026-04-04"),
+        ("F4", "note one\nnote two"),
+    ]
+    assert by_ref == {"decisions[0]": decisions[0], "decisions[1]": decisions[1]}
+
+
+def test_first_note_append_composes_on_the_workbook_value():
+    mutations, _ = compose(
+        [decision("G4", "CLEAR", note_append="note one")],
+        [finding("G4", "FAIL")],
+        current={"F4": "existing note"},
+    )
+    assert [(m.cell, m.value) for m in mutations] == [
+        ("G4", None),
+        ("F4", "existing note\nnote one"),
+    ]
+
+
+def test_replay_composes_both_notes_from_the_audited_priors():
+    # Crash after audit, before save: the workbook reads stale, but
+    # each audited prior replays verbatim, second note included.
+    findings = [finding("G4", "FAIL"), finding("D4", "FAIL")]
+    decisions = [
+        decision("G4", "CLEAR", note_append="note one"),
+        decision("D4", "FIX", proposed="2026-04-04", note_append="note two"),
+    ]
+    priors = {
+        ("F4", "decisions[0]"): {"new_value": "note one"},
+        ("F4", "decisions[1]"): {"new_value": "note one\nnote two"},
+    }
+
+    mutations, _ = compose(decisions, findings, priors=priors)
+
+    assert [m.value for m in mutations if m.cell == "F4"] == [
+        "note one",
+        "note one\nnote two",
+    ]
+
+
+def test_partial_replay_composes_the_unaudited_note_on_the_replayed_prior():
+    # Crash in the middle of the audit loop: only the first note was
+    # audited and nothing was saved. The second note must compose on
+    # the first's replayed value, not on the stale workbook read.
+    findings = [finding("G4", "FAIL"), finding("D4", "FAIL")]
+    decisions = [
+        decision("G4", "CLEAR", note_append="note one"),
+        decision("D4", "FIX", proposed="2026-04-04", note_append="note two"),
+    ]
+    priors = {("F4", "decisions[0]"): {"new_value": "note one"}}
+
+    mutations, _ = compose(decisions, findings, priors=priors)
+
+    assert [m.value for m in mutations if m.cell == "F4"] == [
+        "note one",
+        "note one\nnote two",
+    ]
+
+
+def test_note_append_composes_onto_a_same_batch_primary_edit():
+    # An earlier decision replaces the Notes cell itself; a later
+    # note_append in the same batch appends to the replacement, not to
+    # the stale batch-start value.
+    findings = [
+        finding("F4", "WARN", recommended="Replacement note."),
+        finding("D4", "FAIL"),
+    ]
+    decisions = [
+        decision("F4", "ACCEPT"),
+        decision("D4", "FIX", proposed="2026-04-04", note_append="companion"),
+    ]
+
+    mutations, _ = compose(decisions, findings, current={"F4": "stale original"})
+
+    assert [m.value for m in mutations if m.cell == "F4"] == [
+        "Replacement note.",
+        "Replacement note.\ncompanion",
+    ]
+
+
+def test_a_later_primary_edit_to_the_notes_cell_overwrites_composed_notes():
+    # Decision order is the authority (ADR 0021): a primary edit is an
+    # absolute write, so coming after an append it wins.
+    findings = [
+        finding("G4", "FAIL"),
+        finding("F4", "WARN", recommended="Full rewrite."),
+    ]
+    decisions = [
+        decision("G4", "CLEAR", note_append="note one"),
+        decision("F4", "ACCEPT"),
+    ]
+
+    mutations, _ = compose(decisions, findings)
+
+    assert [m.value for m in mutations if m.cell == "F4"] == [
+        "note one",
+        "Full rewrite.",
+    ]
+
+
+def test_note_append_without_a_notes_field_is_refused():
+    bare = SheetSchema.model_validate(
+        {"name": "Sheet", "fields": {"Issue": {"column": "G", "writable": True}}}
+    )
+    with pytest.raises(ValueError, match="notes_field"):
+        compose_revision_mutations(
+            [decision("G4", "CLEAR", note_append="note")],
+            [finding("G4", "FAIL")],
+            bare,
+            lambda ref: None,
+            lambda ref, source_ref: None,
+        )
 
 
 def test_note_append_value_replays_the_audited_prior():

@@ -497,50 +497,20 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         revision = load_revision(state)
         schema = schema_from(state)
         sheet = schema.target_sheet()
-        findings_by_cell = {finding.cell: finding for finding in review.findings}
 
         draft = writer.open_draft(workspace.draft_xlsx)
-        mutations, decision_by_ref = [], {}
-        for index, decision in enumerate(revision.decisions):
-            source_ref = f"decisions[{index}]"
-            decision_by_ref[source_ref] = decision
-            if decision.action in ("ACCEPT", "FIX", "CLEAR"):
-                value = {
-                    "ACCEPT": findings_by_cell[decision.cell].recommended_value,
-                    "FIX": decision.proposed_value,
-                    "CLEAR": None,
-                }[decision.action]
-                mutations.append(
-                    CellMutation(
-                        sheet=sheet.name,
-                        cell=decision.cell,
-                        value=value,
-                        actor_role="revision",
-                        source_ref=source_ref,
-                    )
-                )
-            if decision.note_append is not None:
-                cell_ref = writer.normalize_cell(decision.cell)
-                notes_ref = routing.notes_cell_for(sheet, cell_ref)
-                if notes_ref is None:
-                    raise ValueError(
-                        f"decision on {decision.cell!r} carries note_append but"
-                        " the target sheet declares no notes_field"
-                    )
-                current = writer.read_cell(draft, sheet.name, notes_ref)
-                prior = audit.find_applied_mutation(
-                    state["run_id"], sheet.name, notes_ref, "revision", source_ref
-                )
-                text = routing.note_append_value(current, decision.note_append, prior)
-                mutations.append(
-                    CellMutation(
-                        sheet=sheet.name,
-                        cell=notes_ref,
-                        value=text,
-                        actor_role="revision",
-                        source_ref=source_ref,
-                    )
-                )
+
+        def read_current(cell_ref):
+            return writer.read_cell(draft, sheet.name, cell_ref)
+
+        def find_prior(cell_ref, source_ref):
+            return audit.find_applied_mutation(
+                state["run_id"], sheet.name, cell_ref, "revision", source_ref
+            )
+
+        mutations, decision_by_ref = routing.compose_revision_mutations(
+            revision.decisions, review.findings, sheet, read_current, find_prior
+        )
 
         allowlist = Allowlist(
             routing.derive_revision_allowlist(review.findings, schema)

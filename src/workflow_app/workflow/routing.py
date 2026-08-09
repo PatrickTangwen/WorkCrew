@@ -4,10 +4,13 @@ Pure deterministic decision logic shared by the graph's conditional
 edges and the human-fallback artifact generation. Only non-PASS
 findings are actionable; the section-27 behavior table binds which
 revision actions are legal per verdict; the unresolved set feeds human
-review.
+review. The module also derives the revision mutation batch (plan
+sections 28, 37): decisions compose in order with read-your-writes
+note composition and audited-prior replay (ADR 0021).
 """
 
 from workflow_app.workbook import writer
+from workflow_app.workbook.mutations import CellMutation
 from workflow_app.workbook.safety import cell_key
 
 ACTIONS_BY_VERDICT = {
@@ -90,6 +93,63 @@ def note_append_value(current, note, prior):
     if prior is not None:
         return prior["new_value"]
     return f"{current}\n{note}" if current else note
+
+
+def compose_revision_mutations(
+    decisions, findings, sheet_schema, read_current, find_prior
+):
+    # Values compose in decision order against the batch's own pending
+    # writes: a note_append on a cell an earlier decision already wrote
+    # — a previous note_append or a primary edit — composes on that
+    # pending value, never on the stale batch-start read. `find_prior`
+    # supplies the audited prior for idempotent replay (plan section
+    # 37), which also seeds the pending value on a partial replay.
+    findings_by_cell = {finding.cell: finding for finding in findings}
+    mutations, decision_by_ref, pending = [], {}, {}
+    for index, decision in enumerate(decisions):
+        source_ref = f"decisions[{index}]"
+        decision_by_ref[source_ref] = decision
+        cell_ref = writer.normalize_cell(decision.cell)
+        if decision.action in ("ACCEPT", "FIX", "CLEAR"):
+            value = {
+                "ACCEPT": findings_by_cell[decision.cell].recommended_value,
+                "FIX": decision.proposed_value,
+                "CLEAR": None,
+            }[decision.action]
+            mutations.append(
+                CellMutation(
+                    sheet=sheet_schema.name,
+                    cell=decision.cell,
+                    value=value,
+                    actor_role="revision",
+                    source_ref=source_ref,
+                )
+            )
+            pending[cell_ref] = value
+        if decision.note_append is not None:
+            notes_ref = notes_cell_for(sheet_schema, cell_ref)
+            if notes_ref is None:
+                raise ValueError(
+                    f"decision on {decision.cell!r} carries note_append but"
+                    " the target sheet declares no notes_field"
+                )
+            if notes_ref in pending:
+                current = pending[notes_ref]
+            else:
+                current = read_current(notes_ref)
+            prior = find_prior(notes_ref, source_ref)
+            text = note_append_value(current, decision.note_append, prior)
+            mutations.append(
+                CellMutation(
+                    sheet=sheet_schema.name,
+                    cell=notes_ref,
+                    value=text,
+                    actor_role="revision",
+                    source_ref=source_ref,
+                )
+            )
+            pending[notes_ref] = text
+    return mutations, decision_by_ref
 
 
 def notes_cell_for(sheet_schema, cell_ref):
