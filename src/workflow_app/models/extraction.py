@@ -1,4 +1,4 @@
-"""Cell proposal contract (plan section 18)."""
+"""Cell proposal and extraction container contracts (plan sections 18, 21)."""
 
 from typing import Any, Literal
 
@@ -30,3 +30,9 @@ class CellProposal(BaseModel):
     ]
 
     notes: str | None = None
+
+
+class ExtractionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    proposals: list[CellProposal]
