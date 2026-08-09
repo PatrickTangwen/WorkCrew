@@ -50,10 +50,7 @@ def check_proposal(proposal, schema):
     if row != proposal.row:
         return f"cell {cell_ref} does not match the declared row {proposal.row}"
 
-    if (
-        is_confidence_capped(field)
-        and proposal.confidence >= HIGH_CONFIDENCE_THRESHOLD
-    ):
+    if is_confidence_capped(field) and proposal.confidence >= HIGH_CONFIDENCE_THRESHOLD:
         kind = field.value_kind or "mapped"
         return (
             f"{kind} field {proposal.column_name!r} is capped at medium"

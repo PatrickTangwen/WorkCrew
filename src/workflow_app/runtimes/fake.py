@@ -4,6 +4,8 @@ from workflow_app.runtimes.base import AgentResult
 
 
 class FakeAgentRuntime:
+    name = "fake"
+
     def __init__(self, outputs):
         # outputs: role name -> structured fixture output (dict)
         self._outputs = dict(outputs)
