@@ -1,9 +1,25 @@
 import { create } from "zustand"
 
-import type { RunRecord, RunSummary, WorkflowEvent } from "@/lib/api"
+import {
+  getScopingQuestions,
+  resumeRun as requestRunResume,
+  type RunRecord,
+  type RunSummary,
+  type ScopingAnswers,
+  type ScopingQuestion,
+  type WorkflowEvent,
+} from "@/lib/api"
 import { workflowEventDetails } from "@/lib/workflow-events"
 
 type AppView = "empty" | "new-run" | "run"
+type ScopingStatus = "idle" | "loading" | "ready" | "submitting" | "error"
+
+type ScopingState = {
+  runId: string | null
+  questions: ScopingQuestion[]
+  status: ScopingStatus
+  error: string | null
+}
 
 type AppState = {
   view: AppView
@@ -15,6 +31,7 @@ type AppState = {
   streamEvents: WorkflowEvent[]
   streamStatus: "idle" | "connecting" | "connected" | "disconnected" | "error"
   streamError: string | null
+  scoping: ScopingState
   openNewRun: () => void
   showRun: (run: RunRecord) => void
   startHistoryLoad: () => void
@@ -22,6 +39,8 @@ type AppState = {
   failHistoryLoad: (message: string) => void
   connectRunStream: (runId: string) => void
   disconnectRunStream: () => void
+  loadScopingQuestions: (runId: string) => Promise<void>
+  resumeRun: (runId: string, answers: ScopingAnswers) => Promise<void>
 }
 
 let activeSocket: WebSocket | null = null
@@ -65,7 +84,21 @@ function runAfterEvent(run: RunRecord, event: WorkflowEvent) {
   }
 }
 
-export const useAppStore = create<AppState>()((set) => ({
+function runAfterResume(current: RunRecord | null, resumed: RunRecord) {
+  if (current?.run_id !== resumed.run_id) return current
+  if (["completed", "failed", "cancelled"].includes(current.status)) return current
+  return { ...resumed, phase: current.phase }
+}
+
+function emptyScopingState(): ScopingState {
+  return { runId: null, questions: [], status: "idle", error: null }
+}
+
+function scopingStateForRun(scoping: ScopingState, runId: string) {
+  return scoping.runId === runId ? scoping : emptyScopingState()
+}
+
+export const useAppStore = create<AppState>()((set, get) => ({
   view: "empty",
   currentRun: null,
   runs: [],
@@ -75,6 +108,7 @@ export const useAppStore = create<AppState>()((set) => ({
   streamEvents: [],
   streamStatus: "idle",
   streamError: null,
+  scoping: emptyScopingState(),
   openNewRun: () => set({ view: "new-run" }),
   showRun: (run) =>
     set((state) => {
@@ -82,6 +116,7 @@ export const useAppStore = create<AppState>()((set) => ({
         view: "run",
         currentRun: run,
         runs: withRunSummary(state.runs, run),
+        scoping: scopingStateForRun(state.scoping, run.run_id),
       }
     }),
   startHistoryLoad: () => set({ historyStatus: "loading", historyError: null }),
@@ -109,6 +144,7 @@ export const useAppStore = create<AppState>()((set) => ({
       streamEvents: state.streamRunId === runId ? state.streamEvents : [],
       streamStatus: "connecting",
       streamError: null,
+      scoping: scopingStateForRun(state.scoping, runId),
     }))
     const socket = new WebSocket(websocketUrl(runId))
     activeSocket = socket
@@ -129,6 +165,8 @@ export const useAppStore = create<AppState>()((set) => ({
         return
       }
 
+      const details = workflowEventDetails(event)
+
       set((state) => {
         if (state.streamRunId !== runId) return state
         const currentRun =
@@ -141,6 +179,9 @@ export const useAppStore = create<AppState>()((set) => ({
           runs: currentRun ? withRunSummary(state.runs, currentRun) : state.runs,
         }
       })
+      if (details.runStatus === "paused") {
+        void get().loadScopingQuestions(runId)
+      }
     }
     socket.onerror = () => {
       if (activeSocket === socket) {
@@ -163,5 +204,78 @@ export const useAppStore = create<AppState>()((set) => ({
       socket.close()
     }
     set({ streamStatus: "idle" })
+  },
+  loadScopingQuestions: async (runId) => {
+    const current = get()
+    if (
+      current.scoping.runId === runId &&
+      (current.scoping.status === "loading" || current.scoping.status === "ready")
+    ) {
+      return
+    }
+    set({
+      scoping: { runId, questions: [], status: "loading", error: null },
+    })
+    try {
+      const response = await getScopingQuestions(runId)
+      if (get().scoping.runId === runId) {
+        set((state) => ({
+          scoping: {
+            ...state.scoping,
+            questions: response.questions,
+            status: "ready",
+          },
+        }))
+      }
+    } catch (cause) {
+      if (get().scoping.runId === runId) {
+        set((state) => ({
+          scoping: {
+            ...state.scoping,
+            status: "error",
+            error:
+              cause instanceof Error
+                ? cause.message
+                : "Unable to load scoping questions",
+          },
+        }))
+      }
+    }
+  },
+  resumeRun: async (runId, answers) => {
+    if (get().scoping.runId !== runId) return
+    set((state) => ({
+      scoping: { ...state.scoping, status: "submitting", error: null },
+    }))
+    try {
+      const run = await requestRunResume(runId, answers)
+      set((state) => {
+        const currentRun = runAfterResume(state.currentRun, run)
+        const summaryRun = currentRun?.run_id === runId ? currentRun : run
+        const currentScoping = state.scoping.runId === runId
+        return {
+          currentRun,
+          runs: withRunSummary(state.runs, summaryRun),
+          ...(currentScoping
+            ? { scoping: { ...state.scoping, status: "ready" as const } }
+            : {}),
+        }
+      })
+    } catch (cause) {
+      set((state) =>
+        state.scoping.runId === runId
+          ? {
+              scoping: {
+                ...state.scoping,
+                status: "error",
+                error:
+                  cause instanceof Error
+                    ? cause.message
+                    : "Unable to resume the run",
+              },
+            }
+          : {}
+      )
+    }
   },
 }))

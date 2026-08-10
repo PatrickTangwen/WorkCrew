@@ -3,6 +3,7 @@ import { Clock3, FolderOpen, PackageOpen } from "lucide-react"
 
 import { ArtifactViewer } from "@/components/artifact-viewer"
 import { RunStatusBadge } from "@/components/run-status-badge"
+import { ScopingQuestionForm } from "@/components/scoping-question-form"
 import { WorkflowProgress } from "@/components/workflow-progress"
 import {
   Card,
@@ -19,6 +20,8 @@ function RunDetail({ run }: { run: RunRecord }) {
   const streamEvents = useAppStore((state) => state.streamEvents)
   const connectRunStream = useAppStore((state) => state.connectRunStream)
   const disconnectRunStream = useAppStore((state) => state.disconnectRunStream)
+  const scoping = useAppStore((state) => state.scoping)
+  const resumeRun = useAppStore((state) => state.resumeRun)
   const events = streamRunId === run.run_id ? streamEvents : []
   const streamable =
     run.status === "running" || run.status === "paused" || run.status === "failed"
@@ -54,7 +57,16 @@ function RunDetail({ run }: { run: RunRecord }) {
         </CardContent>
       </Card>
 
-      <WorkflowProgress run={run} events={events} />
+      {run.status === "paused" ? (
+        <ScopingQuestionForm
+          questions={scoping.runId === run.run_id ? scoping.questions : []}
+          status={scoping.runId === run.run_id ? scoping.status : "loading"}
+          error={scoping.runId === run.run_id ? scoping.error : null}
+          onSubmit={(answers) => void resumeRun(run.run_id, answers)}
+        />
+      ) : (
+        <WorkflowProgress run={run} events={events} />
+      )}
 
       {run.status === "completed" ? (
         <ArtifactViewer runId={run.run_id} />

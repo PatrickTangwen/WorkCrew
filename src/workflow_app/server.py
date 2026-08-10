@@ -22,9 +22,11 @@ from workflow_app.artifacts import (
     RunNotFoundError,
 )
 from workflow_app.audit.db import AuditStore
+from workflow_app.models import ScopingQuestions
 from workflow_app.progress import emit
-from workflow_app.workflow.engine import new_run_id, run_workflow
-from workflow_app.workspace import RunInputs
+from workflow_app.reports import render_scoping_answers
+from workflow_app.workflow.engine import new_run_id, resume_workflow, run_workflow
+from workflow_app.workspace import RunInputs, Workspace
 
 UI_HOST = "127.0.0.1"
 DEFAULT_UI_PORT = 8470
@@ -39,6 +41,10 @@ class CreateRunRequest(BaseModel):
     workbook_schema: str
     scoping_answers: str | None = None
     review_policy: str | None = None
+
+
+class ResumeRunRequest(BaseModel):
+    answers: dict[str, str | list[str] | bool]
 
 
 class RunRecord(BaseModel):
@@ -85,6 +91,7 @@ class TrackedRun:
     record: RunRecord
     finished_at: str | None = None
     events: "RunEventChannel" = field(default_factory=lambda: RunEventChannel())
+    task: asyncio.Task | None = None
 
 
 class RunEventChannel:
@@ -121,6 +128,7 @@ class ServerOptions:
     home_dir: Path = field(default_factory=Path.home)
     runs_root: Path = Path("runs")
     runner: Callable = run_workflow
+    resumer: Callable = resume_workflow
     runtimes: dict | None = None
 
 
@@ -152,14 +160,43 @@ class RunCoordinator:
         tracked = TrackedRun(record)
         self.runs[record.run_id] = tracked
         response = record.model_dump()
-        loop = asyncio.get_running_loop()
+        progress_callback = self._progress_callback(tracked)
+        self._schedule(tracked, self._execute(tracked, inputs, progress_callback))
+        return response
 
-        def progress_callback(event):
-            loop.call_soon_threadsafe(self._receive_event, tracked, dict(event))
+    async def resume(self, run_id, request):
+        tracked = self.runs.get(run_id)
+        if tracked is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        if tracked.record.status != "paused":
+            raise HTTPException(status_code=409, detail="Run is not paused")
+        if tracked.task is not None:
+            await tracked.task
+        if tracked.record.status != "paused":
+            raise HTTPException(status_code=409, detail="Run is not paused")
 
-        task = asyncio.create_task(self._execute(tracked, inputs, progress_callback))
-        self.tasks.add(task)
-        task.add_done_callback(lambda done: self._finish(done, tracked))
+        workspace = Workspace((Path(self.options.runs_root) / run_id).resolve())
+        questions = ScopingQuestions.model_validate_json(
+            workspace.scoping_questions_json.read_text()
+        )
+        expected = {question.id for question in questions.questions}
+        received = set(request.answers)
+        if received != expected:
+            missing = sorted(expected - received)
+            unknown = sorted(received - expected)
+            raise HTTPException(
+                status_code=422,
+                detail=f"Answers must match the scoping questions."
+                f" Missing: {missing}. Unknown: {unknown}.",
+            )
+        workspace.scoping_answers_md.write_text(
+            render_scoping_answers(questions, request.answers)
+        )
+
+        tracked.record.status = "running"
+        response = tracked.record.model_dump()
+        progress_callback = self._progress_callback(tracked)
+        self._schedule(tracked, self._resume(tracked, progress_callback))
         return response
 
     def find(self, run_id):
@@ -203,27 +240,60 @@ class RunCoordinator:
 
     async def _execute(self, tracked, inputs, progress_callback):
         record = tracked.record
-        runtimes = self.options.runtimes
-        if runtimes is None:
-            from workflow_app.cli import build_runtimes
-
-            runtimes = build_runtimes("live")
         result = await asyncio.to_thread(
             self.options.runner,
             inputs=inputs,
             runs_root=Path(self.options.runs_root),
-            runtimes=runtimes,
+            runtimes=self._runtimes(),
             run_id=record.run_id,
             progress_callback=progress_callback,
         )
+        self._record_result(tracked, result)
 
+    async def _resume(self, tracked, progress_callback):
+        record = tracked.record
+        runtimes = self._runtimes()
+        result = await asyncio.to_thread(
+            self.options.resumer,
+            run_id=record.run_id,
+            runs_root=Path(self.options.runs_root),
+            runtimes=runtimes,
+            progress_callback=progress_callback,
+        )
+        self._record_result(tracked, result)
+
+    def _record_result(self, tracked, result):
+        record = tracked.record
         record.phase = result.get("phase", record.phase)
         record.status = "paused" if "__interrupt__" in result else "completed"
         if record.status == "completed":
             tracked.finished_at = datetime.now(UTC).isoformat()
 
+    def _runtimes(self):
+        if self.options.runtimes is not None:
+            return self.options.runtimes
+        from workflow_app.cli import build_runtimes
+
+        return build_runtimes("live")
+
+    def _progress_callback(self, tracked):
+        loop = asyncio.get_running_loop()
+
+        def callback(event):
+            loop.call_soon_threadsafe(self._receive_event, tracked, dict(event))
+
+        return callback
+
+    def _schedule(self, tracked, operation):
+        task = asyncio.create_task(operation)
+        tracked.task = task
+        self.tasks.add(task)
+        task.add_done_callback(lambda done: self._finish(done, tracked))
+
     def _finish(self, task, tracked):
         self.tasks.discard(task)
+        if tracked.task is task:
+            tracked.task = None
         if not task.cancelled() and task.exception() is not None:
             record = tracked.record
             record.status = "failed"
@@ -398,6 +468,10 @@ def create_app(static_dir=DEFAULT_STATIC_DIR, require_frontend=False, options=No
     @app.post("/api/runs", status_code=201)
     async def create_run(request: CreateRunRequest):
         return await coordinator.start(request)
+
+    @app.post("/api/runs/{run_id}/resume", status_code=202)
+    async def resume_run(run_id: str, request: ResumeRunRequest):
+        return await coordinator.resume(run_id, request)
 
     @app.get("/api/runs")
     async def list_runs():

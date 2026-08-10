@@ -1,3 +1,4 @@
+import asyncio
 import socket
 import sqlite3
 import threading
@@ -8,7 +9,15 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from workflow_app.audit.db import AuditStore
-from workflow_app.server import ServerOptions, bind_available_socket, create_app
+from workflow_app.server import (
+    ResumeRunRequest,
+    RunCoordinator,
+    RunRecord,
+    ServerOptions,
+    TrackedRun,
+    bind_available_socket,
+    create_app,
+)
 from workflow_app.workspace import RunInputs, Workspace
 
 
@@ -23,6 +32,23 @@ class BlockingRunner:
         self.started.set()
         self.release.wait(timeout=5)
         return {"phase": "PREPARE_WORKSPACE"}
+
+
+class TwoResumeWaiters:
+    def __init__(self):
+        self.count = 0
+        self.ready = None
+
+    def __await__(self):
+        async def wait():
+            if self.ready is None:
+                self.ready = asyncio.Event()
+            self.count += 1
+            if self.count == 2:
+                self.ready.set()
+            await self.ready.wait()
+
+        return wait().__await__()
 
 
 def run_payload(home):
@@ -165,6 +191,58 @@ def test_post_run_rejects_a_second_active_run(tmp_path):
         assert second.status_code == 409
         assert second.json() == {"detail": "A run is already active"}
         runner.release.set()
+
+
+def test_concurrent_resume_requests_claim_a_paused_run_once(tmp_path):
+    async def exercise():
+        runs_root = tmp_path / "runs"
+        workspace = Workspace(runs_root / "run-paused")
+        workspace.create_layout()
+        workspace.scoping_questions_json.write_text(
+            '{"questions":[{"id":"Q1","question":"What is one row?"}]}'
+        )
+        resumer_calls = []
+
+        def resumer(**kwargs):
+            resumer_calls.append(kwargs)
+            return {"phase": "FINALIZE"}
+
+        coordinator = RunCoordinator(
+            ServerOptions(runs_root=runs_root, resumer=resumer, runtimes={})
+        )
+        tracked = TrackedRun(
+            RunRecord(
+                run_id="run-paused",
+                status="paused",
+                start_time="2026-08-09T12:00:00+00:00",
+                workspace_path=str(workspace.root),
+                phase="CLAUDE_SCOPE",
+                source_name="source",
+                workbook_name="template.xlsx",
+            ),
+            task=TwoResumeWaiters(),
+        )
+        coordinator.runs[tracked.record.run_id] = tracked
+        request = ResumeRunRequest(answers={"Q1": "One source file."})
+
+        results = await asyncio.gather(
+            coordinator.resume(tracked.record.run_id, request),
+            coordinator.resume(tracked.record.run_id, request),
+            return_exceptions=True,
+        )
+        if coordinator.tasks:
+            await asyncio.gather(*coordinator.tasks)
+        return results, resumer_calls
+
+    results, resumer_calls = asyncio.run(exercise())
+
+    successes = [result for result in results if isinstance(result, dict)]
+    conflicts = [
+        result for result in results if getattr(result, "status_code", None) == 409
+    ]
+    assert len(successes) == 1
+    assert len(conflicts) == 1
+    assert len(resumer_calls) == 1
 
 
 def test_get_runs_lists_audit_history_newest_first(tmp_path):

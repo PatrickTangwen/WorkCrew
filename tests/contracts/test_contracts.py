@@ -23,6 +23,7 @@ from workflow_app.models import (
 )
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "contracts"
+SCOPING_PROMPT = Path(__file__).parents[2] / "src/workflow_app/prompts/scoping.md"
 
 CONTRACT_FIXTURES = [
     (Evidence, "evidence.json"),
@@ -153,6 +154,49 @@ def test_scoping_question_rejects_missing_question_text():
     del data["question"]
     with pytest.raises(ValidationError):
         ScopingQuestion.model_validate(data)
+
+
+def test_scoping_question_defaults_legacy_payloads_to_text():
+    question = ScopingQuestion.model_validate(load("scoping_question.json"))
+
+    assert question.type == "text"
+    assert question.options is None
+
+
+def test_scoping_question_accepts_typed_options():
+    question = ScopingQuestion.model_validate(
+        {
+            "id": "Q2",
+            "question": "Which folders belong to the 2026 cohort?",
+            "type": "multi_select",
+            "options": [
+                {"value": "alpha", "label": "Alpha folder"},
+                {"value": "beta", "label": "Beta folder"},
+            ],
+        }
+    )
+
+    assert question.type == "multi_select"
+    assert [option.value for option in question.options] == ["alpha", "beta"]
+
+
+def test_scoping_question_rejects_unknown_type():
+    data = load("scoping_question.json")
+    data["type"] = "dropdown"
+
+    with pytest.raises(ValidationError):
+        ScopingQuestion.model_validate(data)
+
+
+def test_scoping_prompt_requests_typed_questions():
+    prompt = SCOPING_PROMPT.read_text()
+
+    assert all(
+        f"`{question_type}`" in prompt
+        for question_type in ("text", "single_select", "multi_select", "confirm")
+    )
+    assert '"options": [{"value":' in prompt
+    assert "defaults to `text`" in prompt
 
 
 @pytest.mark.parametrize(
