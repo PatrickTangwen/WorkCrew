@@ -305,6 +305,15 @@ def test_workbook_edit_requires_decision_evidence():
     assert reason is not None and "evidence" in reason
 
 
+def test_rebuttal_requires_decision_evidence():
+    reason = check_decisions(
+        [finding("F2", "WARN", recommended="corrected")],
+        [decision("F2", "REBUT", evidence_items=[])],
+    )
+
+    assert reason is not None and "evidence" in reason
+
+
 def test_decision_for_unknown_cell_is_illegal():
     reason = check_decisions(
         [finding("F2", "WARN", recommended="x")], [decision("Z9", "ACCEPT")]

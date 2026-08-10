@@ -40,6 +40,12 @@ def check_proposal(proposal, schema):
 
     if proposal.status == "proposed" and not proposal.evidence:
         return f"proposed value for {cell_ref} requires source or rule evidence"
+    if (
+        proposal.status == "not_found"
+        and not proposal.evidence
+        and not (proposal.notes and proposal.notes.strip())
+    ):
+        return f"evidence-free not_found for {cell_ref} requires search notes"
 
     if is_confidence_capped(field) and proposal.confidence == "high":
         kind = field.value_kind or "mapped"

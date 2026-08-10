@@ -45,20 +45,23 @@ Core prompts do not name benchmark fields or encode benchmark answers.
 ### Machine artifacts own the handoff
 
 The deterministic handoff contains one decision record per proposal: cell,
-field, status, value, confidence, exact evidence paths, applied rules, and a
-review note. Its Markdown rendering groups the same ledger by sheet and row.
-The structured extraction remains authoritative; the handoff is a reconciled
-human-readable index, not another agent judgment.
+field, status, value, confidence, evidence source/location/type/text, applied
+rules, and a substantive review note. Its Markdown rendering groups the same
+ledger by sheet and row without dropping the evidence rationale. The structured
+extraction remains authoritative; the handoff is a reconciled human-readable
+index, not another agent judgment.
 
-### Evidence gates writes
+### Evidence gates claims and writes
 
 A proposed value without source or rule evidence fails proposal validation and
 cannot reach the workbook mutation layer. An explicit `not_found` search result
 may carry no evidence when its notes record the search outcome.
 
 A Revision decision that edits the workbook through `ACCEPT`, `FIX`, or `CLEAR`
-is illegal without decision evidence. PASS cells remain frozen, and
-non-editing unresolved decisions remain visible for human adjudication.
+is illegal without decision evidence. A `REBUT` is also illegal without
+evidence because its disagreement with the Reviewer is a substantive claim.
+PASS cells remain frozen, and non-editing unresolved decisions remain visible
+for human adjudication.
 
 ## Consequences
 

@@ -124,6 +124,20 @@ def test_not_found_value_may_record_an_empty_search_result():
     assert check_proposal(missing, SCHEMA) is None
 
 
+def test_evidence_free_not_found_requires_search_notes():
+    missing = proposal(
+        value=None,
+        evidence=[],
+        confidence=None,
+        status="not_found",
+        notes=None,
+    )
+
+    reason = check_proposal(missing, SCHEMA)
+
+    assert reason is not None and "notes" in reason
+
+
 def test_unknown_sheet_is_rejected():
     reason = check_proposal(proposal(sheet="Ghost"), SCHEMA)
     assert reason is not None and "sheet" in reason

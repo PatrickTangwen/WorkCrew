@@ -106,12 +106,14 @@ def _uncertainty(proposals, status):
 
 def _decision_record(proposal):
     review_note = proposal.notes
-    if (
-        review_note is None
-        and proposal.status == "proposed"
-        and proposal.confidence in ("low", "medium")
-    ):
-        review_note = f"{proposal.confidence} confidence proposal"
+    if review_note is None and proposal.status == "proposed":
+        rules = ", ".join(proposal.rules_applied)
+        if proposal.confidence == "low":
+            review_note = "verify weak supporting evidence before acceptance"
+        elif proposal.confidence == "medium" and rules:
+            review_note = f"verify rule application: {rules}"
+        elif proposal.confidence == "medium":
+            review_note = "verify the evidence-supported transformation or mapping"
     if review_note is None and proposal.status != "proposed":
         review_note = f"{proposal.status} proposal"
     return {
@@ -178,6 +180,7 @@ def render_handoff_markdown(handoff):
         evidence_parts = [
             source["source_file"]
             + (f" ({source['source_location']})" if source["source_location"] else "")
+            + f" [{source['evidence_type']}] — {source['evidence_text']}"
             for source in item["evidence"]
         ]
         rules = ", ".join(item["rules_applied"])

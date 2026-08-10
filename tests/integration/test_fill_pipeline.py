@@ -271,7 +271,7 @@ def test_handoff_indexes_every_fill_decision_with_exact_evidence(inputs):
         "confidence": "medium",
         "evidence": [evidence("Stated in the brief.")],
         "rules_applied": ["PROJECT_ID_FORMAT"],
-        "review_note": "medium confidence proposal",
+        "review_note": "verify rule application: PROJECT_ID_FORMAT",
     }
     assert records[f"{SHEET}!A3"]["status"] == "not_found"
     assert records[f"{SHEET}!A3"]["review_note"] == ("No project identifier was found.")
@@ -288,3 +288,6 @@ def test_handoff_markdown_is_rendered_for_humans(inputs):
     assert "## Decision ledger" in text
     assert f"### {SHEET} — row 2" in text
     assert BRIEF in text
+    assert "[direct]" in text
+    assert "Stated in the brief." in text
+    assert "verify rule application: PROJECT_ID_FORMAT" in text
