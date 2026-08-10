@@ -54,9 +54,54 @@ def _count_by(items, key):
     return counts
 
 
-def _review_cycle_data(review_cycle):
+def _revision_change_data(review_cycle, sheet_name):
+    transitions = {}
+    for mutation in review_cycle.get("revision_mutations", []):
+        if mutation["sheet"] != sheet_name:
+            continue
+        cell_ref = writer.normalize_cell(mutation["cell"])
+        if cell_ref is None:
+            continue
+        if cell_ref not in transitions:
+            transitions[cell_ref] = {
+                "before": _json_value(mutation["old_value"]),
+                "after": _json_value(mutation["new_value"]),
+            }
+        else:
+            transitions[cell_ref]["after"] = _json_value(mutation["new_value"])
+
+    changes = {}
+    for cell_ref, transition in transitions.items():
+        before, after = transition["before"], transition["after"]
+        if before == after:
+            continue
+        if before is None:
+            kind = "filled"
+        elif after is None:
+            kind = "cleared"
+        else:
+            kind = "revised"
+        changes[cell_ref] = {"kind": kind, **transition}
+
+    counts = {
+        "filled": sum(change["kind"] == "filled" for change in changes.values()),
+        "revised": sum(change["kind"] == "revised" for change in changes.values()),
+        "cleared": sum(change["kind"] == "cleared" for change in changes.values()),
+        "rebutted": len(
+            {
+                writer.normalize_cell(decision["cell"])
+                for decision in review_cycle["decisions"]
+                if decision["action"] == "REBUT"
+                and writer.normalize_cell(decision["cell"]) is not None
+            }
+        ),
+    }
+    return counts, changes
+
+
+def _review_cycle_data(review_cycle, sheet_name):
     if review_cycle is None:
-        return None, {}, {}, {}, {}
+        return None, {}, {}, {}, {}, {}
 
     findings = {
         writer.normalize_cell(item["cell"]): {
@@ -89,13 +134,15 @@ def _review_cycle_data(review_cycle):
         writer.normalize_cell(item["cell"]): item["reason"]
         for item in review_cycle["unresolved"]
     }
+    change_counts, changes = _revision_change_data(review_cycle, sheet_name)
     summary = {
         "verdict_counts": _count_by(review_cycle["findings"], "verdict"),
         "action_counts": _count_by(review_cycle["decisions"], "action"),
         "re_review_counts": _count_by(review_cycle["verdicts"], "verdict"),
         "unresolved_count": len(review_cycle["unresolved"]),
+        "change_counts": change_counts,
     }
-    return summary, findings, decisions, verdicts, unresolved
+    return summary, findings, decisions, verdicts, unresolved, changes
 
 
 def _decision_records(handoff, sheet):
@@ -221,7 +268,8 @@ def build_explorer_data(
         revisions_by_cell,
         verdicts_by_cell,
         unresolved_by_cell,
-    ) = _review_cycle_data(review_cycle)
+        changes_by_cell,
+    ) = _review_cycle_data(review_cycle, sheet.name)
 
     entries_by_cell = {}
     for entry in provenance["entries"]:
@@ -298,6 +346,7 @@ def build_explorer_data(
                     else None,
                     "review": findings_by_cell.get(cell_ref),
                     "revision": revisions_by_cell.get(cell_ref),
+                    "revision_change": changes_by_cell.get(cell_ref),
                     "re_review": verdicts_by_cell.get(cell_ref),
                     "unresolved_reason": unresolved_by_cell.get(cell_ref),
                     "sources": _evidence_data(entry["evidence"]) if entry else [],

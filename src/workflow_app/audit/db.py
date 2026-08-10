@@ -240,6 +240,28 @@ class AuditStore:
             return None
         return {"new_value": json.loads(row[0])}
 
+    def list_applied_mutations(self, run_id, actor_role):
+        rows = (
+            self._connect()
+            .execute(
+                "SELECT sheet, cell, old_value, new_value, source_ref"
+                " FROM mutations WHERE run_id = ? AND actor_role = ?"
+                " AND status = 'applied' ORDER BY id",
+                (run_id, actor_role),
+            )
+            .fetchall()
+        )
+        return [
+            {
+                "sheet": sheet,
+                "cell": cell,
+                "old_value": json.loads(old_value),
+                "new_value": json.loads(new_value),
+                "source_ref": source_ref,
+            }
+            for sheet, cell, old_value, new_value, source_ref in rows
+        ]
+
     def get_run(self, run_id):
         row = (
             self._connect()

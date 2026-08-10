@@ -232,6 +232,12 @@ def test_straight_through_run_has_final_v2_audit(inputs):
             "action_counts": {},
             "re_review_counts": {},
             "unresolved_count": 0,
+            "change_counts": {
+                "filled": 0,
+                "revised": 0,
+                "cleared": 0,
+                "rebutted": 0,
+            },
         }
         review = field_value(data, 12, "Main Issue Area(s)", "review")
         assert review["verdict"] == "PASS"
@@ -260,6 +266,17 @@ def test_v2_explorers_match_revised_workbook_and_provenance(inputs):
     ]
     # The untouched cell is identical in both versions.
     assert field_value(v2, 2, "Project ID*") == "PRJ-0001"
+    assert v2["review_cycle"]["change_counts"] == {
+        "filled": 0,
+        "revised": 1,
+        "cleared": 0,
+        "rebutted": 0,
+    }
+    assert field_value(v2, 2, "Notes", "revision_change") == {
+        "kind": "revised",
+        "before": "First draft note.",
+        "after": REVISED_NOTE,
+    }
 
     # v2 matches the final workbook exactly.
     from openpyxl import load_workbook
@@ -334,6 +351,12 @@ def test_v2_audit_includes_re_review_and_final_unresolved_reason(inputs):
         "action_counts": {"REBUT": 1},
         "re_review_counts": {"UPHELD": 1},
         "unresolved_count": 1,
+        "change_counts": {
+            "filled": 0,
+            "revised": 0,
+            "cleared": 0,
+            "rebutted": 1,
+        },
     }
 
 
