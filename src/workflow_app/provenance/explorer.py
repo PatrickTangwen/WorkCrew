@@ -25,8 +25,19 @@ STRINGS = {
         "stat_fields": "columns",
         "stat_cells": "cells populated",
         "findings_heading": "Findings for review",
-        "final_cycle_heading": "Final review cycle",
-        "revision_outcomes": "Revision outcomes",
+        "qa_revision_heading": "QA review & v2 revision ({date})",
+        "qa_summary_intro": "This V2 incorporates the independent QA review. Summary counts report filled, revised, cleared, and rebutted outcomes; field tags mark revised, cleared, and rebutted exceptions.",
+        "outcome_count_filled": "{n} filled",
+        "outcome_count_revised": "{n} revised",
+        "outcome_count_cleared": "{n} cleared",
+        "outcome_count_rebutted_one": "{n} rebuttal",
+        "outcome_count_rebutted": "{n} rebuttals",
+        "revision_badge_revised": "REVISED · QA",
+        "revision_badge_cleared": "CLEARED · QA",
+        "revision_badge_rebutted": "KEPT · REBUTTED",
+        "decision_audit": "Decision audit",
+        "show_audit": "Show decision audit",
+        "hide_audit": "Hide decision audit",
         "proposal_status": "Proposal status",
         "proposal_value": "Proposal value",
         "confidence": "Confidence",
@@ -106,8 +117,19 @@ STRINGS = {
         "stat_fields": "列",
         "stat_cells": "已填单元格",
         "findings_heading": "待审阅发现",
-        "final_cycle_heading": "最终审查周期",
-        "revision_outcomes": "修订结果",
+        "qa_revision_heading": "QA 审阅与 V2 修订（{date}）",
+        "qa_summary_intro": "此 V2 已纳入独立 QA 审阅结果。首页汇总统计填充、修改、清空和反驳结果；字段标签只标记修改、清空和反驳例外。",
+        "outcome_count_filled": "填充 {n}",
+        "outcome_count_revised": "修改 {n}",
+        "outcome_count_cleared": "清空 {n}",
+        "outcome_count_rebutted_one": "反驳 {n}",
+        "outcome_count_rebutted": "反驳 {n}",
+        "revision_badge_revised": "已修改 · QA",
+        "revision_badge_cleared": "已清空 · QA",
+        "revision_badge_rebutted": "保留 · 已反驳",
+        "decision_audit": "决策审计",
+        "show_audit": "显示决策审计",
+        "hide_audit": "隐藏决策审计",
         "proposal_status": "提案状态",
         "proposal_value": "提案值",
         "confidence": "置信度",
@@ -302,13 +324,25 @@ border:1px solid var(--border);border-radius:7px;padding:1px 6px;margin-right:3p
 background:var(--accent-soft);font-size:12px}
 .audit-card.unresolved{border-color:var(--amber-border);background:var(--amber-bg)}
 .audit-title{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:650;margin-bottom:3px}
-.quality-summary{margin:0 0 18px;padding:12px 14px;border:1px solid var(--accent-border);
+.revision-summary{margin:0 0 18px;padding:13px 15px;border:1px solid var(--border);
 background:var(--surface);border-radius:9px}
-.quality-summary h2{font-size:13px;margin:0 0 8px}
-.summary-group{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px}
-.summary-label{font-size:10.5px;color:var(--muted);min-width:120px}
-.summary-chip{font-size:10.5px;border:1px solid var(--border);background:var(--bg);
-border-radius:8px;padding:1px 7px}
+.revision-summary-copy{font-size:12.8px;color:var(--muted);line-height:1.55}
+.revision-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px}
+.revision-chip{font-size:11px;border:1px solid #cbd1d9;background:#f0f2f5;color:#4e5868;
+border-radius:9px;padding:2px 9px}
+.revision-marker{margin-top:7px}
+.revision-badge{display:inline-block;border-radius:9px;padding:1px 8px;font-size:10.5px;
+font-weight:700;letter-spacing:.02em;background:var(--amber-bg);color:var(--amber-ink);
+border:1px solid var(--amber-border)}
+.revision-badge.revision-cleared{background:#f0f2f5;color:#4e5868;border-color:#cbd1d9}
+.revision-badge.revision-rebutted{background:var(--accent-soft);color:var(--accent);
+border-color:var(--accent-border)}
+.revision-note{margin-top:5px;padding:6px 10px;border-left:3px solid var(--accent-border);
+font-size:12px;color:var(--muted);line-height:1.5}
+.revision-note .change-values{display:block}
+.decision-audit{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}
+.decision-audit-title{font-size:10.5px;color:var(--muted);margin-bottom:6px}
+.fieldcard:not(.show-audit) .decision-audit{display:none}
 .hiddenrows{display:none}
 .fieldcard.show-empty .hiddenrows{display:block}
 .togglebar{padding:8px 12px;font-size:12px;color:var(--accent);cursor:pointer;
@@ -379,6 +413,25 @@ const evidenceMatches = (items, needle) =>
 const auditMatches = (item, needle) => item && (
   Object.values(item).some(value => !Array.isArray(value) && contains(value, needle)) ||
   evidenceMatches(item.evidence, needle));
+const proposalMatches = (proposal, needle) => proposal && (
+  contains(proposal.status, needle) || contains(proposal.value, needle) ||
+  contains(proposal.confidence, needle) || contains(proposal.review_note, needle) ||
+  proposal.rules_applied.some(rule => contains(rule, needle)) ||
+  evidenceMatches(proposal.evidence, needle));
+function decisionAuditKind(f) {
+  if (f.revision_change &&
+      ['revised', 'cleared'].includes(f.revision_change.kind)) {
+    return f.revision_change.kind;
+  }
+  if (f.revision && f.revision.action === 'REBUT') return 'rebutted';
+  return null;
+}
+const decisionAuditMatches = (f, needle) =>
+  proposalMatches(f.proposal, needle) || auditMatches(f.review, needle) ||
+  auditMatches(f.revision, needle) || auditMatches(f.revision_change, needle) ||
+  auditMatches(f.re_review, needle) || contains(f.unresolved_reason, needle);
+const visibleDecisionAuditMatches = (f, needle) =>
+  decisionAuditKind(f) !== null && decisionAuditMatches(f, needle);
 function rowMatches(r, q) {
   if (!q) return true;
   const needle = q.toLowerCase();
@@ -389,17 +442,9 @@ function rowMatches(r, q) {
 const fieldMatches = (f, q) => {
   if (!q) return false;
   const needle = q.toLowerCase();
-  const proposal = f.proposal;
   return contains(f.name, needle) || contains(f.value, needle) ||
     evidenceMatches(f.sources, needle) ||
-    (proposal && (contains(proposal.status, needle) || contains(proposal.value, needle) ||
-      contains(proposal.confidence, needle) ||
-      contains(proposal.review_note, needle) ||
-      proposal.rules_applied.some(rule => contains(rule, needle)) ||
-      evidenceMatches(proposal.evidence, needle))) ||
-    auditMatches(f.review, needle) || auditMatches(f.revision, needle) ||
-    auditMatches(f.revision_change, needle) || auditMatches(f.re_review, needle) ||
-    contains(f.unresolved_reason, needle);
+    (VERSION ? visibleDecisionAuditMatches(f, needle) : decisionAuditMatches(f, needle));
 };
 
 function groupHtml(name, label, badge, items) {
@@ -520,6 +565,23 @@ function revisionChangeHtml(change) {
     '<div><b>' + esc(STRINGS.before_value) + ':</b> ' + value(change.before) + '</div>' +
     '<div><b>' + esc(STRINGS.after_value) + ':</b> ' + value(change.after) + '</div></div>';
 }
+function compactRevisionHtml(f) {
+  if (!VERSION) return '';
+  const kind = decisionAuditKind(f);
+  if (!kind) return '';
+  const badge = '<span class="revision-badge revision-' + esc(kind) + '">' +
+    esc(STRINGS['revision_badge_' + kind]) + '</span>';
+  const parts = [];
+  if (f.revision_change) {
+    const value = item => item === null ? '—' : hl(item);
+    parts.push('<span class="change-values"><b>' + esc(STRINGS.before_value) + ':</b> ' +
+      value(f.revision_change.before) + ' → <b>' + esc(STRINGS.after_value) + ':</b> ' +
+      value(f.revision_change.after) + '</span>');
+  }
+  if (f.revision && f.revision.justification) parts.push(hl(f.revision.justification));
+  return '<div class="revision-marker">' + badge + '</div>' +
+    (parts.length ? '<div class="revision-note">' + parts.join(' ') + '</div>' : '');
+}
 function auditHtml(f) {
   const cards = [];
   if (f.review) {
@@ -555,19 +617,29 @@ function auditHtml(f) {
   }
   return cards.length ? '<div class="audit-stack">' + cards.join('') + '</div>' : '';
 }
+function decisionAuditHtml(f) {
+  if (VERSION && decisionAuditKind(f) === null) return '';
+  const body = proposalMetaHtml(f) + auditHtml(f);
+  return body ? '<div class="decision-audit"><div class="decision-audit-title">' +
+    esc(STRINGS.decision_audit) + '</div>' + body + '</div>' : '';
+}
+function fieldBodyHtml(f) {
+  if (!VERSION) return valueHtml(f) + proposalMetaHtml(f) + sourcesHtml(f) + auditHtml(f);
+  return valueHtml(f) + compactRevisionHtml(f) + sourcesHtml(f) + decisionAuditHtml(f);
+}
 const fieldRowHtml = f =>
   '<div class="fieldrow' + (fieldMatches(f, state.query.trim()) ? ' hit' : '') + '">' +
   '<div class="fname2" title="' + esc(f.name) + '"><span class="colno">' +
   (f.column ? 'col ' + esc(f.column) : '—') + '</span>' + esc(f.name) +
   (f.gloss_zh && ZH ? '<span class="gloss">' + esc(f.gloss_zh) + '</span>' : '') +
-  '</div><div class="fbody">' + valueHtml(f) + proposalMetaHtml(f) + sourcesHtml(f) +
-  auditHtml(f) + '</div></div>';
+  '</div><div class="fbody">' + fieldBodyHtml(f) + '</div></div>';
 
 function renderRow(r) {
   const index = DATA.rows.indexOf(r);
   const prev = DATA.rows[index - 1], next = DATA.rows[index + 1];
-  const visible = r.fields.filter(f => f.value !== null || f.proposal || f.review ||
-    f.revision || f.revision_change || f.re_review || f.unresolved_reason);
+  const visible = r.fields.filter(f => f.value !== null || (!VERSION && (f.proposal || f.review ||
+    f.revision || f.revision_change || f.re_review || f.unresolved_reason)) ||
+    (VERSION && decisionAuditKind(f) !== null));
   const empty = r.fields.filter(f => !visible.includes(f));
 
   let html = '<div class="crumb"><span class="home" id="homelink">' + esc(STRINGS.home) +
@@ -593,13 +665,18 @@ function renderRow(r) {
 
   // A search hit inside a collapsed empty field must be visible.
   const revealEmpty = empty.some(f => fieldMatches(f, state.query.trim()));
-  html += '<div class="fieldcard' + (revealEmpty ? ' show-empty' : '') + '" id="fcard">' +
+  const needle = state.query.trim().toLowerCase();
+  const hasAudit = VERSION && r.fields.some(f => decisionAuditKind(f) !== null);
+  const revealAudit = needle && r.fields.some(f => visibleDecisionAuditMatches(f, needle));
+  html += '<div class="fieldcard' + (revealEmpty ? ' show-empty' : '') +
+    (revealAudit ? ' show-audit' : '') + '" id="fcard">' +
     visible.map(fieldRowHtml).join('') +
     (empty.length
       ? '<div class="hiddenrows">' + empty.map(fieldRowHtml).join('') + '</div>' +
         '<div class="togglebar" id="tgl">' +
         t(revealEmpty ? 'hide_empty' : 'show_empty', {n: empty.length}) + '</div>'
-      : '') + '</div>';
+      : '') + (hasAudit ? '<div class="togglebar audit-toggle" id="audit-toggle">' +
+        esc(STRINGS[revealAudit ? 'hide_audit' : 'show_audit']) + '</div>' : '') + '</div>';
 
   const main = document.getElementById('main');
   main.innerHTML = html;
@@ -612,27 +689,29 @@ function renderRow(r) {
     toggle.textContent = card.classList.contains('show-empty')
       ? t('hide_empty', {n: empty.length}) : t('show_empty', {n: empty.length});
   });
+  const auditToggle = document.getElementById('audit-toggle');
+  if (auditToggle) auditToggle.addEventListener('click', () => {
+    card.classList.toggle('show-audit');
+    auditToggle.textContent = card.classList.contains('show-audit')
+      ? STRINGS.hide_audit : STRINGS.show_audit;
+  });
 }
 
-function summaryGroupHtml(label, counts, prefix) {
-  const chips = Object.entries(counts).map(([name, count]) =>
-    '<span class="summary-chip">' + esc(enumLabel(prefix, name)) + ' · ' + count +
-    '</span>').join('');
-  return '<div class="summary-group"><span class="summary-label">' + esc(label) +
-    '</span>' + (chips || '<span class="summary-chip">0</span>') + '</div>';
-}
 function qualitySummaryHtml() {
   const cycle = DATA.review_cycle;
-  if (!cycle) return '';
-  return '<section class="quality-summary"><h2>' + esc(STRINGS.final_cycle_heading) +
-    '</h2>' + summaryGroupHtml(
-      STRINGS.revision_outcomes, cycle.change_counts || {}, 'change') +
-    summaryGroupHtml(STRINGS.verdicts, cycle.verdict_counts, 'verdict') +
-    summaryGroupHtml(STRINGS.actions, cycle.action_counts, 'action') +
-    summaryGroupHtml(STRINGS.re_reviews, cycle.re_review_counts, 're_review') +
-    '<div class="summary-group"><span class="summary-label">' +
-    esc(STRINGS.unresolved_items) + '</span><span class="summary-chip">' +
-    cycle.unresolved_count + '</span></div></section>';
+  if (!VERSION || !cycle) return '';
+  const counts = cycle.change_counts || {};
+  const chips = ['filled', 'revised', 'cleared', 'rebutted'].map(kind => {
+    const key = kind === 'rebutted' && counts[kind] === 1
+      ? 'outcome_count_rebutted_one' : 'outcome_count_' + kind;
+    return '<span class="revision-chip">' +
+    esc(t(key, {n: counts[kind] || 0})) + '</span>';
+  }).join('');
+  return '<h2 class="sec">' +
+    esc(t('qa_revision_heading', {date: cycle.review_date || '—'})) + '</h2>' +
+    '<section class="revision-summary"><div class="revision-summary-copy">' +
+    esc(STRINGS.qa_summary_intro) + '</div><div class="revision-chips">' + chips +
+    '</div></section>';
 }
 
 function renderOverview() {

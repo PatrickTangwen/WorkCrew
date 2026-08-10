@@ -202,6 +202,7 @@ def test_revision_outcomes_derive_from_each_cells_first_old_and_final_new_value(
         },
     ]
     review_cycle = {
+        "review_date": "2026-08-02",
         "findings": [],
         "decisions": decisions,
         "verdicts": [],
@@ -257,6 +258,7 @@ def test_revision_outcomes_derive_from_each_cells_first_old_and_final_new_value(
         "cleared": 1,
         "rebutted": 1,
     }
+    assert data["review_cycle"]["review_date"] == "2026-08-02"
     fields = {
         f"{field['column']}{row['row']}": field
         for row in data["rows"]

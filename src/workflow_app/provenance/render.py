@@ -136,6 +136,7 @@ def _review_cycle_data(review_cycle, sheet_name):
     }
     change_counts, changes = _revision_change_data(review_cycle, sheet_name)
     summary = {
+        "review_date": review_cycle.get("review_date"),
         "verdict_counts": _count_by(review_cycle["findings"], "verdict"),
         "action_counts": _count_by(review_cycle["decisions"], "action"),
         "re_review_counts": _count_by(review_cycle["verdicts"], "verdict"),

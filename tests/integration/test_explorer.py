@@ -7,6 +7,7 @@ parsed to verify content consistency with the workbook and provenance.
 
 import json
 import re
+from datetime import date
 from pathlib import Path
 
 from workflow_app.runtimes.fake import FakeAgentRuntime
@@ -227,7 +228,10 @@ def test_straight_through_run_has_final_v2_audit(inputs):
         html = (artifacts / name).read_text()
         assert_selfcontained(html)
         data = embedded_data(html)
+        review_date = data["review_cycle"]["review_date"]
+        date.fromisoformat(review_date)
         assert data["review_cycle"] == {
+            "review_date": review_date,
             "verdict_counts": {"PASS": 1},
             "action_counts": {},
             "re_review_counts": {},
@@ -346,7 +350,10 @@ def test_v2_audit_includes_re_review_and_final_unresolved_reason(inputs):
         "comment": "The broader source context still supports correction.",
     }
     assert "upheld" in audit["unresolved_reason"]
+    review_date = data["review_cycle"]["review_date"]
+    date.fromisoformat(review_date)
     assert data["review_cycle"] == {
+        "review_date": review_date,
         "verdict_counts": {"PASS": 1, "WARN": 1},
         "action_counts": {"REBUT": 1},
         "re_review_counts": {"UPHELD": 1},
