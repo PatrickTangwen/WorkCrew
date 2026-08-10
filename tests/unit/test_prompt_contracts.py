@@ -40,6 +40,18 @@ def test_independent_variants_preserve_core_evidence_gates():
     assert "return `UNRESOLVED`" in revision
 
 
+def test_independent_reviewer_verifies_canonical_charity_names():
+    reviewer = prompt("reviewer_independent.md")
+
+    assert "review_targets" in reviewer
+    assert "verbatim document heading is insufficient" in reviewer
+    assert "formal registered-name statement" in reviewer
+    assert "leading articles" in reviewer
+    assert "abbreviations versus full words" in reviewer
+    assert "conjunctions" in reviewer
+    assert "punctuation" in reviewer
+
+
 def test_filler_keeps_row_folder_identity_and_propagates_conflicts():
     text = prompt("filler.md")
 

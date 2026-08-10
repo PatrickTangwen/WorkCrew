@@ -1,12 +1,12 @@
 """Review/revision routing rules (plan sections 27, 29, 30).
 
-Pure deterministic decision logic shared by the graph's conditional
-edges and the human-fallback artifact generation. Only non-PASS
-findings are actionable; the section-27 behavior table binds which
-revision actions are legal per verdict; the unresolved set feeds human
-review. The module also derives the revision mutation batch (plan
-sections 28, 37): decisions compose in order with read-your-writes
-note composition and audited-prior replay (ADR 0021).
+Pure deterministic review targeting and decision logic shared by the
+graph's agent inputs, validators, conditional edges, and human-fallback
+artifact generation. Source conflicts are protected for human review;
+the section-27 behavior table binds which revision actions are legal for
+the remaining findings. The module also derives the revision mutation
+batch (plan sections 28, 37): decisions compose in order with
+read-your-writes note composition and audited-prior replay (ADR 0021).
 """
 
 from workflow_app.workbook import writer
@@ -20,12 +20,97 @@ ACTIONS_BY_VERDICT = {
 }
 
 
+def plan_review_targets(extraction, schema, policy):
+    """Return the deterministic cell ledger the Reviewer must cover."""
+    field_order = {
+        name: index for index, name in enumerate(schema.target_sheet().fields)
+    }
+    proposals_by_cell = {}
+    for proposal in extraction.proposals:
+        if proposal.cell in proposals_by_cell:
+            raise ValueError(
+                f"extraction has duplicate proposals for cell {proposal.cell!r}"
+            )
+        proposals_by_cell[proposal.cell] = proposal
+    proposals = sorted(
+        proposals_by_cell.values(),
+        key=lambda proposal: (
+            proposal.row,
+            field_order.get(proposal.column_name, len(field_order)),
+            proposal.cell,
+        ),
+    )
+    if policy.coverage == "full":
+        return [
+            {"cell": proposal.cell, "reason": "full coverage"} for proposal in proposals
+        ]
+
+    reasons = {}
+
+    def add_reason(proposal, reason):
+        reasons.setdefault(proposal.cell, []).append(reason)
+
+    for proposal in proposals:
+        if proposal.column_name in policy.strict_fields:
+            add_reason(proposal, "strict field")
+        if proposal.status == "proposed" and proposal.confidence in ("low", "medium"):
+            add_reason(proposal, f"{proposal.confidence} confidence")
+        if proposal.status in ("ambiguous", "conflict"):
+            add_reason(proposal, f"{proposal.status} proposal")
+
+    proposals_by_row = {}
+    for proposal in proposals:
+        proposals_by_row.setdefault(proposal.row, []).append(proposal)
+    sample_count = policy.high_confidence_sampling_per_record
+    field_count = len(field_order)
+    for row_offset, row in enumerate(sorted(proposals_by_row)):
+        if not sample_count or not field_count:
+            continue
+        start = row_offset * sample_count % field_count
+        high_confidence = [
+            proposal
+            for proposal in proposals_by_row[row]
+            if proposal.status == "proposed"
+            and proposal.confidence == "high"
+            and proposal.cell not in reasons
+        ]
+        high_confidence.sort(
+            key=lambda proposal: (
+                (field_order.get(proposal.column_name, field_count) - start)
+                % field_count,
+                proposal.cell,
+            )
+        )
+        for proposal in high_confidence[:sample_count]:
+            add_reason(proposal, "high-confidence rotation sample")
+
+    return [
+        {"cell": proposal.cell, "reason": "; ".join(reasons[proposal.cell])}
+        for proposal in proposals
+        if proposal.cell in reasons
+    ]
+
+
 def non_pass_findings(findings):
     return [finding for finding in findings if finding.verdict != "PASS"]
 
 
-def has_actionable_findings(findings):
-    return bool(non_pass_findings(findings))
+def route_revision_findings(findings, extraction):
+    """Separate automatable findings from source conflicts reserved for people."""
+    conflict_cells = {
+        proposal.cell
+        for proposal in extraction.proposals
+        if proposal.status == "conflict"
+    }
+    actionable = non_pass_findings(findings)
+    return {
+        "agent_actionable": [
+            finding for finding in actionable if finding.cell not in conflict_cells
+        ],
+        "human_only": [
+            finding for finding in actionable if finding.cell in conflict_cells
+        ],
+    }
 
 
 def check_decisions(findings, decisions):
@@ -75,6 +160,31 @@ def check_re_review_coverage(rebutted, verdicts):
     extra = [cell for cell in verdict_cells if cell not in rebutted]
     if extra:
         return f"re-review added verdicts for non-rebutted cells: {extra}"
+    return None
+
+
+def check_review_coverage(targets, findings):
+    planned_cells = [target["cell"] for target in targets]
+    finding_cells = [finding.cell for finding in findings]
+    seen = set()
+    duplicates = []
+    for cell in finding_cells:
+        if cell in seen and cell not in duplicates:
+            duplicates.append(cell)
+        seen.add(cell)
+    if duplicates:
+        return f"review returned duplicate findings for cells: {duplicates}"
+    missing = [cell for cell in planned_cells if cell not in finding_cells]
+    if missing:
+        return f"review returned no finding for planned targets: {missing}"
+    planned = set(planned_cells)
+    extra = [
+        finding.cell
+        for finding in findings
+        if finding.cell not in planned and not finding.missed_data
+    ]
+    if extra:
+        return f"review added non-completeness findings outside the plan: {extra}"
     return None
 
 
@@ -188,13 +298,22 @@ def derive_revision_allowlist(findings, schema):
     return sorted(cells)
 
 
-def collect_unresolved(findings, decisions, verdicts):
+def collect_unresolved(findings, decisions, verdicts, human_only=()):
     decisions_by_cell = {decision.cell: decision for decision in decisions}
     verdict_cells = {verdict.cell for verdict in verdicts}
     upheld = {verdict.cell for verdict in verdicts if verdict.verdict == "UPHELD"}
+    human_only_cells = {finding.cell for finding in human_only}
 
     unresolved = []
     for finding in non_pass_findings(findings):
+        if finding.cell in human_only_cells:
+            unresolved.append(
+                {
+                    "cell": finding.cell,
+                    "reason": "protected source conflict requires human review",
+                }
+            )
+            continue
         decision = decisions_by_cell.get(finding.cell)
         if decision is None:
             unresolved.append(

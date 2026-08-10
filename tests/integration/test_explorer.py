@@ -55,6 +55,12 @@ FILLER_OUTPUT = {
 REVIEW_OUTPUT = {
     "findings": [
         {
+            "cell": "A2",
+            "verdict": "PASS",
+            "evidence": [],
+            "reviewer_comment": "The constructed ID follows the rule.",
+        },
+        {
             "cell": "F2",
             "verdict": "WARN",
             "recommended_value": REVISED_NOTE,
@@ -67,7 +73,7 @@ REVIEW_OUTPUT = {
                 }
             ],
             "reviewer_comment": "Note misses the community name.",
-        }
+        },
     ]
 }
 
@@ -97,10 +103,23 @@ def filler_fixture():
     return {"proposals": [proposal]}
 
 
+def default_review():
+    return {
+        "findings": [
+            {
+                "cell": "G12",
+                "verdict": "PASS",
+                "evidence": [],
+                "reviewer_comment": "Verified against the source.",
+            }
+        ]
+    }
+
+
 def start_run(inputs, filler=None, review=None, revision=None):
     outputs = {
         "filler": filler or filler_fixture(),
-        "reviewer": review or {"findings": []},
+        "reviewer": review or default_review(),
     }
     if revision is not None:
         outputs["revision"] = revision

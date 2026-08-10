@@ -6,20 +6,29 @@ legal for which verdicts, which cells end up unresolved.
 
 import pytest
 
-from workflow_app.models import ReReviewVerdict, ReviewFinding, RevisionDecision
-from workflow_app.workbook.schema import SheetSchema
+from workflow_app.models import (
+    CellProposal,
+    ExtractionResult,
+    ReReviewVerdict,
+    ReviewFinding,
+    RevisionDecision,
+)
+from workflow_app.review_policy import ReviewPolicy
+from workflow_app.workbook.schema import SheetSchema, WorkbookSchema
 from workflow_app.workflow.routing import (
     check_decisions,
     check_re_review_coverage,
+    check_review_coverage,
     collect_unresolved,
     compose_revision_mutations,
-    has_actionable_findings,
     note_append_value,
+    plan_review_targets,
     rebutted_cells,
+    route_revision_findings,
 )
 
 
-def finding(cell, verdict, recommended=None, comment="because"):
+def finding(cell, verdict, recommended=None, comment="because", missed_data=False):
     return ReviewFinding.model_validate(
         {
             "cell": cell,
@@ -27,6 +36,7 @@ def finding(cell, verdict, recommended=None, comment="because"):
             "recommended_value": recommended,
             "evidence": [],
             "reviewer_comment": comment,
+            "missed_data": missed_data,
         }
     )
 
@@ -50,16 +60,170 @@ def verdict(cell, outcome):
     )
 
 
+def proposal(cell, status="proposed", column_name="Field", confidence=None):
+    return CellProposal.model_validate(
+        {
+            "sheet": "Sheet",
+            "row": int(cell[1:]),
+            "column_name": column_name,
+            "cell": cell,
+            "value": "value" if status == "proposed" else None,
+            "evidence": [],
+            "rules_applied": [],
+            "confidence": (confidence or "high") if status == "proposed" else None,
+            "status": status,
+        }
+    )
+
+
+REVIEW_SCHEMA = WorkbookSchema.model_validate(
+    {
+        "sheets": [
+            {
+                "name": "Sheet",
+                "target": True,
+                "fields": {
+                    "Alpha": {"column": "A", "writable": True},
+                    "Beta": {"column": "B", "writable": True},
+                    "Gamma": {"column": "C", "writable": True},
+                    "Delta": {"column": "D", "writable": True},
+                },
+            }
+        ]
+    }
+)
+
+
 # --- actionability -------------------------------------------------------
 
 
-def test_all_pass_is_not_actionable():
-    assert not has_actionable_findings([finding("A2", "PASS"), finding("F2", "PASS")])
+def test_source_conflicts_are_human_only_revision_findings():
+    findings = [
+        finding("H5", "UNRESOLVED"),
+        finding("J5", "FAIL", recommended="Small"),
+        finding("G5", "FAIL", recommended="AB1 2CD"),
+    ]
+    extraction = ExtractionResult(
+        proposals=[
+            proposal("H5", "conflict"),
+            proposal("J5", "conflict"),
+            proposal("G5", "ambiguous"),
+        ]
+    )
+
+    routed = route_revision_findings(findings, extraction)
+
+    assert [item.cell for item in routed["agent_actionable"]] == ["G5"]
+    assert [item.cell for item in routed["human_only"]] == ["H5", "J5"]
+    assert (
+        check_decisions(routed["agent_actionable"], [decision("G5", "UNRESOLVED")])
+        is None
+    )
 
 
-@pytest.mark.parametrize("bad", ["WARN", "FAIL", "UNRESOLVED"])
-def test_any_non_pass_is_actionable(bad):
-    assert has_actionable_findings([finding("A2", "PASS"), finding("F2", bad)])
+# --- deterministic review coverage --------------------------------------
+
+
+def test_full_review_targets_every_proposal_in_stable_schema_order():
+    extraction = ExtractionResult(
+        proposals=[
+            proposal("B3", column_name="Beta"),
+            proposal("C2", "conflict", column_name="Gamma"),
+            proposal("A3", column_name="Alpha"),
+            proposal("B2", column_name="Beta", confidence="medium"),
+            proposal("A2", "not_found", column_name="Alpha"),
+        ]
+    )
+
+    targets = plan_review_targets(
+        extraction, REVIEW_SCHEMA, ReviewPolicy(coverage="full")
+    )
+
+    assert targets == [
+        {"cell": "A2", "reason": "full coverage"},
+        {"cell": "B2", "reason": "full coverage"},
+        {"cell": "C2", "reason": "full coverage"},
+        {"cell": "A3", "reason": "full coverage"},
+        {"cell": "B3", "reason": "full coverage"},
+    ]
+
+
+def test_review_target_plan_rejects_duplicate_proposal_cells():
+    extraction = ExtractionResult(
+        proposals=[
+            proposal("A2", column_name="Alpha"),
+            proposal("A2", column_name="Alpha"),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="duplicate.*A2"):
+        plan_review_targets(extraction, REVIEW_SCHEMA, ReviewPolicy())
+
+
+def test_sampled_review_targets_mandatory_cells_and_rotates_high_confidence():
+    extraction = ExtractionResult(
+        proposals=[
+            proposal("D3", "conflict", column_name="Delta"),
+            proposal("A3", column_name="Alpha"),
+            proposal("C2", column_name="Gamma", confidence="low"),
+            proposal("D2", "not_found", column_name="Delta"),
+            proposal("B3", column_name="Beta"),
+            proposal("A2", column_name="Alpha"),
+            proposal("C3", "ambiguous", column_name="Gamma"),
+            proposal("B2", column_name="Beta", confidence="medium"),
+        ]
+    )
+    policy = ReviewPolicy(
+        coverage="sampled",
+        strict_fields=["Delta"],
+        high_confidence_sampling_per_record=1,
+    )
+
+    targets = plan_review_targets(extraction, REVIEW_SCHEMA, policy)
+
+    assert targets == [
+        {"cell": "A2", "reason": "high-confidence rotation sample"},
+        {"cell": "B2", "reason": "medium confidence"},
+        {"cell": "C2", "reason": "low confidence"},
+        {"cell": "D2", "reason": "strict field"},
+        {"cell": "B3", "reason": "high-confidence rotation sample"},
+        {"cell": "C3", "reason": "ambiguous proposal"},
+        {"cell": "D3", "reason": "strict field; conflict proposal"},
+    ]
+
+
+def test_review_coverage_rejects_a_missing_planned_target():
+    targets = [
+        {"cell": "A2", "reason": "full coverage"},
+        {"cell": "B2", "reason": "full coverage"},
+    ]
+
+    reason = check_review_coverage(targets, [finding("A2", "PASS")])
+
+    assert reason is not None and "B2" in reason
+
+
+def test_review_coverage_rejects_duplicate_findings():
+    targets = [{"cell": "A2", "reason": "full coverage"}]
+
+    reason = check_review_coverage(
+        targets, [finding("A2", "PASS"), finding("A2", "WARN")]
+    )
+
+    assert reason is not None and "duplicate" in reason and "A2" in reason
+
+
+def test_review_coverage_allows_extra_findings_only_for_missed_data():
+    targets = [{"cell": "A2", "reason": "full coverage"}]
+    planned = finding("A2", "PASS")
+
+    illegal = check_review_coverage(targets, [planned, finding("B2", "FAIL")])
+    allowed = check_review_coverage(
+        targets, [planned, finding("B2", "FAIL", missed_data=True)]
+    )
+
+    assert illegal is not None and "B2" in illegal
+    assert allowed is None
 
 
 # --- decision legality (plan section 27 behavior table) ------------------
@@ -179,6 +343,19 @@ def test_unresolved_collects_all_three_sources():
     assert "upheld" in reasons["D2"]
     assert "revision" in reasons["G4"]
     assert "no revision decision" in reasons["E3"]
+
+
+def test_protected_source_conflicts_have_an_explicit_human_reason():
+    conflict = finding("H5", "UNRESOLVED")
+
+    unresolved = collect_unresolved([conflict], [], [], human_only=[conflict])
+
+    assert unresolved == [
+        {
+            "cell": "H5",
+            "reason": "protected source conflict requires human review",
+        }
+    ]
 
 
 def test_nothing_unresolved_when_all_closed():

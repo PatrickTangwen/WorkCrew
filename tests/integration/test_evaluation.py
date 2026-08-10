@@ -225,6 +225,17 @@ def build_outputs(labels):
                         "justification": "Nothing in the sources supports it.",
                     }
                 )
+    reviewed_cells = {finding["cell"] for finding in findings}
+    findings.extend(
+        {
+            "cell": proposal["cell"],
+            "verdict": "PASS",
+            "evidence": proposal["evidence"][:1],
+            "reviewer_comment": "Verified against the source.",
+        }
+        for proposal in proposals
+        if proposal["cell"] not in reviewed_cells
+    )
     return {
         "filler": {"proposals": proposals},
         "reviewer": {"findings": findings},

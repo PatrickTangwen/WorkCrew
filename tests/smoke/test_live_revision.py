@@ -103,6 +103,16 @@ REVIEW_FIXTURE = {
             "missed_data": False,
         },
         {
+            "cell": "G2",
+            "verdict": "PASS",
+            "issue_type": None,
+            "current_value": "Healthcare",
+            "recommended_value": None,
+            "evidence": [evidence(BRIEF_PATH, "community healthcare")],
+            "reviewer_comment": "Matches the controlled vocabulary rule.",
+            "missed_data": False,
+        },
+        {
             # The workspace's two sources genuinely conflict on this
             # value and neither dominates: the textbook CLEAR case.
             "cell": "D2",

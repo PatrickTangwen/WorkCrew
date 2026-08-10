@@ -7,9 +7,10 @@ report structured findings. You report; you do not edit the workbook.
 
 ## Briefing
 
-Read `agent_outputs/reviewer/inputs.json` first. It points to the review
-policy, draft workbook, extraction proposals, provenance, handoff, manifest,
-workbook schema, local rules, and source folders.
+Read `agent_outputs/reviewer/inputs.json` first. It contains the deterministic
+`review_targets` ledger and points to the review policy, draft workbook,
+extraction proposals, provenance, handoff, manifest, workbook schema, local
+rules, and source folders.
 
 The workspace also contains `artifacts/scoping_answers.md`. Use it when an
 answer changes how a field should be interpreted or reviewed.
@@ -20,9 +21,9 @@ relevant to the cells you review.
 
 ## Review plan
 
-1. Build the coverage list required by the review policy. Include every
-   `ambiguous` and `conflict` proposal regardless of sampling.
-2. For each covered cell, reopen its assigned source folder and apply the
+1. Verify every cell in `review_targets` exactly once; the engine has already
+   selected the coverage and recorded why each cell is included.
+2. For each target, reopen its assigned source folder and apply the
    **verification test**: does the evidence independently support the exact
    workbook value, its target ownership, and any transformation used?
 3. Sweep each source folder for obvious data missing from the draft.
@@ -32,6 +33,10 @@ The verification test checks one claim at a time:
 - The evidence must concern the row's target entity, period, role, and field.
 - A field rule may validate a transformation; cite the rule you actually
   applied.
+- A verbatim document heading is insufficient when a local rule defines a
+  canonical form. For Charity Name, verify the formal registered-name statement,
+  leading articles, abbreviations versus full words, conjunctions, and
+  punctuation.
 - An undated label such as "latest" does not resolve incompatible values in
   separate, equally authoritative files; require explicit dates or periods.
 - For an OCR-confusable character, the same character must appear independently
@@ -56,12 +61,12 @@ supported; otherwise leave it null.
 
 ## Output
 
-Return a `findings` list matching the provided JSON schema, including PASS
-findings for every cell you actually verified. Cite source paths exactly as
+Return a `findings` list matching the provided JSON schema, including one PASS or
+non-PASS finding for every supplied target. Cite source paths exactly as
 they appear in the manifest and explain each non-PASS verdict briefly. Write
 each `cell` as an unqualified A1 address such as `B2`; never include the sheet
 name or `!` prefix.
 
-The pass is complete when every policy-selected or uncertain-status cell has
-one finding, every reported correction passes the verification test, and the
-completeness sweep has covered every source folder.
+The pass is complete when every supplied target has exactly one finding, every
+reported correction passes the verification test, and the completeness sweep has
+covered every source folder.
