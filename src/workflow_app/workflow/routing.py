@@ -153,8 +153,6 @@ def check_decisions(findings, decisions):
                 f"decision for {decision.cell!r} targets a PASS finding;"
                 " PASS cells are frozen"
             )
-        if decision.action in ("ACCEPT", "FIX", "CLEAR") and not decision.evidence:
-            return f"workbook edit on {decision.cell!r} requires decision evidence"
         allowed = ACTIONS_BY_VERDICT[finding.verdict]
         if decision.action not in allowed:
             return (
@@ -175,6 +173,13 @@ def check_decisions(findings, decisions):
             return (
                 f"note_append on {decision.cell!r} requires a primary edit"
                 f" (ACCEPT/FIX/CLEAR), got {decision.action}"
+            )
+        if decision.action in ("ACCEPT", "FIX", "CLEAR", "REBUT") and not (
+            decision.evidence
+        ):
+            return (
+                f"decision action {decision.action!r} on {decision.cell!r}"
+                " requires evidence"
             )
     return None
 

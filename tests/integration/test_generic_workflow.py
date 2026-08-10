@@ -17,26 +17,30 @@ CASES = [
         "folder": "vendor_batch_07",
         "sheet": "Accounts Payable Intake",
         "identity": ("Invoice Code", "B", "INV-007"),
+        "source_identity": "007",
+        "identity_rule": "Canonical Invoice Code: prefix the source invoice number with INV-.",
         "conflict": ("Gross Total", "E"),
-        "source_text": "Invoice INV-007 lists totals of 820 and 870 in two summaries.",
+        "source_text": "Invoice number 007 lists totals of 820 and 870 in two summaries.",
     },
     {
         "id": "application_to_crm",
         "folder": "candidate_19",
         "sheet": "Applicant Register",
         "identity": ("Applicant Key", "C", "APP-019"),
+        "source_identity": "019",
+        "identity_rule": "Canonical Applicant Key: prefix the source applicant number with APP-.",
         "conflict": ("Requested Support", "F"),
-        "source_text": "Application APP-019 requests 40 hours; the addendum requests 60.",
+        "source_text": "Applicant number 019 requests 40 hours; the addendum requests 60.",
     },
 ]
 
 
-def evidence(source_file, text):
+def evidence(source_file, text, evidence_type="direct", location="line 1"):
     return {
         "source_file": source_file,
-        "source_location": "line 1",
+        "source_location": location,
         "evidence_text": text,
-        "evidence_type": "direct",
+        "evidence_type": evidence_type,
     }
 
 
@@ -77,6 +81,7 @@ def test_workflow_invariants_survive_domain_and_layout_changes(tmp_path, case):
                         "fields": {
                             identity_name: {
                                 "column": identity_column,
+                                "value_kind": "constructed",
                                 "writable": True,
                             },
                             conflict_name: {
@@ -93,7 +98,9 @@ def test_workflow_invariants_survive_domain_and_layout_changes(tmp_path, case):
     rules = tmp_path / "rules"
     rules.mkdir()
     (rules / "field_rules.md").write_text(
-        "Use the source record assigned to the row; preserve unresolved conflicts."
+        "# Canonical identifier\n\n"
+        + case["identity_rule"]
+        + "\n\nPreserve unresolved conflicts.\n"
     )
     answers = tmp_path / "scoping_answers.md"
     answers.write_text(f"Row 2 maps to {case['folder']}.\n")
@@ -111,11 +118,21 @@ def test_workflow_invariants_survive_domain_and_layout_changes(tmp_path, case):
                 "cell": identity_cell,
                 "value": identity_value,
                 "evidence": [
-                    evidence(source_file, "The record states the identifier.")
+                    evidence(
+                        source_file,
+                        f"The record states base identifier {case['source_identity']}.",
+                    ),
+                    evidence(
+                        "rules/field_rules.md",
+                        case["identity_rule"],
+                        evidence_type="rule",
+                        location="Canonical identifier",
+                    ),
                 ],
-                "rules_applied": [],
-                "confidence": "high",
+                "rules_applied": ["field_rules.md#canonical-identifier"],
+                "confidence": "medium",
                 "status": "proposed",
+                "notes": "Constructed from the source identifier under the local canonical rule.",
             },
             {
                 "sheet": case["sheet"],
@@ -186,3 +203,12 @@ def test_workflow_invariants_survive_domain_and_layout_changes(tmp_path, case):
         f"{case['sheet']}!{conflict_cell}",
     ]
     assert handoff["decision_records"][0]["evidence"][0]["source_file"] == source_file
+    identity_record = handoff["decision_records"][0]
+    assert [item["evidence_type"] for item in identity_record["evidence"]] == [
+        "direct",
+        "rule",
+    ]
+    assert identity_record["rules_applied"] == ["field_rules.md#canonical-identifier"]
+    assert identity_record["review_note"] == (
+        "Constructed from the source identifier under the local canonical rule."
+    )

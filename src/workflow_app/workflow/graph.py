@@ -665,18 +665,29 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         workspace.human_review_md.write_text(render_human_review_md(items))
 
     def unreviewed_human_review(state):
-        # The review stage never completed: every agent-written cell is
-        # unreviewed and escalates with both agents' columns empty.
+        # The review stage never completed: every agent-written cell and
+        # every still-blank source conflict escalates with agent columns empty.
         provenance = json.loads(workspace.provenance_json.read_text())
         sheet_name = schema_from(state).target_sheet().name
         draft = writer.open_draft(workspace.draft_xlsx)
-        reason = "the review stage did not complete after retries"
+        review_failure_reason = "the review stage did not complete after retries"
+        conflict_reason = "protected source conflict requires human review"
 
-        items = []
+        reasons_by_cell = {}
         for entry in provenance["entries"]:
             entry_sheet, cell_ref = entry["cell"].split("!", 1)
             if entry_sheet != sheet_name:
                 continue
+            reasons_by_cell[cell_ref] = review_failure_reason
+        for proposal in load_extraction(state).proposals:
+            if proposal.sheet != sheet_name or proposal.status != "conflict":
+                continue
+            cell_ref = writer.normalize_cell(proposal.cell)
+            if cell_ref is not None:
+                reasons_by_cell[cell_ref] = conflict_reason
+
+        items = []
+        for cell_ref, reason in reasons_by_cell.items():
             items.append(
                 {
                     "cell": cell_ref,
@@ -689,7 +700,12 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
             )
         workspace.unresolved_json.write_text(
             json.dumps(
-                {"cells": [{"cell": item["cell"], "reason": reason} for item in items]},
+                {
+                    "cells": [
+                        {"cell": item["cell"], "reason": item["reason"]}
+                        for item in items
+                    ]
+                },
                 indent=2,
             )
         )

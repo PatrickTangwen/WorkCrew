@@ -346,6 +346,45 @@ def test_reviewer_triple_failure_escalates_all_written_cells(inputs):
     )
 
 
+def test_reviewer_triple_failure_preserves_blank_source_conflicts(inputs):
+    conflict_output = {
+        "proposals": [
+            *FILLER_OUTPUT["proposals"],
+            {
+                "sheet": SHEET,
+                "row": 4,
+                "column_name": "Start Date",
+                "cell": "D4",
+                "value": None,
+                "evidence": [evidence("Two authoritative source dates disagree.")],
+                "rules_applied": [],
+                "confidence": None,
+                "status": "conflict",
+                "notes": "The dates cannot be reconciled.",
+            },
+        ]
+    }
+    runtimes, _ = make_runtimes(
+        {
+            "filler": [conflict_output],
+            "reviewer": ["error", "raise", "error"],
+        }
+    )
+
+    state = start_run(inputs, runtimes)
+    workspace = inputs["runs_root"] / state["run_id"]
+    items = human_review_items(workspace)
+
+    assert set(items) == {"F2", "A2", "G4", "D4"}
+    assert items["D4"]["current_value"] is None
+    assert items["D4"]["reviewer"] is None
+    assert items["D4"]["reason"] == ("protected source conflict requires human review")
+    unresolved = json.loads((workspace / "artifacts/unresolved.json").read_text())
+    assert {item["cell"]: item["reason"] for item in unresolved["cells"]}["D4"] == (
+        "protected source conflict requires human review"
+    )
+
+
 def test_revision_triple_failure_marks_all_findings_unresolved(inputs):
     runtimes, runtime = make_runtimes({"revision": ["raise", "error", "raise"]})
     state = start_run(inputs, runtimes)
