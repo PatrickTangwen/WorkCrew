@@ -1,10 +1,11 @@
 import { useEffect } from "react"
-import { Clock3, FolderOpen, PackageOpen } from "lucide-react"
+import { Ban, Clock3, FolderOpen, PackageOpen, RotateCcw } from "lucide-react"
 
 import { ArtifactViewer } from "@/components/artifact-viewer"
 import { RunStatusBadge } from "@/components/run-status-badge"
 import { ScopingQuestionForm } from "@/components/scoping-question-form"
 import { WorkflowProgress } from "@/components/workflow-progress"
+import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -22,15 +23,23 @@ function RunDetail({ run }: { run: RunRecord }) {
   const disconnectRunStream = useAppStore((state) => state.disconnectRunStream)
   const scoping = useAppStore((state) => state.scoping)
   const resumeRun = useAppStore((state) => state.resumeRun)
+  const cancelRun = useAppStore((state) => state.cancelRun)
+  const retryRun = useAppStore((state) => state.retryRun)
+  const runAction = useAppStore((state) => state.runAction)
   const events = streamRunId === run.run_id ? streamEvents : []
   const streamable =
     run.status === "running" || run.status === "paused" || run.status === "failed"
+  const streamLifecycle =
+    run.status === "failed" ? "failed" : streamable ? "active" : "inactive"
 
   useEffect(() => {
     if (!streamable) return
     connectRunStream(run.run_id)
     return disconnectRunStream
-  }, [connectRunStream, disconnectRunStream, run.run_id, streamable])
+  }, [connectRunStream, disconnectRunStream, run.run_id, streamLifecycle, streamable])
+
+  const action = runAction.runId === run.run_id ? runAction : null
+  const actionPending = action?.status === "submitting"
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
@@ -45,14 +54,43 @@ function RunDetail({ run }: { run: RunRecord }) {
               {run.source_name} → {run.workbook_name}
             </h1>
           </div>
-          <div className="grid gap-1 text-xs text-muted-foreground sm:text-right">
-            <span className="flex items-center gap-1.5 sm:justify-end">
-              <Clock3 className="size-3.5" />
-              Started {new Date(run.start_time).toLocaleString()}
-            </span>
-            <span className="max-w-md truncate font-mono" title={run.workspace_path}>
-              {run.workspace_path}
-            </span>
+          <div className="flex flex-col gap-3 sm:items-end">
+            <div className="grid gap-1 text-xs text-muted-foreground sm:text-right">
+              <span className="flex items-center gap-1.5 sm:justify-end">
+                <Clock3 className="size-3.5" />
+                Started {new Date(run.start_time).toLocaleString()}
+              </span>
+              <span className="max-w-md truncate font-mono" title={run.workspace_path}>
+                {run.workspace_path}
+              </span>
+            </div>
+            {run.status === "running" && (
+              <Button
+                aria-label="Cancel run"
+                variant="outline"
+                size="sm"
+                disabled={actionPending}
+                className="text-destructive hover:bg-destructive/8"
+                onClick={() => void cancelRun(run.run_id)}
+              >
+                <Ban /> {actionPending ? "Cancelling…" : "Cancel"}
+              </Button>
+            )}
+            {(run.status === "failed" || run.status === "cancelled") && (
+              <Button
+                aria-label="Retry run"
+                size="sm"
+                disabled={actionPending}
+                onClick={() => void retryRun(run.run_id)}
+              >
+                <RotateCcw /> {actionPending ? "Retrying…" : "Retry"}
+              </Button>
+            )}
+            {action?.status === "error" && action.error && (
+              <p role="alert" className="max-w-sm text-xs text-destructive">
+                {action.error}
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

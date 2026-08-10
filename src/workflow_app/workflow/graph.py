@@ -25,6 +25,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 from pydantic import ValidationError
 
+from workflow_app.cancellation import WorkflowCancelled
 from workflow_app.handoff import build_handoff, render_handoff_markdown
 from workflow_app.ingestion.manifest import Manifest, build_manifest
 from workflow_app.models import (
@@ -81,13 +82,21 @@ def build_graph(execution, audit, checkpointer):
     inputs = execution.inputs
     runtimes = execution.runtimes
     progress = execution.progress
+    cancellation = execution.cancellation
 
     def stage(name, body):
         def node(state):
             audit.record_stage_started(state["run_id"], name)
             progress.phase_change(name, "active")
             try:
+                if name != "INIT":
+                    cancellation.raise_if_cancelled()
                 update = body(state) or {}
+                cancellation.raise_if_cancelled()
+            except WorkflowCancelled:
+                audit.record_stage_cancelled(state["run_id"], name)
+                progress.phase_change(name, "failed")
+                raise
             except GraphBubbleUp:
                 # LangGraph control flow (the scoping interrupt), not a
                 # failure: the dangling 'started' row records the pause.
@@ -359,7 +368,11 @@ def build_graph(execution, audit, checkpointer):
                 progress.emit(f"Retrying {role} (attempt {attempt + 1})...")
             try:
                 result = runtimes[role].run(
-                    AgentRequest(role=role, workspace_path=str(workspace.root))
+                    AgentRequest(
+                        role=role,
+                        workspace_path=str(workspace.root),
+                        cancellation=cancellation,
+                    )
                 )
             # Any runtime exception is a temporary invocation failure
             # by plan section 37; kills are BaseException and pass.

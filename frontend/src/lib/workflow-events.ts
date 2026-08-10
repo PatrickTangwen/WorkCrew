@@ -47,6 +47,15 @@ function workflowEventDetails(event: WorkflowEvent): WorkflowEventDetails {
       error: null,
     }
   }
+  if (event.reason === "cancelled") {
+    return {
+      phase: null,
+      phaseStatus: null,
+      runStatus: "cancelled",
+      logMessage: event.error,
+      error: null,
+    }
+  }
   return {
     phase: null,
     phaseStatus: null,

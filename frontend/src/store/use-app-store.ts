@@ -1,6 +1,7 @@
 import { create } from "zustand"
 
 import {
+  cancelRun as requestRunCancel,
   getScopingQuestions,
   resumeRun as requestRunResume,
   type RunRecord,
@@ -21,6 +22,13 @@ type ScopingState = {
   error: string | null
 }
 
+type RunActionState = {
+  runId: string | null
+  kind: "cancel" | "retry" | null
+  status: "idle" | "submitting" | "error"
+  error: string | null
+}
+
 type AppState = {
   view: AppView
   currentRun: RunRecord | null
@@ -32,6 +40,7 @@ type AppState = {
   streamStatus: "idle" | "connecting" | "connected" | "disconnected" | "error"
   streamError: string | null
   scoping: ScopingState
+  runAction: RunActionState
   openNewRun: () => void
   showRun: (run: RunRecord) => void
   startHistoryLoad: () => void
@@ -41,6 +50,8 @@ type AppState = {
   disconnectRunStream: () => void
   loadScopingQuestions: (runId: string) => Promise<void>
   resumeRun: (runId: string, answers: ScopingAnswers) => Promise<void>
+  cancelRun: (runId: string) => Promise<void>
+  retryRun: (runId: string) => Promise<void>
 }
 
 let activeSocket: WebSocket | null = null
@@ -94,6 +105,14 @@ function emptyScopingState(): ScopingState {
   return { runId: null, questions: [], status: "idle", error: null }
 }
 
+function emptyRunActionState(): RunActionState {
+  return { runId: null, kind: null, status: "idle", error: null }
+}
+
+function runAfterAction(current: RunRecord | null, run: RunRecord) {
+  return current?.run_id === run.run_id ? run : current
+}
+
 function scopingStateForRun(scoping: ScopingState, runId: string) {
   return scoping.runId === runId ? scoping : emptyScopingState()
 }
@@ -109,6 +128,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   streamStatus: "idle",
   streamError: null,
   scoping: emptyScopingState(),
+  runAction: emptyRunActionState(),
   openNewRun: () => set({ view: "new-run" }),
   showRun: (run) =>
     set((state) => {
@@ -272,6 +292,70 @@ export const useAppStore = create<AppState>()((set, get) => ({
                   cause instanceof Error
                     ? cause.message
                     : "Unable to resume the run",
+              },
+            }
+          : {}
+      )
+    }
+  },
+  cancelRun: async (runId) => {
+    set({
+      runAction: { runId, kind: "cancel", status: "submitting", error: null },
+    })
+    try {
+      const run = await requestRunCancel(runId)
+      set((state) => ({
+        currentRun: runAfterAction(state.currentRun, run),
+        runs: withRunSummary(state.runs, run),
+        runAction: emptyRunActionState(),
+      }))
+    } catch (cause) {
+      set((state) =>
+        state.runAction.runId === runId
+          ? {
+              runAction: {
+                runId,
+                kind: "cancel",
+                status: "error",
+                error:
+                  cause instanceof Error ? cause.message : "Unable to cancel the run",
+              },
+            }
+          : {}
+      )
+    }
+  },
+  retryRun: async (runId) => {
+    set({
+      runAction: { runId, kind: "retry", status: "submitting", error: null },
+    })
+    try {
+      const run = await requestRunResume(runId, {})
+      set((state) => {
+        const selected = state.currentRun?.run_id === runId
+        return {
+          currentRun: runAfterAction(state.currentRun, run),
+          runs: withRunSummary(state.runs, run),
+          runAction: emptyRunActionState(),
+          ...(selected
+            ? {
+                streamRunId: null,
+                streamEvents: [],
+                streamStatus: "idle" as const,
+                streamError: null,
+              }
+            : {}),
+        }
+      })
+    } catch (cause) {
+      set((state) =>
+        state.runAction.runId === runId
+          ? {
+              runAction: {
+                runId,
+                kind: "retry",
+                status: "error",
+                error: cause instanceof Error ? cause.message : "Unable to retry the run",
               },
             }
           : {}

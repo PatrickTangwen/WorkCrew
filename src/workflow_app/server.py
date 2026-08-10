@@ -22,6 +22,7 @@ from workflow_app.artifacts import (
     RunNotFoundError,
 )
 from workflow_app.audit.db import AuditStore
+from workflow_app.cancellation import CancellationToken, WorkflowCancelled
 from workflow_app.models import ScopingQuestions
 from workflow_app.progress import emit
 from workflow_app.reports import render_scoping_answers
@@ -92,6 +93,7 @@ class TrackedRun:
     finished_at: str | None = None
     events: "RunEventChannel" = field(default_factory=lambda: RunEventChannel())
     task: asyncio.Task | None = None
+    cancellation: CancellationToken = field(default_factory=CancellationToken)
 
 
 class RunEventChannel:
@@ -167,37 +169,67 @@ class RunCoordinator:
     async def resume(self, run_id, request):
         tracked = self.runs.get(run_id)
         if tracked is None:
-            raise HTTPException(status_code=404, detail="Run not found")
-        if tracked.record.status != "paused":
-            raise HTTPException(status_code=409, detail="Run is not paused")
+            record = await asyncio.to_thread(
+                RunHistory(self.options.runs_root).get_record, run_id
+            )
+            tracked = self.runs.setdefault(
+                run_id,
+                TrackedRun(RunRecord.model_validate(record)),
+            )
+        if any(
+            candidate.record.run_id != run_id
+            and candidate.record.status in {"running", "paused"}
+            for candidate in self.runs.values()
+        ):
+            raise HTTPException(status_code=409, detail="A run is already active")
+        resumable = {"paused", "failed", "cancelled"}
+        if tracked.record.status not in resumable:
+            raise HTTPException(status_code=409, detail="Run is not resumable")
         if tracked.task is not None:
             await tracked.task
-        if tracked.record.status != "paused":
-            raise HTTPException(status_code=409, detail="Run is not paused")
+        if tracked.record.status not in resumable:
+            raise HTTPException(status_code=409, detail="Run is not resumable")
 
-        workspace = Workspace((Path(self.options.runs_root) / run_id).resolve())
-        questions = ScopingQuestions.model_validate_json(
-            workspace.scoping_questions_json.read_text()
-        )
-        expected = {question.id for question in questions.questions}
-        received = set(request.answers)
-        if received != expected:
-            missing = sorted(expected - received)
-            unknown = sorted(received - expected)
-            raise HTTPException(
-                status_code=422,
-                detail=f"Answers must match the scoping questions."
-                f" Missing: {missing}. Unknown: {unknown}.",
+        status = tracked.record.status
+        if status == "paused":
+            workspace = Workspace((Path(self.options.runs_root) / run_id).resolve())
+            questions = ScopingQuestions.model_validate_json(
+                workspace.scoping_questions_json.read_text()
             )
-        workspace.scoping_answers_md.write_text(
-            render_scoping_answers(questions, request.answers)
-        )
+            expected = {question.id for question in questions.questions}
+            received = set(request.answers)
+            if received != expected:
+                missing = sorted(expected - received)
+                unknown = sorted(received - expected)
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Answers must match the scoping questions."
+                    f" Missing: {missing}. Unknown: {unknown}.",
+                )
+            workspace.scoping_answers_md.write_text(
+                render_scoping_answers(questions, request.answers)
+            )
 
+        if status in {"failed", "cancelled"}:
+            tracked.events = RunEventChannel()
+        tracked.cancellation = CancellationToken()
         tracked.record.status = "running"
         response = tracked.record.model_dump()
         progress_callback = self._progress_callback(tracked)
         self._schedule(tracked, self._resume(tracked, progress_callback))
         return response
+
+    async def cancel(self, run_id):
+        tracked = self.runs.get(run_id)
+        if tracked is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        if tracked.record.status != "running" or tracked.task is None:
+            raise HTTPException(status_code=409, detail="Run is not running")
+
+        task = tracked.task
+        tracked.cancellation.cancel()
+        await task
+        return tracked.record.model_dump()
 
     def find(self, run_id):
         tracked = self.runs.get(run_id)
@@ -239,27 +271,35 @@ class RunCoordinator:
         )
 
     async def _execute(self, tracked, inputs, progress_callback):
-        record = tracked.record
-        result = await asyncio.to_thread(
+        await self._run_operation(
+            tracked,
             self.options.runner,
             inputs=inputs,
             runs_root=Path(self.options.runs_root),
             runtimes=self._runtimes(),
-            run_id=record.run_id,
+            run_id=tracked.record.run_id,
             progress_callback=progress_callback,
+            cancellation=tracked.cancellation,
         )
-        self._record_result(tracked, result)
 
     async def _resume(self, tracked, progress_callback):
-        record = tracked.record
-        runtimes = self._runtimes()
-        result = await asyncio.to_thread(
+        await self._run_operation(
+            tracked,
             self.options.resumer,
-            run_id=record.run_id,
+            run_id=tracked.record.run_id,
             runs_root=Path(self.options.runs_root),
-            runtimes=runtimes,
+            runtimes=self._runtimes(),
             progress_callback=progress_callback,
+            cancellation=tracked.cancellation,
         )
+
+    async def _run_operation(self, tracked, operation, **kwargs):
+        try:
+            result = await asyncio.to_thread(operation, **kwargs)
+        except WorkflowCancelled:
+            tracked.record.status = "cancelled"
+            tracked.finished_at = datetime.now(UTC).isoformat()
+            return
         self._record_result(tracked, result)
 
     def _record_result(self, tracked, result):
@@ -280,9 +320,15 @@ class RunCoordinator:
         loop = asyncio.get_running_loop()
 
         def callback(event):
-            loop.call_soon_threadsafe(self._receive_event, tracked, dict(event))
+            delivered = asyncio.run_coroutine_threadsafe(
+                self._deliver_event(tracked, dict(event)), loop
+            )
+            delivered.result()
 
         return callback
+
+    async def _deliver_event(self, tracked, event):
+        self._receive_event(tracked, event)
 
     def _schedule(self, tracked, operation):
         task = asyncio.create_task(operation)
@@ -309,7 +355,9 @@ class RunCoordinator:
             record.status = "completed"
             tracked.finished_at = datetime.now(UTC).isoformat()
         elif event["type"] == "failed":
-            record.status = "failed"
+            record.status = (
+                "cancelled" if event.get("reason") == "cancelled" else "failed"
+            )
             tracked.finished_at = datetime.now(UTC).isoformat()
         tracked.events.publish(event)
 
@@ -472,6 +520,10 @@ def create_app(static_dir=DEFAULT_STATIC_DIR, require_frontend=False, options=No
     @app.post("/api/runs/{run_id}/resume", status_code=202)
     async def resume_run(run_id: str, request: ResumeRunRequest):
         return await coordinator.resume(run_id, request)
+
+    @app.post("/api/runs/{run_id}/cancel")
+    async def cancel_run(run_id: str):
+        return await coordinator.cancel(run_id)
 
     @app.get("/api/runs")
     async def list_runs():
