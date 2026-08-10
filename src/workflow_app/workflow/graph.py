@@ -328,7 +328,15 @@ def build_graph(execution, audit, checkpointer):
         return json.loads(path.read_text())[key]
 
     def explorer_review_cycle(state):
+        run = audit.get_run(state["run_id"])
+        finished_stages = [
+            stage["finished_at"]
+            for stage in audit.list_stages(state["run_id"])
+            if stage["finished_at"] is not None
+        ]
+        review_timestamp = max(finished_stages, default=run["started_at"])
         return {
+            "review_date": review_timestamp.split("T", 1)[0],
             "findings": read_artifact_items(workspace.review_json, "findings"),
             "decisions": read_artifact_items(workspace.revision_json, "decisions"),
             "verdicts": read_artifact_items(workspace.re_review_json, "verdicts"),

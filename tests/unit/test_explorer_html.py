@@ -149,6 +149,7 @@ def test_shell_exposes_proposal_and_final_audit_layers():
         }
     )
     data["review_cycle"] = {
+        "review_date": "2026-08-02",
         "verdict_counts": {"UNRESOLVED": 1},
         "action_counts": {"REBUT": 1},
         "re_review_counts": {"UPHELD": 1},
@@ -165,7 +166,11 @@ def test_shell_exposes_proposal_and_final_audit_layers():
     zh = render_explorer_html(data, "zh")
 
     for marker in (
-        "quality-summary",
+        "revision-summary",
+        "revision-badge",
+        "revision-note",
+        "decision-audit",
+        "audit-toggle",
         "status-badge",
         "proposal-meta",
         "proposal_value",
@@ -176,8 +181,11 @@ def test_shell_exposes_proposal_and_final_audit_layers():
         assert marker in en
     assert "Proposal status" in en
     assert "Proposal value" in en
-    assert "Final review cycle" in en
-    assert "Revision outcomes" in en
+    assert "QA review & v2 revision ({date})" in en
+    assert "This V2 incorporates the independent QA review." in en
+    assert "field tags mark revised, cleared, and rebutted exceptions" in en
+    assert "QA 审阅与 V2 修订（{date}）" in zh
+    assert "字段标签只标记修改、清空和反驳例外" in zh
     assert "contains(proposal.value, needle)" in en
     assert "return evidenceHtml(f.sources, STRINGS.current_provenance)" in en
     assert "auditBadge('verdict', f.review.verdict)" in en
@@ -185,10 +193,10 @@ def test_shell_exposes_proposal_and_final_audit_layers():
     assert "auditBadge('re_review', f.re_review.verdict)" in en
     assert "revisionChangeHtml(f.revision_change)" in en
     assert "cycle.change_counts" in en
+    assert "compactRevisionHtml(f) + sourcesHtml(f)" in en
+    assert "decisionAuditHtml(f)" in en
     assert "提案状态" in zh
     assert "提案值" in zh
-    assert "最终审查周期" in zh
-    assert "修订结果" in zh
     strings = embedded(zh, "STRINGS")
     assert strings["verdict_unresolved"] == "未决"
     assert strings["action_rebut"] == "反驳"
@@ -197,3 +205,18 @@ def test_shell_exposes_proposal_and_final_audit_layers():
     assert strings["change_revised"] == "修改"
     assert strings["change_cleared"] == "清空"
     assert strings["change_rebutted"] == "反驳"
+    assert strings["show_audit"] == "显示决策审计"
+
+
+def test_v2_field_audit_is_limited_to_revised_cleared_or_rebutted_fields():
+    en = render_explorer_html(DATA, "en", version="v2")
+    strings = embedded(en, "STRINGS")
+
+    assert "revision_badge_filled" not in strings
+    assert "function decisionAuditKind(f)" in en
+    assert "['revised', 'cleared'].includes(f.revision_change.kind)" in en
+    assert "f.revision.action === 'REBUT'" in en
+    assert "if (!kind) return ''" in en
+    assert "VERSION && decisionAuditKind(f) === null" in en
+    assert "visibleDecisionAuditMatches(f, needle)" in en
+    assert "r.fields.some(f => decisionAuditKind(f) !== null)" in en
