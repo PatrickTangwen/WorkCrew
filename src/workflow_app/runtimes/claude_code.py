@@ -11,9 +11,9 @@ invocation_failure). Retry and degrade policy live in the engine.
 
 import json
 import os
-import subprocess
 from pathlib import Path
 
+from workflow_app.cancellation import run_process
 from workflow_app.models.extraction import ExtractionResult
 from workflow_app.models.revision import RevisionResult
 from workflow_app.models.scoping import ScopingQuestions
@@ -95,15 +95,12 @@ class ClaudeCodeRuntime:
         if self._model is not None:
             argv += ["--model", self._model]
 
-        process = subprocess.run(
+        process = run_process(
             argv,
             input=prompt,
             cwd=request.workspace_path,
             env=child_env(),
-            capture_output=True,
-            text=True,
-            # A non-zero exit maps to an error AgentResult, not a raise.
-            check=False,
+            cancellation=request.cancellation,
         )
         if process.returncode != 0:
             detail = process.stderr.strip() or process.stdout.strip()
