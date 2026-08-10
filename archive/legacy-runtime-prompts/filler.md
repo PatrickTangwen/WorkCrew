@@ -1,3 +1,5 @@
+> Archived historical prompt. Not loaded by the WorkCrew runtime; see `README.md`.
+
 # Extraction Pass — Claude Code Filler
 
 ## Role and goal

@@ -1,3 +1,5 @@
+> Archived historical prompt. Not loaded by the WorkCrew runtime; see `README.md`.
+
 # Revision Pass — Claude Code Revision Agent
 
 ## Role and goal

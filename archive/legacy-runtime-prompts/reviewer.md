@@ -1,3 +1,5 @@
+> Archived historical prompt. Not loaded by the WorkCrew runtime; see `README.md`.
+
 # Review Pass — Codex Reviewer
 
 ## Role and goal
