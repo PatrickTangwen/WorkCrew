@@ -1,7 +1,9 @@
+import { useEffect } from "react"
 import { Clock3, FolderOpen, PackageOpen } from "lucide-react"
 
 import { ArtifactViewer } from "@/components/artifact-viewer"
 import { RunStatusBadge } from "@/components/run-status-badge"
+import { WorkflowProgress } from "@/components/workflow-progress"
 import {
   Card,
   CardContent,
@@ -10,11 +12,23 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import type { RunRecord } from "@/lib/api"
-import { runStatusPresentation } from "@/lib/run-status"
+import { useAppStore } from "@/store/use-app-store"
 
 function RunDetail({ run }: { run: RunRecord }) {
-  const status = runStatusPresentation[run.status]
-  const StatusIcon = status.detailIcon
+  const streamRunId = useAppStore((state) => state.streamRunId)
+  const streamEvents = useAppStore((state) => state.streamEvents)
+  const connectRunStream = useAppStore((state) => state.connectRunStream)
+  const disconnectRunStream = useAppStore((state) => state.disconnectRunStream)
+  const events = streamRunId === run.run_id ? streamEvents : []
+  const streamable =
+    run.status === "running" || run.status === "paused" || run.status === "failed"
+
+  useEffect(() => {
+    if (!streamable) return
+    connectRunStream(run.run_id)
+    return disconnectRunStream
+  }, [connectRunStream, disconnectRunStream, run.run_id, streamable])
+
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
       <Card className="bg-background shadow-lg shadow-black/4">
@@ -40,24 +54,7 @@ function RunDetail({ run }: { run: RunRecord }) {
         </CardContent>
       </Card>
 
-      <Card className="min-h-72 bg-background">
-        <CardHeader className="border-b">
-          <CardTitle>Workflow status</CardTitle>
-          <CardDescription>{status.detailDescription}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid min-h-48 place-items-center">
-          <div className="text-center">
-            <div className="mx-auto grid size-14 place-items-center rounded-2xl border bg-muted/45">
-              <StatusIcon
-                className={`size-6 ${status.detailIconClassName}`}
-                aria-hidden="true"
-              />
-            </div>
-            <p className="mt-4 text-sm font-medium">{status.detailTitle}</p>
-            <p className="mt-1 font-mono text-xs text-muted-foreground">{run.phase}</p>
-          </div>
-        </CardContent>
-      </Card>
+      <WorkflowProgress run={run} events={events} />
 
       {run.status === "completed" ? (
         <ArtifactViewer runId={run.run_id} />

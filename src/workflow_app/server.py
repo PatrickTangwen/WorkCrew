@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -84,6 +84,36 @@ class RunFacts:
 class TrackedRun:
     record: RunRecord
     finished_at: str | None = None
+    events: "RunEventChannel" = field(default_factory=lambda: RunEventChannel())
+
+
+class RunEventChannel:
+    terminal_types = frozenset({"completed", "failed"})
+
+    def __init__(self):
+        self.history = []
+        self.subscribers = set()
+        self.terminal = False
+
+    def publish(self, event):
+        if self.terminal:
+            raise RuntimeError("Cannot publish after a terminal run event")
+        self.history.append(event)
+        for queue in self.subscribers:
+            queue.put_nowait(event)
+        if event["type"] in self.terminal_types:
+            self.terminal = True
+
+    def subscribe(self):
+        queue = asyncio.Queue()
+        for event in self.history:
+            queue.put_nowait(event)
+        if not self.terminal:
+            self.subscribers.add(queue)
+        return queue
+
+    def unsubscribe(self, queue):
+        self.subscribers.discard(queue)
 
 
 @dataclass(frozen=True)
@@ -122,7 +152,12 @@ class RunCoordinator:
         tracked = TrackedRun(record)
         self.runs[record.run_id] = tracked
         response = record.model_dump()
-        task = asyncio.create_task(self._execute(tracked, inputs))
+        loop = asyncio.get_running_loop()
+
+        def progress_callback(event):
+            loop.call_soon_threadsafe(self._receive_event, tracked, dict(event))
+
+        task = asyncio.create_task(self._execute(tracked, inputs, progress_callback))
         self.tasks.add(task)
         task.add_done_callback(lambda done: self._finish(done, tracked))
         return response
@@ -130,6 +165,15 @@ class RunCoordinator:
     def find(self, run_id):
         tracked = self.runs.get(run_id)
         return None if tracked is None else tracked.record.model_dump()
+
+    def subscribe(self, run_id):
+        tracked = self.runs.get(run_id)
+        return None if tracked is None else tracked.events.subscribe()
+
+    def unsubscribe(self, run_id, queue):
+        tracked = self.runs.get(run_id)
+        if tracked is not None:
+            tracked.events.unsubscribe(queue)
 
     def list_summaries(self):
         return [
@@ -157,7 +201,7 @@ class RunCoordinator:
             workbook_name=inputs.workbook.name,
         )
 
-    async def _execute(self, tracked, inputs):
+    async def _execute(self, tracked, inputs, progress_callback):
         record = tracked.record
         runtimes = self.options.runtimes
         if runtimes is None:
@@ -170,6 +214,7 @@ class RunCoordinator:
             runs_root=Path(self.options.runs_root),
             runtimes=runtimes,
             run_id=record.run_id,
+            progress_callback=progress_callback,
         )
 
         record.phase = result.get("phase", record.phase)
@@ -182,8 +227,21 @@ class RunCoordinator:
         if not task.cancelled() and task.exception() is not None:
             record = tracked.record
             record.status = "failed"
-            record.phase = "FAILED"
             tracked.finished_at = datetime.now(UTC).isoformat()
+
+    def _receive_event(self, tracked, event):
+        record = tracked.record
+        if event["type"] == "phase_change":
+            record.phase = event["phase"]
+        elif event["type"] == "paused":
+            record.status = "paused"
+        elif event["type"] == "completed":
+            record.status = "completed"
+            tracked.finished_at = datetime.now(UTC).isoformat()
+        elif event["type"] == "failed":
+            record.status = "failed"
+            tracked.finished_at = datetime.now(UTC).isoformat()
+        tracked.events.publish(event)
 
 
 class RunHistory:
@@ -358,6 +416,25 @@ def create_app(static_dir=DEFAULT_STATIC_DIR, require_frontend=False, options=No
         if current is not None:
             return current
         return await asyncio.to_thread(history.get_record, run_id)
+
+    @app.websocket("/ws/runs/{run_id}")
+    async def stream_run(websocket: WebSocket, run_id: str):
+        queue = coordinator.subscribe(run_id)
+        if queue is None:
+            await websocket.close(code=4404, reason="Run not found")
+            return
+
+        await websocket.accept()
+        try:
+            while True:
+                event = await queue.get()
+                await websocket.send_json(event)
+                if event["type"] in RunEventChannel.terminal_types:
+                    break
+        except WebSocketDisconnect:
+            pass
+        finally:
+            coordinator.unsubscribe(run_id, queue)
 
     @app.get("/api/runs/{run_id}/artifacts")
     def list_artifacts(run_id: str):
