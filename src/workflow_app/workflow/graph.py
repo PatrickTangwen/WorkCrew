@@ -453,18 +453,21 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         provenance = json.loads(workspace.provenance_json.read_text())
 
         actionable = revision_route(state)["agent_actionable"]
-        flagged_cells = {finding.cell for finding in actionable}
+        flagged_cells = {writer.normalize_cell(finding.cell) for finding in actionable}
         sheet_name = schema.target_sheet().name
         flagged_keys = {cell_key(sheet_name, cell): cell for cell in flagged_cells}
         # Only the allowed context (plan section 27): non-PASS findings,
         # their proposals and provenance, the mutation allowlist, and a
         # pointer to the rules the agent reads via its workspace.
         restricted_inputs = {
-            "findings": [finding.model_dump() for finding in actionable],
+            "findings": [
+                {**finding.model_dump(), "cell": writer.normalize_cell(finding.cell)}
+                for finding in actionable
+            ],
             "proposals": {
-                proposal.cell: proposal.model_dump()
+                writer.normalize_cell(proposal.cell): proposal.model_dump()
                 for proposal in extraction.proposals
-                if proposal.cell in flagged_cells
+                if writer.normalize_cell(proposal.cell) in flagged_cells
             },
             "provenance": {
                 flagged_keys[entry["cell"]]: entry
@@ -553,7 +556,9 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         rebutted = routing.rebutted_cells(revision.decisions)
         emit(f"Starting targeted re-review: {len(rebutted)} rebutted cells...")
         review = load_review(state)
-        findings_by_cell = {finding.cell: finding for finding in review.findings}
+        findings_by_cell = {
+            writer.normalize_cell(finding.cell): finding for finding in review.findings
+        }
         restricted_inputs = {
             "rebutted": [
                 {
@@ -561,7 +566,8 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
                     "decision": next(
                         decision.model_dump()
                         for decision in revision.decisions
-                        if decision.cell == cell and decision.action == "REBUT"
+                        if writer.normalize_cell(decision.cell) == cell
+                        and decision.action == "REBUT"
                     ),
                 }
                 for cell in rebutted
@@ -611,9 +617,16 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
 
         sheet_name = schema_from(state).target_sheet().name
         draft = writer.open_draft(workspace.draft_xlsx)
-        findings_by_cell = {finding.cell: finding for finding in review.findings}
-        decisions_by_cell = {decision.cell: decision for decision in revision.decisions}
-        verdicts_by_cell = {verdict.cell: verdict for verdict in verdicts}
+        findings_by_cell = {
+            writer.normalize_cell(finding.cell): finding for finding in review.findings
+        }
+        decisions_by_cell = {
+            writer.normalize_cell(decision.cell): decision
+            for decision in revision.decisions
+        }
+        verdicts_by_cell = {
+            writer.normalize_cell(verdict.cell): verdict for verdict in verdicts
+        }
 
         items = []
         for entry in unresolved:
