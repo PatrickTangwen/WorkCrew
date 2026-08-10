@@ -61,6 +61,15 @@ def run_workflow(
         # Resolved so the paths persisted into checkpointed state stay valid
         # when the run is resumed from a different working directory.
         workspace = Workspace((Path(runs_root) / run_id).resolve())
+        # A workspace inside the source folder makes copy_inputs copy the
+        # sources into their own subdirectory, recursing until the OS
+        # refuses the path length. Caught here, before anything is written.
+        if workspace.root.is_relative_to(inputs.source.resolve()):
+            raise ValueError(
+                f"the run workspace {workspace.root} would sit inside the source"
+                f" folder {inputs.source}, so copying the sources would recurse."
+                " Choose a runs root outside the source folder."
+            )
         workspace.create_layout()
         progress.emit(f"Starting run {run_id}...")
         execution = WorkflowExecution(

@@ -345,3 +345,18 @@ def test_unknown_strict_field_fails_once_the_schema_exists(inputs, tmp_path):
     policy_yaml.write_text("review:\n  strict_fields: ['No Such Field']\n")
     with pytest.raises(ValueError, match="No Such Field"):
         start_run(inputs, run_inputs_kwargs={"review_policy": policy_yaml})
+
+
+def test_a_runs_root_inside_the_source_folder_is_refused(inputs):
+    # copy_inputs would otherwise copy the sources into their own
+    # subdirectory and recurse until the OS refuses the path length.
+    nested_runs_root = inputs["source"] / "runs"
+
+    with pytest.raises(ValueError, match="would sit inside the source folder"):
+        run_workflow(
+            inputs=run_inputs(inputs),
+            runs_root=nested_runs_root,
+            runtimes={},
+        )
+
+    assert not nested_runs_root.exists()
