@@ -1,4 +1,12 @@
-import { act, cleanup, render, screen, within } from "@testing-library/react"
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { RunDetail } from "@/components/run-detail"
@@ -35,6 +43,11 @@ const run: RunRecord = {
   phase: "INITIALIZING",
   source_name: "source",
   workbook_name: "template.xlsx",
+}
+
+function StoredRunDetail() {
+  const currentRun = useAppStore((state) => state.currentRun)
+  return currentRun ? <RunDetail run={currentRun} /> : null
 }
 
 function event(
@@ -161,5 +174,82 @@ describe("run progress", () => {
       "failed"
     )
     expect(screen.getAllByText("Reviewer timed out").length).toBeGreaterThan(0)
+  })
+
+  it("loads questions after a paused event and returns to progress after resume", async () => {
+    let finishResume: ((response: Response) => void) | undefined
+    const resumeResponse = new Promise<Response>((resolve) => {
+      finishResume = resolve
+    })
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url.endsWith("/artifacts/scoping_questions.json")) {
+          return new Response(
+            JSON.stringify({
+              questions: [
+                {
+                  id: "Q1",
+                  question: "What is one row?",
+                  type: "text",
+                  options: null,
+                },
+              ],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        }
+        if (url.endsWith("/resume") && init?.method === "POST") {
+          return resumeResponse
+        }
+        throw new Error(`Unexpected request: ${url}`)
+      }
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    act(() => useAppStore.getState().showRun(run))
+    render(<StoredRunDetail />)
+
+    MockWebSocket.instances[0].receive(
+      event({
+        type: "paused",
+        reason: "Scoping questions need answers",
+        questions_artifact: "/runs/run-streaming/artifacts/scoping_questions.json",
+      })
+    )
+
+    expect(
+      await screen.findByRole("heading", { name: "Scoping questions" })
+    ).toBeVisible()
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/runs/run-streaming/artifacts/scoping_questions.json"
+    )
+    fireEvent.change(screen.getByRole("textbox", { name: "What is one row?" }), {
+      target: { value: "One source folder." },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }))
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/runs/run-streaming/resume",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ answers: { Q1: "One source folder." } }),
+        })
+      )
+    )
+    MockWebSocket.instances[0].receive(
+      event({ type: "completed", final_xlsx: "/runs/run-streaming/output/final.xlsx" })
+    )
+    finishResume?.(
+      new Response(
+        JSON.stringify({ ...run, status: "running", phase: "AWAIT_SCOPING_ANSWERS" }),
+        { status: 202, headers: { "Content-Type": "application/json" } }
+      )
+    )
+    await waitFor(() => expect(useAppStore.getState().scoping.status).toBe("ready"))
+
+    expect(screen.getByRole("list", { name: "Workflow stages" })).toBeVisible()
+    expect(useAppStore.getState().currentRun?.status).toBe("completed")
+    expect(MockWebSocket.instances).toHaveLength(1)
   })
 })

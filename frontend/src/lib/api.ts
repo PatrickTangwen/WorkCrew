@@ -61,6 +61,23 @@ export type WorkflowEvent =
       error: string
     })
 
+export type ScopingQuestionType =
+  | "text"
+  | "single_select"
+  | "multi_select"
+  | "confirm"
+
+export type ScopingQuestion = {
+  id: string
+  question: string
+  type?: ScopingQuestionType
+  options?: { value: string; label: string }[] | null
+}
+
+export type ScopingAnswer = string | string[] | boolean
+export type ScopingAnswers = Record<string, ScopingAnswer>
+export type ScopingQuestions = { questions: ScopingQuestion[] }
+
 export type ArtifactType = "html" | "md" | "xlsx" | "json"
 
 export type ArtifactSummary = {
@@ -127,4 +144,18 @@ export async function readArtifactText(runId: string, name: string) {
   const response = await fetch(artifactUrl(runId, name))
   if (response.ok) return response.text()
   throw await responseError(response)
+}
+
+export async function getScopingQuestions(runId: string) {
+  const response = await fetch(artifactUrl(runId, "scoping_questions.json"))
+  return readResponse<ScopingQuestions>(response)
+}
+
+export async function resumeRun(runId: string, answers: ScopingAnswers) {
+  const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/resume`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answers }),
+  })
+  return readResponse<RunRecord>(response)
 }

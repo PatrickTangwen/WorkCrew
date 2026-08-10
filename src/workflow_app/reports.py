@@ -65,6 +65,30 @@ def render_scoping_answers_template(questions):
     return "\n".join(lines)
 
 
+def render_scoping_answers(questions, answers):
+    lines = ["# Scoping answers", ""]
+    for question in questions.questions:
+        option_labels = {
+            option.value: option.label for option in question.options or []
+        }
+        answer = answers[question.id]
+        if isinstance(answer, list):
+            rendered = [f"- {option_labels.get(value, value)}" for value in answer]
+        elif isinstance(answer, bool):
+            rendered = ["Yes" if answer else "No"]
+        else:
+            rendered = [option_labels.get(answer, answer)]
+        lines += [
+            f"## {question.id}",
+            "",
+            f"> {question.question}",
+            "",
+            *rendered,
+            "",
+        ]
+    return "\n".join(lines)
+
+
 def render_review_md(review):
     lines = ["# Review", ""]
     for verdict, count in verdict_counts(review.findings):
