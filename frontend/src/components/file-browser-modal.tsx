@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useState, type RefObject } from "react"
 import {
   ChevronRight,
   File,
@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   X,
 } from "lucide-react"
+import { Dialog } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
 import { browseFiles, type BrowseListing } from "@/lib/api"
@@ -17,6 +18,7 @@ type FileBrowserModalProps = {
   open: boolean
   title: string
   mode: "directory" | "file"
+  returnFocusRef: RefObject<HTMLElement | null>
   onClose: () => void
   onSelect: (path: string) => void
 }
@@ -29,6 +31,7 @@ function FileBrowserModal({
   open,
   title,
   mode,
+  returnFocusRef,
   onClose,
   onSelect,
 }: FileBrowserModalProps) {
@@ -63,18 +66,10 @@ function FileBrowserModal({
 
     let cancelled = false
     void loadDirectory(undefined, () => !cancelled)
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose()
-    }
-    window.addEventListener("keydown", handleKeyDown)
     return () => {
       cancelled = true
-      window.removeEventListener("keydown", handleKeyDown)
     }
-  }, [loadDirectory, onClose, open])
-
-  if (!open) return null
+  }, [loadDirectory, open])
 
   const breadcrumbs = listing
     ? [
@@ -91,25 +86,37 @@ function FileBrowserModal({
     : []
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/28 p-4 backdrop-blur-[2px]">
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="file-browser-title"
-        className="flex max-h-[min(720px,90svh)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl shadow-black/15"
-      >
+    <Dialog.Root
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose()
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-foreground/28 backdrop-blur-[2px]" />
+        <Dialog.Content
+          aria-describedby={undefined}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            returnFocusRef.current?.focus()
+          }}
+          onPointerDownOutside={(event) => event.preventDefault()}
+          className="fixed top-1/2 left-1/2 z-50 flex max-h-[min(720px,90svh)] w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl shadow-black/15"
+        >
         <header className="flex items-start justify-between gap-4 border-b px-5 py-4">
           <div>
             <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
               Home directory
             </p>
-            <h2 id="file-browser-title" className="mt-1 font-heading text-lg font-semibold">
-              {title}
-            </h2>
+            <Dialog.Title asChild>
+              <h2 className="mt-1 font-heading text-lg font-semibold">{title}</h2>
+            </Dialog.Title>
           </div>
-          <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close file browser">
-            <X />
-          </Button>
+          <Dialog.Close asChild>
+            <Button size="icon" variant="ghost" aria-label="Close file browser">
+              <X />
+            </Button>
+          </Dialog.Close>
         </header>
 
         <nav aria-label="Current path" className="flex min-h-12 items-center gap-1 overflow-x-auto border-b bg-muted/35 px-4">
@@ -198,25 +205,27 @@ function FileBrowserModal({
             </span>
           </div>
           <div className="flex shrink-0 gap-2">
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button
-              disabled={
-                loading || (mode === "file" ? selectedFile === null : listing === null)
-              }
-              onClick={() => {
-                const selected = mode === "file" ? selectedFile : listing?.path
-                if (selected) {
-                  onSelect(selected)
-                  onClose()
+            <Dialog.Close asChild>
+              <Button variant="outline">Cancel</Button>
+            </Dialog.Close>
+            <Dialog.Close asChild>
+              <Button
+                disabled={
+                  loading || (mode === "file" ? selectedFile === null : listing === null)
                 }
-              }}
-            >
-              {mode === "directory" ? "Select folder" : "Select file"}
-            </Button>
+                onClick={() => {
+                  const selected = mode === "file" ? selectedFile : listing?.path
+                  if (selected) onSelect(selected)
+                }}
+              >
+                {mode === "directory" ? "Select folder" : "Select file"}
+              </Button>
+            </Dialog.Close>
           </div>
         </footer>
-      </section>
-    </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }
 
