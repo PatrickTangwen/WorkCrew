@@ -25,6 +25,17 @@ def _cell_identity(cell):
     return writer.normalize_cell(cell) or cell
 
 
+def _duplicate_cell_identities(cells):
+    seen = set()
+    duplicates = []
+    for cell in cells:
+        identity = _cell_identity(cell)
+        if identity in seen and identity not in duplicates:
+            duplicates.append(identity)
+        seen.add(identity)
+    return duplicates
+
+
 def plan_review_targets(extraction, schema, policy):
     """Return the deterministic cell ledger the Reviewer must cover."""
     field_order = {
@@ -128,6 +139,10 @@ def route_revision_findings(findings, extraction):
 
 
 def check_decisions(findings, decisions):
+    duplicates = _duplicate_cell_identities([decision.cell for decision in decisions])
+    if duplicates:
+        return f"revision returned duplicate decisions for cells: {duplicates}"
+
     by_cell = {_cell_identity(finding.cell): finding for finding in findings}
     for decision in decisions:
         finding = by_cell.get(_cell_identity(decision.cell))
@@ -173,6 +188,9 @@ def rebutted_cells(decisions):
 def check_re_review_coverage(rebutted, verdicts):
     rebutted = [_cell_identity(cell) for cell in rebutted]
     verdict_cells = [_cell_identity(verdict.cell) for verdict in verdicts]
+    duplicates = _duplicate_cell_identities(verdict_cells)
+    if duplicates:
+        return f"re-review returned duplicate verdicts for cells: {duplicates}"
     missing = [cell for cell in rebutted if cell not in verdict_cells]
     if missing:
         return f"re-review returned no verdict for rebutted cells: {missing}"
@@ -185,12 +203,7 @@ def check_re_review_coverage(rebutted, verdicts):
 def check_review_coverage(targets, findings):
     planned_cells = [_cell_identity(target["cell"]) for target in targets]
     finding_cells = [_cell_identity(finding.cell) for finding in findings]
-    seen = set()
-    duplicates = []
-    for cell in finding_cells:
-        if cell in seen and cell not in duplicates:
-            duplicates.append(cell)
-        seen.add(cell)
+    duplicates = _duplicate_cell_identities(finding_cells)
     if duplicates:
         return f"review returned duplicate findings for cells: {duplicates}"
     missing = [cell for cell in planned_cells if cell not in finding_cells]
@@ -233,6 +246,12 @@ def compose_revision_mutations(
     # pending value, never on the stale batch-start read. `find_prior`
     # supplies the audited prior for idempotent replay (plan section
     # 37), which also seeds the pending value on a partial replay.
+    duplicates = _duplicate_cell_identities([decision.cell for decision in decisions])
+    if duplicates:
+        raise ValueError(
+            f"cannot compose duplicate revision decisions for cells: {duplicates}"
+        )
+
     findings_by_cell = {_cell_identity(finding.cell): finding for finding in findings}
     mutations, decision_by_ref, pending = [], {}, {}
     for index, decision in enumerate(decisions):

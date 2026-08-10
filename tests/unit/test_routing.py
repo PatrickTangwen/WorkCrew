@@ -285,6 +285,18 @@ def test_decision_cells_use_canonical_identity():
     assert reason is None
 
 
+def test_decisions_reject_duplicate_canonical_cell_identities():
+    reason = check_decisions(
+        [finding("A2", "FAIL", recommended="x")],
+        [
+            decision("A2", "FIX", proposed="first"),
+            decision("a2", "FIX", proposed="second"),
+        ],
+    )
+
+    assert reason is not None and "duplicate" in reason and "A2" in reason
+
+
 def test_pass_cells_must_not_receive_decisions():
     reason = check_decisions([finding("G2", "PASS")], [decision("G2", "NO_CHANGE")])
     assert reason is not None and "PASS" in reason
@@ -328,6 +340,15 @@ def test_re_review_must_cover_exactly_the_rebutted_cells():
         ["A2"], [verdict("A2", "WITHDRAWN"), verdict("G2", "WITHDRAWN")]
     )
     assert extra is not None and "G2" in extra
+
+
+def test_re_review_rejects_duplicate_canonical_cell_identities():
+    reason = check_re_review_coverage(
+        ["A2"],
+        [verdict("A2", "WITHDRAWN"), verdict("a2", "UPHELD")],
+    )
+
+    assert reason is not None and "duplicate" in reason and "A2" in reason
 
 
 # --- the unresolved set (plan section 29) --------------------------------
@@ -424,6 +445,16 @@ def test_accept_composition_uses_canonical_cell_identity():
     assert [(mutation.cell, mutation.value) for mutation in mutations] == [
         ("f4", "Replacement note.")
     ]
+
+
+def test_composition_rejects_duplicate_canonical_decision_targets():
+    decisions = [
+        decision("F4", "FIX", proposed="first"),
+        decision("f4", "FIX", proposed="second"),
+    ]
+
+    with pytest.raises(ValueError, match="duplicate.*F4"):
+        compose(decisions, [finding("F4", "FAIL")])
 
 
 def test_same_batch_note_appends_compose_cumulatively():
