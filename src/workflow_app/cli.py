@@ -14,6 +14,7 @@ labels, and optionally record the result as a baseline.
 import argparse
 import json
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 from workflow_app.benchmark.kleister import build_benchmark
@@ -36,20 +37,25 @@ from workflow_app.workspace import RunInputs
 # per-invocation, ADR 0019): zero decisions and zero verdicts degrade
 # every open finding into the UNRESOLVED / human-review pipeline.
 FAKE_OUTPUTS = {
-    "scoping": {
-        # workbook_schema is filled in per invocation by
-        # fake_scoping_schema(): the target sheet must name a sheet the
-        # operator's workbook actually has, and the fake fill proposes
-        # nothing, so no column ever needs declaring.
-        "questions": [
-            {
-                "id": "Q1",
-                "question": (
-                    "Confirm the source folders are the complete set to process."
-                ),
-            }
-        ]
-    },
+    # Two rounds: one question, then nothing left to ask. A single step
+    # would repeat its question every round and stall the run at the
+    # pause until the round cap. workbook_schema is filled in per
+    # invocation by fake_scoping_schema() — the target sheet must name a
+    # sheet the operator's workbook actually has, and the fake fill
+    # proposes nothing, so no column ever needs declaring.
+    "scoping": [
+        {
+            "questions": [
+                {
+                    "id": "Q1",
+                    "question": (
+                        "Confirm the source folders are the complete set to process."
+                    ),
+                }
+            ]
+        },
+        {"questions": []},
+    ],
     "filler": {"proposals": []},
     "reviewer": {"findings": []},
     "revision": {"decisions": []},
@@ -95,18 +101,38 @@ def fake_scoping_schema(workbook):
     return {"sheets": [{"name": outline.sheets[0].name, "target": True}]}
 
 
+def fake_workbook_for(args):
+    # The fake scoping fixture needs the workbook to name a real sheet.
+    # `run` is given it directly; `resume` finds the workspace copy.
+    if getattr(args, "workbook", None) is not None:
+        return Path(args.workbook)
+    run_id = getattr(args, "run_id", None)
+    if run_id is None:
+        return None
+    copies = sorted((Path(args.runs_root) / run_id / "input" / "workbook").glob("*"))
+    return copies[0] if copies else None
+
+
 def build_runtimes(
     choice,
     claude_model=DEFAULT_CLAUDE_MODEL,
     codex_model=DEFAULT_CODEX_MODEL,
     codex_effort=DEFAULT_CODEX_EFFORT,
     workbook=None,
+    resuming=False,
 ):
     if choice == "fake":
         emit("Using fake agent runtimes (walking-skeleton fixtures).")
-        outputs = {role: dict(output) for role, output in FAKE_OUTPUTS.items()}
+        outputs = deepcopy(FAKE_OUTPUTS)
+        if resuming:
+            # A resume is a fresh process, so the sequence would restart
+            # and ask the same question forever. The pause already
+            # happened in the run that created this workspace.
+            outputs["scoping"] = outputs["scoping"][1:]
         if workbook is not None:
-            outputs["scoping"]["workbook_schema"] = fake_scoping_schema(workbook)
+            schema = fake_scoping_schema(workbook)
+            for step in outputs["scoping"]:
+                step["workbook_schema"] = schema
         fake = FakeAgentRuntime(outputs)
         return {role: fake for role in outputs}
     emit(f"Claude model: {claude_model}")
@@ -291,7 +317,8 @@ def main(argv=None):
             claude_model=args.claude_model,
             codex_model=args.codex_model,
             codex_effort=args.codex_effort,
-            workbook=getattr(args, "workbook", None),
+            workbook=fake_workbook_for(args),
+            resuming=args.command == "resume",
         )
         if args.command == "run":
             inputs = RunInputs(

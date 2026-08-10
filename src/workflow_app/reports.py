@@ -7,6 +7,8 @@ evidence so the V1 flow — read human_review.md, edit final.xlsx — needs
 no other file.
 """
 
+import re
+
 
 def _evidence_lines(evidence, indent="  "):
     return [
@@ -46,16 +48,19 @@ def render_scoping_questions_md(questions):
     return "\n".join(lines)
 
 
-def render_scoping_answers_template(questions):
+SCOPING_ANSWERS_TITLE = "# Scoping answers"
+
+
+def render_scoping_answers_template(questions, round_number):
     lines = [
-        "# Scoping answers",
+        f"## Round {round_number}",
         "",
         "Replace each placeholder with your answer, then resume the run.",
         "",
     ]
     for question in questions.questions:
         lines += [
-            f"## {question.id}",
+            f"### {question.id}",
             "",
             f"> {question.question}",
             "",
@@ -69,34 +74,70 @@ def render_no_scoping_questions():
     # The filler always reads an answers document; this is what it gets
     # when the scoping pass decided it had nothing to ask.
     return (
-        "# Scoping answers\n\n"
+        f"{SCOPING_ANSWERS_TITLE}\n\n"
         "The scoping pass had no questions: the task, sources, and\n"
         "workbook answered everything it needed.\n"
     )
 
 
-def render_scoping_answers(questions, answers):
-    lines = ["# Scoping answers", ""]
+def render_scoping_answers(questions, answers, round_number):
+    """Render one round's answers as a section of the running transcript."""
+    lines = [f"## Round {round_number}", ""]
     for question in questions.questions:
         option_labels = {
             option.value: option.label for option in question.options or []
         }
         answer = answers[question.id]
-        if isinstance(answer, list):
-            rendered = [f"- {option_labels.get(value, value)}" for value in answer]
-        elif isinstance(answer, bool):
-            rendered = ["Yes" if answer else "No"]
+        if isinstance(answer.value, list):
+            rendered = [
+                f"- {option_labels.get(value, value)}" for value in answer.value
+            ]
+        elif isinstance(answer.value, bool):
+            rendered = ["Yes" if answer.value else "No"]
         else:
-            rendered = [option_labels.get(answer, answer)]
+            rendered = [option_labels.get(answer.value, answer.value)]
         lines += [
-            f"## {question.id}",
+            f"### {question.id}",
             "",
             f"> {question.question}",
             "",
             *rendered,
             "",
         ]
+        if answer.note and answer.note.strip():
+            lines += [f"Note: {answer.note.strip()}", ""]
     return "\n".join(lines)
+
+
+_ROUND_HEADING = re.compile(r"^## Round \d+$", re.MULTILINE)
+
+
+def scoping_rounds_in(path):
+    if not path.is_file():
+        return 0
+    return len(_ROUND_HEADING.findall(path.read_text()))
+
+
+def append_scoping_round(path, section):
+    """Add a round to the transcript, starting the file on the first round."""
+    existing = path.read_text() if path.is_file() else f"{SCOPING_ANSWERS_TITLE}\n"
+    separator = "" if existing.endswith("\n\n") else "\n"
+    path.write_text(f"{existing}{separator}{section}")
+
+
+def replace_last_scoping_round(path, section):
+    """Answer the open round in place, leaving earlier rounds untouched.
+
+    The scoping pass appends a placeholder section for the round it just
+    asked; the CLI operator edits it, and the UI posts structured answers
+    that land here instead.
+    """
+    text = path.read_text() if path.is_file() else ""
+    headings = list(_ROUND_HEADING.finditer(text))
+    if not headings:
+        append_scoping_round(path, section)
+        return
+    path.write_text(text[: headings[-1].start()] + section)
 
 
 def render_review_md(review):

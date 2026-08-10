@@ -16,6 +16,8 @@ class WorkflowState(TypedDict):
     workbook_outline_path: str | None
     schema_path: str | None
     scoping_questions_path: str | None
+    scoping_round: int
+    scoping_pending: bool
     scoping_answers_path: str | None
     extraction_path: str | None
     draft_xlsx_path: str | None

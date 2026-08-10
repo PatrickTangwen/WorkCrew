@@ -100,6 +100,33 @@ derived schema for confirmation at the existing scoping pause. Recorded here as
 a deliberate accepted risk, not an oversight; the pause remains the obvious
 place to add confirmation if that judgment changes.
 
+### Contract fields an agent writes must be self-describing
+
+The first live run derived an otherwise good schema but wrote
+`"date_format": "YYYY-MM-DD"`. That field is handed straight to
+`datetime.strptime`, where every non-`%` character is a literal, so the rule
+rejected `2011-07-01`. A human author never hit it because the default is
+already `%Y-%m-%d`.
+
+`FieldSpec` now rejects a `date_format` that renders unchanged (no directives)
+or fails to round-trip, and the scoping prompt names it a strptime pattern.
+The general lesson: a field that used to carry a human's tacit knowledge needs
+that knowledge written into the contract once an agent fills it in.
+
+### The first writable row is not in the schema
+
+The same run wrote its first record into row 2 — the header row — because the
+mock workbook opens with a banner. Nothing in `SheetSchema` records where data
+starts, and the extraction pass takes the row from the **scoping answers**, in
+prose.
+
+The chosen fix is prompt-side: the scoping prompt now makes establishing the
+row mapping mandatory and tells the pass to state the first writable row and
+have the operator confirm it, and the filler prompt forbids proposing a cell
+above it. This leaves the failure mode dependent on the agent obeying its
+prompt; a `first_data_row` field on `SheetSchema` would make it structural and
+checkable, and was deliberately not taken.
+
 ## Consequences
 
 - The audit `runs` table replaces `rules_path`/`workbook_schema_path` with

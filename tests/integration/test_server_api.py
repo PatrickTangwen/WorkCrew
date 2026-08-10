@@ -4,6 +4,8 @@ from tests.integration.conftest import WORKBOOK_SCHEMA_CONFIG, scoping_fixture
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.server import ServerOptions, create_app
 
+SCOPING_DONE = {"workbook_schema": WORKBOOK_SCHEMA_CONFIG, "questions": []}
+
 SCOPING_OUTPUT = {
     "workbook_schema": WORKBOOK_SCHEMA_CONFIG,
     "questions": [
@@ -99,7 +101,7 @@ def test_run_api_executes_the_real_engine_with_fake_runtimes(inputs):
 def test_resume_api_writes_answers_and_restarts_the_real_engine(inputs):
     runtime = FakeAgentRuntime(
         {
-            "scoping": SCOPING_OUTPUT,
+            "scoping": [SCOPING_OUTPUT, SCOPING_DONE],
             "filler": {"proposals": []},
             "reviewer": {"findings": []},
         }
@@ -133,10 +135,13 @@ def test_resume_api_writes_answers_and_restarts_the_real_engine(inputs):
                 f"/api/runs/{run_id}/resume",
                 json={
                     "answers": {
-                        "Q1": "One source folder.",
-                        "Q2": "fall",
-                        "Q3": ["alpha", "beta"],
-                        "Q4": True,
+                        "Q1": {"value": "One source folder."},
+                        "Q2": {
+                            "value": "fall",
+                            "note": "Except beta, which spans both.",
+                        },
+                        "Q3": {"value": ["alpha", "beta"]},
+                        "Q4": {"value": True},
                     }
                 },
             )
@@ -156,26 +161,30 @@ def test_resume_api_writes_answers_and_restarts_the_real_engine(inputs):
         answers
         == """# Scoping answers
 
-## Q1
+## Round 1
+
+### Q1
 
 > What is one row?
 
 One source folder.
 
-## Q2
+### Q2
 
 > Which period applies?
 
 Fall
 
-## Q3
+Note: Except beta, which spans both.
+
+### Q3
 
 > Which folders are authoritative?
 
 - Alpha
 - Beta
 
-## Q4
+### Q4
 
 > Is this set complete?
 

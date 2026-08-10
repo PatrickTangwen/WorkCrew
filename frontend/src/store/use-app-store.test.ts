@@ -94,7 +94,7 @@ it("does not apply a stale resume result after another run is selected", async (
 
   const pending = useAppStore
     .getState()
-    .resumeRun(pausedRun.run_id, { Q1: "One source file." })
+    .resumeRun(pausedRun.run_id, { Q1: { value: "One source file." } })
   useAppStore.getState().showRun(otherRun)
   finishResume?.({ ...pausedRun, status: "running" })
   await pending
@@ -127,7 +127,7 @@ it("does not apply a stale resume error after another run is selected", async ()
 
   const pending = useAppStore
     .getState()
-    .resumeRun(pausedRun.run_id, { Q1: "One source file." })
+    .resumeRun(pausedRun.run_id, { Q1: { value: "One source file." } })
   useAppStore.getState().showRun(otherRun)
   failResume?.(new Error("Resume failed"))
   await pending

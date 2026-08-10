@@ -23,10 +23,14 @@ from workflow_app.artifacts import (
 )
 from workflow_app.audit.db import AuditStore
 from workflow_app.cancellation import CancellationToken, WorkflowCancelled
-from workflow_app.models import ScopingQuestions
+from workflow_app.models import ScopingAnswer, ScopingQuestions
 from workflow_app.native_picker import PickerUnavailable, pick_path
 from workflow_app.progress import emit
-from workflow_app.reports import render_scoping_answers
+from workflow_app.reports import (
+    render_scoping_answers,
+    replace_last_scoping_round,
+    scoping_rounds_in,
+)
 from workflow_app.workflow.engine import new_run_id, resume_workflow, run_workflow
 from workflow_app.workspace import RunInputs, Workspace
 
@@ -57,7 +61,7 @@ class CreateRunRequest(BaseModel):
 
 
 class ResumeRunRequest(BaseModel):
-    answers: dict[str, str | list[str] | bool]
+    answers: dict[str, ScopingAnswer]
 
 
 class PickPathRequest(BaseModel):
@@ -225,8 +229,13 @@ class RunCoordinator:
                     detail=f"Answers must match the scoping questions."
                     f" Missing: {missing}. Unknown: {unknown}.",
                 )
-            workspace.scoping_answers_md.write_text(
-                render_scoping_answers(questions, request.answers)
+            # The scoping pass appended a placeholder section for the
+            # round it just asked; these answers take its place, leaving
+            # earlier rounds intact for the next pass to read.
+            round_number = max(1, scoping_rounds_in(workspace.scoping_answers_md))
+            replace_last_scoping_round(
+                workspace.scoping_answers_md,
+                render_scoping_answers(questions, request.answers, round_number),
             )
 
         if status in {"failed", "cancelled"}:

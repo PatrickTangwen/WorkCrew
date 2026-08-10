@@ -21,7 +21,10 @@ directory is empty when the operator supplied no rules, which is normal.
 
 Work one source folder at a time:
 
-1. Resolve the folder's target row from the scoping answers.
+1. Resolve the folder's target row from the scoping answers. They state the
+   first writable row; never infer it, and never propose a cell above it —
+   the rows above hold the header and any banner, and writing there destroys
+   the workbook's structure.
 2. Read every usable document in that folder.
 3. For every target field, apply the **support test**: does the evidence
    identify the value, show that it belongs to this row and field, and

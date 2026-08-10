@@ -62,6 +62,8 @@ SCOPING_OUTPUT = {
     "questions": [{"id": "Q1", "question": "One row per folder?"}],
 }
 
+SCOPING_DONE = {"workbook_schema": WORKBOOK_SCHEMA_CONFIG, "questions": []}
+
 FILLER_OUTPUT = {
     "proposals": [
         {
@@ -167,7 +169,7 @@ RE_REVIEW_OUTPUT = {
 }
 
 OK_SCRIPTS = {
-    "scoping": [SCOPING_OUTPUT],
+    "scoping": [SCOPING_OUTPUT, SCOPING_DONE],
     "filler": [FILLER_OUTPUT],
     "reviewer": [REVIEW_OUTPUT],
     "revision": [REVISION_OUTPUT],
@@ -556,7 +558,7 @@ def test_kill_inside_the_apply_node_before_save_resumes_identically(
 
 def test_scoping_triple_failure_aborts_then_resume_retries_and_pauses(inputs):
     runtimes, runtime = make_runtimes(
-        {"scoping": ["error", "raise", "error", SCOPING_OUTPUT]}
+        {"scoping": ["error", "raise", "error", SCOPING_OUTPUT, SCOPING_DONE]}
     )
     with pytest.raises(Exception, match="scoping failed after 3 attempts"):
         run_workflow(
@@ -617,7 +619,7 @@ def test_retries_leave_classified_events_even_after_success(inputs):
 
 
 def test_kill_during_scoping_then_resume_pauses_and_completes(inputs):
-    runtimes, _ = make_runtimes({"scoping": ["kill", SCOPING_OUTPUT]})
+    runtimes, _ = make_runtimes({"scoping": ["kill", SCOPING_OUTPUT, SCOPING_DONE]})
     with pytest.raises(KeyboardInterrupt):
         run_workflow(
             inputs=run_inputs(inputs, scoping_answers=None),

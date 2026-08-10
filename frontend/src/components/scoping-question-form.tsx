@@ -1,4 +1,4 @@
-import { useState, type ComponentType, type FormEvent } from "react"
+import { useEffect, useState, type ComponentType, type FormEvent } from "react"
 import { CircleHelp, Send } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -10,8 +10,8 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import type {
-  ScopingAnswer,
   ScopingAnswers,
+  ScopingAnswerValue,
   ScopingQuestion,
   ScopingQuestionType,
 } from "@/lib/api"
@@ -27,8 +27,8 @@ type ScopingQuestionFormProps = {
 
 type QuestionControlProps = {
   question: ScopingQuestion
-  answer: ScopingAnswer | undefined
-  onChange: (answer: ScopingAnswer) => void
+  answer: ScopingAnswerValue | undefined
+  onChange: (answer: ScopingAnswerValue) => void
 }
 
 type Choice = {
@@ -69,7 +69,7 @@ function ChoiceList({
   )
 }
 
-function answered(answer: ScopingAnswer | undefined) {
+function answered(answer: ScopingAnswerValue | undefined) {
   if (Array.isArray(answer)) return answer.length > 0
   if (typeof answer === "string") return answer.trim().length > 0
   return typeof answer === "boolean"
@@ -169,20 +169,38 @@ function ScopingQuestionForm({
   error,
   onSubmit,
 }: ScopingQuestionFormProps) {
-  const [answers, setAnswers] = useState<ScopingAnswers>({})
+  const [values, setValues] = useState<Record<string, ScopingAnswerValue>>({})
+  const [notes, setNotes] = useState<Record<string, string>>({})
   const [validationError, setValidationError] = useState<string | null>(null)
 
-  function setAnswer(id: string, answer: ScopingAnswer) {
-    setAnswers((current) => ({ ...current, [id]: answer }))
+  // A later round reuses this component, so its answers must not carry
+  // over from the round before.
+  useEffect(() => {
+    setValues({})
+    setNotes({})
+    setValidationError(null)
+  }, [questions])
+
+  function setValue(id: string, value: ScopingAnswerValue) {
+    setValues((current) => ({ ...current, [id]: value }))
     setValidationError(null)
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!questions.every((question) => answered(answers[question.id]))) {
+    if (!questions.every((question) => answered(values[question.id]))) {
       setValidationError("Answer every question before resuming the run.")
       return
     }
+    const answers: ScopingAnswers = Object.fromEntries(
+      questions.map((question) => [
+        question.id,
+        {
+          value: values[question.id],
+          note: notes[question.id]?.trim() || null,
+        },
+      ])
+    )
     onSubmit(answers)
   }
 
@@ -209,7 +227,6 @@ function ScopingQuestionForm({
           <form className="space-y-4" onSubmit={submit}>
             {questions.map((question, index) => {
               const type = question.type ?? "text"
-              const answer = answers[question.id]
               const QuestionControl = questionControls[type]
               return (
                 <fieldset
@@ -225,9 +242,29 @@ function ScopingQuestionForm({
 
                   <QuestionControl
                     question={question}
-                    answer={answer}
-                    onChange={(value) => setAnswer(question.id, value)}
+                    answer={values[question.id]}
+                    onChange={(value) => setValue(question.id, value)}
                   />
+
+                  {type !== "text" && (
+                    <label className="mt-3 block">
+                      <span className="text-xs text-muted-foreground">
+                        Add anything the options do not cover (optional)
+                      </span>
+                      <textarea
+                        aria-label={`Note for ${question.question}`}
+                        value={notes[question.id] ?? ""}
+                        onChange={(event) =>
+                          setNotes((current) => ({
+                            ...current,
+                            [question.id]: event.target.value,
+                          }))
+                        }
+                        rows={2}
+                        className="mt-1.5 w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+                      />
+                    </label>
+                  )}
                 </fieldset>
               )
             })}

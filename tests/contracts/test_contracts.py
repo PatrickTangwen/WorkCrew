@@ -3,6 +3,7 @@ and rejects structurally invalid shapes (wrong enums, missing fields,
 unexpected extra fields)."""
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,10 @@ from workflow_app.models import (
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "contracts"
 SCOPING_PROMPT = Path(__file__).parents[2] / "src/workflow_app/prompts/scoping.md"
+GRAPH_SOURCE = Path(__file__).parents[2] / "src/workflow_app/workflow/graph.py"
+PROGRESS_TSX = (
+    Path(__file__).parents[2] / "frontend/src/components/workflow-progress.tsx"
+)
 
 CONTRACT_FIXTURES = [
     (Evidence, "evidence.json"),
@@ -263,3 +268,39 @@ def test_extraction_result_rejects_extra_keys():
     container = {"proposals": [], "summary": "chatty agent prose"}
     with pytest.raises(ValidationError):
         ExtractionResult.model_validate(container)
+
+
+def test_every_engine_stage_maps_to_a_ui_pipeline_stage():
+    # The UI falls back to stage 0 for an unrecognized phase, so a stage
+    # added to the graph but not to the map silently reports its failures
+    # against Scoping.
+    stages = set(
+        re.findall(r'graph\.add_node\(\s*"([A-Z_]+)"', GRAPH_SOURCE.read_text())
+    )
+    mapped = set(
+        re.findall(r"^\s*([A-Z_]+): \d+,$", PROGRESS_TSX.read_text(), re.MULTILINE)
+    )
+
+    assert stages, "no graph stages found; the add_node scan needs updating"
+    assert stages <= mapped, (
+        f"stages missing from the UI phase map: {sorted(stages - mapped)}"
+    )
+
+
+def test_scoping_prompt_pins_the_strptime_date_format():
+    prompt = " ".join(SCOPING_PROMPT.read_text().split())
+
+    assert "Python strptime pattern" in prompt
+    assert "`%Y-%m-%d`" in prompt
+    assert "never the human-readable `YYYY-MM-DD`" in prompt
+
+
+def test_scoping_prompt_makes_the_row_mapping_mandatory():
+    # The first writable row lives nowhere in the schema, so the pass has
+    # to establish it or the extraction overwrites the header row.
+    # Flattened because the prompt is wrapped markdown.
+    prompt = " ".join(SCOPING_PROMPT.read_text().split())
+
+    assert "row mapping is mandatory" in prompt.lower()
+    assert "state the first writable row explicitly" in prompt
+    assert "Never assume the header is row 1." in prompt

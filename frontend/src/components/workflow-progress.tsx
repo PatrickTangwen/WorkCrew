@@ -19,6 +19,7 @@ const phaseStage: Record<string, number> = {
   INIT: 0,
   PREPARE_WORKSPACE: 0,
   BUILD_MANIFEST: 0,
+  OUTLINE_WORKBOOK: 0,
   LOAD_SCHEMA: 0,
   CLAUDE_SCOPE: 0,
   AWAIT_SCOPING_ANSWERS: 0,

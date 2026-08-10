@@ -64,7 +64,14 @@ export type ScopingQuestion = {
   options?: { value: string; label: string }[] | null
 }
 
-export type ScopingAnswer = string | string[] | boolean
+export type ScopingAnswerValue = string | string[] | boolean
+
+/** The chosen value, plus whatever the operator wanted to add beside it. */
+export type ScopingAnswer = {
+  value: ScopingAnswerValue
+  note?: string | null
+}
+
 export type ScopingAnswers = Record<string, ScopingAnswer>
 export type ScopingQuestions = { questions: ScopingQuestion[] }
 

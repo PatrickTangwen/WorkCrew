@@ -30,6 +30,20 @@ class ScopingQuestion(BaseModel):
     options: list[ScopingOption] | None = None
 
 
+class ScopingAnswer(BaseModel):
+    """One answer: the typed value, plus whatever the operator wanted to add.
+
+    The note exists because a chosen option is often nearly right. It is
+    free prose and carries no contract of its own; the scoping pass reads
+    it alongside the value.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: str | list[str] | bool
+    note: str | None = None
+
+
 class ScopingQuestions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

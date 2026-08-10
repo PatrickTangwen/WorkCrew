@@ -300,7 +300,9 @@ describe("run progress", () => {
         "/api/runs/run-streaming/resume",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ answers: { Q1: "One source folder." } }),
+          body: JSON.stringify({
+            answers: { Q1: { value: "One source folder.", note: null } },
+          }),
         })
       )
     )

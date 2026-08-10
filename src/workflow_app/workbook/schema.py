@@ -1,12 +1,13 @@
 """Workbook schema configuration (plan section 16).
 
-V1 uses a manually authored JSON config describing sheets, writable
-columns, key fields, controlled vocabularies, and references. No
-automatic schema detection. The config is validated on load; a missing
-or malformed config fails the run before any agent is invoked.
+The scoping pass derives this from the workbook and the operator's task
+(ADR 0032); it is validated as that pass's structured output, so a
+malformed schema is a retryable agent failure rather than a crash in a
+later stage.
 """
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -48,6 +49,34 @@ class FieldSpec(BaseModel):
             raise ValueError("controlled_vocabulary field must declare values")
         if self.writable and self.column is None:
             raise ValueError("writable field must declare its column letter")
+        return self
+
+    @model_validator(mode="after")
+    def _date_format_is_a_strptime_pattern(self):
+        # date_format goes straight to datetime.strptime, where every
+        # non-% character is a literal. A human-readable pattern such as
+        # "YYYY-MM-DD" therefore matches no real date and would reject
+        # every value — caught here rather than at the write.
+        if self.date_format is None:
+            return self
+        probe = datetime(2026, 1, 2)  # noqa: DTZ001 — formatting probe only
+        try:
+            rendered = probe.strftime(self.date_format)
+        except ValueError as exc:
+            raise ValueError(
+                f"date_format {self.date_format!r} is not a valid strptime pattern"
+            ) from exc
+        if rendered == self.date_format:
+            raise ValueError(
+                f"date_format {self.date_format!r} has no strptime directives;"
+                " write it as a pattern like '%Y-%m-%d'"
+            )
+        try:
+            datetime.strptime(rendered, self.date_format)  # noqa: DTZ007
+        except ValueError as exc:
+            raise ValueError(
+                f"date_format {self.date_format!r} is not a valid strptime pattern"
+            ) from exc
         return self
 
 

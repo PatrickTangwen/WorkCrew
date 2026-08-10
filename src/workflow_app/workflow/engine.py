@@ -88,6 +88,8 @@ def run_workflow(
             "workbook_outline_path": None,
             "schema_path": None,
             "scoping_questions_path": None,
+            "scoping_round": 0,
+            "scoping_pending": False,
             "scoping_answers_path": None,
             "extraction_path": None,
             "draft_xlsx_path": None,

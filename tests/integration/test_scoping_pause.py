@@ -14,8 +14,10 @@ import pytest
 
 from tests.integration.conftest import WORKBOOK_SCHEMA_CONFIG
 from workflow_app.models import ScopingQuestions
+from workflow_app.reports import replace_last_scoping_round
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.workflow.engine import resume_workflow, run_workflow
+from workflow_app.workflow.graph import MAX_SCOPING_ROUNDS
 from workflow_app.workspace import RunInputs
 
 CONTRACT_FIXTURES = Path(__file__).parent.parent / "fixtures" / "contracts"
@@ -27,6 +29,8 @@ SCOPING_OUTPUT = {
         {"id": "Q2", "question": "Are these folders the full authoritative set?"},
     ],
 }
+
+SCOPING_DONE = {"workbook_schema": WORKBOOK_SCHEMA_CONFIG, "questions": []}
 
 ANSWERS_TEXT = "Q1: One row per source folder.\nQ2: Yes, the set is complete.\n"
 
@@ -48,9 +52,12 @@ PASS_REVIEW = {
 }
 
 
-def make_runtimes():
+def make_runtimes(scoping=None):
+    # A resume is a fresh process in production, so its runtimes start
+    # over: resuming tests pass SCOPING_DONE, which is what a real pass
+    # returns once it has read the answers and has nothing left to ask.
     outputs = {
-        "scoping": SCOPING_OUTPUT,
+        "scoping": scoping if scoping is not None else [SCOPING_OUTPUT, SCOPING_DONE],
         "filler": filler_fixture(),
         "reviewer": PASS_REVIEW,
     }
@@ -179,7 +186,7 @@ def test_resume_continues_into_extraction_and_completes(inputs):
     state = resume_workflow(
         run_id=paused["run_id"],
         runs_root=inputs["runs_root"],
-        runtimes=make_runtimes(),
+        runtimes=make_runtimes(scoping=SCOPING_DONE),
     )
 
     assert "__interrupt__" not in state
@@ -208,7 +215,7 @@ def test_resume_passes_answers_to_filler_and_audits_them(inputs):
     resume_workflow(
         run_id=paused["run_id"],
         runs_root=inputs["runs_root"],
-        runtimes=make_runtimes(),
+        runtimes=make_runtimes(scoping=SCOPING_DONE),
     )
 
     filler_inputs = json.loads(
@@ -277,7 +284,7 @@ def test_resume_with_deleted_answers_file_reports_a_clear_error(inputs):
         resume_workflow(
             run_id=paused["run_id"],
             runs_root=inputs["runs_root"],
-            runtimes=make_runtimes(),
+            runtimes=make_runtimes(scoping=SCOPING_DONE),
         )
 
 
@@ -287,7 +294,7 @@ def test_resume_unknown_run_id_reports_a_clear_error(inputs):
         resume_workflow(
             run_id="20990101-000000-aaaaaa",
             runs_root=inputs["runs_root"],
-            runtimes=make_runtimes(),
+            runtimes=make_runtimes(scoping=SCOPING_DONE),
         )
 
 
@@ -297,7 +304,7 @@ def test_resume_of_an_empty_workspace_directory_reports_a_clear_error(inputs):
         resume_workflow(
             run_id="20990101-000000-bbbbbb",
             runs_root=inputs["runs_root"],
-            runtimes=make_runtimes(),
+            runtimes=make_runtimes(scoping=SCOPING_DONE),
         )
 
 
@@ -310,7 +317,7 @@ def test_resume_without_a_checkpoint_reports_a_clear_error(inputs):
         resume_workflow(
             run_id=paused["run_id"],
             runs_root=inputs["runs_root"],
-            runtimes=make_runtimes(),
+            runtimes=make_runtimes(scoping=SCOPING_DONE),
         )
 
 
@@ -329,7 +336,7 @@ def test_resume_works_from_a_different_working_directory(inputs, monkeypatch):
     state = resume_workflow(
         run_id=paused["run_id"],
         runs_root=inputs["runs_root"],
-        runtimes=make_runtimes(),
+        runtimes=make_runtimes(scoping=SCOPING_DONE),
     )
 
     assert "__interrupt__" not in state
@@ -343,7 +350,7 @@ def test_failed_resume_no_longer_reports_the_run_as_paused(inputs):
 
     # A filler payload violating the extraction contract fails the
     # resumed leg after the pause has been consumed.
-    runtimes = make_runtimes()
+    runtimes = make_runtimes(scoping=SCOPING_DONE)
     runtimes["filler"] = FakeAgentRuntime({"filler": {"proposals": [{"bad": 1}]}})
     with pytest.raises(Exception, match="filler failed"):
         resume_workflow(
@@ -387,3 +394,90 @@ def test_the_filler_still_gets_an_answers_document_when_nothing_was_asked(inputs
         (workspace / "agent_outputs/filler/inputs.json").read_text()
     )
     assert filler_inputs["scoping_answers_path"] == "artifacts/scoping_answers.md"
+
+
+SECOND_ROUND = {
+    "workbook_schema": WORKBOOK_SCHEMA_CONFIG,
+    "questions": [
+        {"id": "Q1", "question": "Which mapping applies to the folders you flagged?"}
+    ],
+}
+
+
+def answer_open_round(workspace, text):
+    replace_last_scoping_round(workspace / "artifacts/scoping_answers.md", text)
+
+
+def test_answers_feed_a_second_round_the_pass_asks_for(inputs):
+    # The pass reads what was answered and decides for itself whether
+    # anything is still open (ADR 0032).
+    paused = start_paused_run(inputs)
+    workspace = workspace_of(inputs, paused)
+    answer_open_round(workspace, "## Round 1\n\nOne row per folder.\n")
+
+    second = resume_workflow(
+        run_id=paused["run_id"],
+        runs_root=inputs["runs_root"],
+        runtimes=make_runtimes(scoping=[SECOND_ROUND, SCOPING_DONE]),
+    )
+
+    assert "__interrupt__" in second
+    questions = json.loads((workspace / "artifacts/scoping_questions.json").read_text())
+    assert questions["questions"][0]["question"].startswith("Which mapping")
+
+    answer_open_round(workspace, "## Round 2\n\nUse the broader region.\n")
+    final = resume_workflow(
+        run_id=paused["run_id"],
+        runs_root=inputs["runs_root"],
+        runtimes=make_runtimes(scoping=SCOPING_DONE),
+    )
+
+    assert "__interrupt__" not in final
+    assert (workspace / "output/final.xlsx").is_file()
+
+
+def test_each_round_is_kept_in_the_transcript(inputs):
+    paused = start_paused_run(inputs)
+    workspace = workspace_of(inputs, paused)
+    answer_open_round(workspace, "## Round 1\n\nOne row per folder.\n")
+
+    resume_workflow(
+        run_id=paused["run_id"],
+        runs_root=inputs["runs_root"],
+        runtimes=make_runtimes(scoping=[SECOND_ROUND, SCOPING_DONE]),
+    )
+
+    transcript = (workspace / "artifacts/scoping_answers.md").read_text()
+    assert "## Round 1" in transcript
+    assert "One row per folder." in transcript
+    assert "## Round 2" in transcript
+
+
+def test_the_run_stops_asking_after_the_round_cap(inputs):
+    # An agent that keeps asking must not hold the operator forever.
+    paused = start_paused_run(inputs)
+    workspace = workspace_of(inputs, paused)
+
+    state = paused
+    for round_number in range(2, MAX_SCOPING_ROUNDS + 2):
+        answer_open_round(workspace, f"## Round {round_number - 1}\n\nStill fine.\n")
+        state = resume_workflow(
+            run_id=paused["run_id"],
+            runs_root=inputs["runs_root"],
+            runtimes=make_runtimes(scoping=SECOND_ROUND),
+        )
+        if "__interrupt__" not in state:
+            break
+
+    assert "__interrupt__" not in state
+    assert (workspace / "output/final.xlsx").is_file()
+
+    payloads = {
+        kind: json.loads(payload)
+        for kind, payload in audit_rows(
+            workspace,
+            "SELECT kind, payload FROM events WHERE run_id = ?",
+            (paused["run_id"],),
+        )
+    }
+    assert payloads["scoping_rounds_exhausted"]["rounds"] == MAX_SCOPING_ROUNDS

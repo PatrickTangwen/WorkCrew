@@ -7,8 +7,9 @@ configs fail with a clear error.
 import json
 
 import pytest
+from pydantic import ValidationError
 
-from workflow_app.workbook.schema import load_workbook_schema
+from workflow_app.workbook.schema import FieldSpec, load_workbook_schema
 
 VALID_CONFIG = {
     "sheets": [
@@ -124,3 +125,25 @@ def test_overview_fields_must_name_declared_fields(tmp_path):
     config["sheets"][0]["overview_fields"] = ["No Such Column"]
     with pytest.raises(ValueError, match="failed validation"):
         load_workbook_schema(write_config(tmp_path, config))
+
+
+def test_a_human_readable_date_format_is_rejected():
+    # "YYYY-MM-DD" reaches datetime.strptime as pure literal text, so it
+    # would reject every real date at write time instead of here.
+    with pytest.raises(ValidationError, match="no strptime directives"):
+        FieldSpec.model_validate({"type": "date", "date_format": "YYYY-MM-DD"})
+
+
+def test_an_invalid_strptime_pattern_is_rejected():
+    with pytest.raises(ValidationError, match="not a valid strptime pattern"):
+        FieldSpec.model_validate({"type": "date", "date_format": "%Q"})
+
+
+def test_strptime_date_formats_are_accepted():
+    for pattern in ("%Y-%m-%d", "%d/%m/%Y", "%b %d, %Y"):
+        assert (
+            FieldSpec.model_validate(
+                {"type": "date", "date_format": pattern}
+            ).date_format
+            == pattern
+        )

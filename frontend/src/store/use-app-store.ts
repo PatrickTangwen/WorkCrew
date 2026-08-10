@@ -227,10 +227,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
   loadScopingQuestions: async (runId) => {
     const current = get()
-    if (
-      current.scoping.runId === runId &&
-      (current.scoping.status === "loading" || current.scoping.status === "ready")
-    ) {
+    // Only an in-flight load short-circuits. A "ready" one must not:
+    // every pause is a new round of questions, and skipping the fetch
+    // would leave the form showing the previous round's.
+    if (current.scoping.runId === runId && current.scoping.status === "loading") {
       return
     }
     set({

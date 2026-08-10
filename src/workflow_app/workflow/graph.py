@@ -2,9 +2,12 @@
 
 INIT -> PREPARE_WORKSPACE -> BUILD_MANIFEST -> OUTLINE_WORKBOOK ->
 CLAUDE_SCOPE -> LOAD_SCHEMA -> AWAIT_SCOPING_ANSWERS (LangGraph
-interrupt; skipped when answers are pre-provided or when the scoping
-pass asked nothing, though CLAUDE_SCOPE always runs because it produces
-the schema) -> CLAUDE_FILL -> VALIDATE ->
+interrupt) -> back to CLAUDE_SCOPE, which reads the answers, may revise
+the schema, and asks again only if something is still open. At most
+MAX_SCOPING_ROUNDS rounds reach the operator; the interrupt is skipped
+when answers are pre-provided, when the pass asks nothing, or once the
+rounds are spent, though CLAUDE_SCOPE always runs at least once because
+it produces the schema. Then -> CLAUDE_FILL -> VALIDATE ->
 WRITE_DRAFT -> CODEX_REVIEW, then the conditional second half: no
 actionable findings finalizes directly; otherwise CLAUDE_REVISE ->
 APPLY_ALLOWED_REVISIONS, one CODEX_REREVIEW round when rebuttals
@@ -43,6 +46,7 @@ from workflow_app.provenance.render import build_explorer_data
 from workflow_app.provenance.store import build_provenance, resync_provenance
 from workflow_app.reports import (
     action_counts,
+    append_scoping_round,
     render_human_review_md,
     render_no_scoping_questions,
     render_review_md,
@@ -72,6 +76,10 @@ from workflow_app.workflow.state import WorkflowState
 
 # One initial attempt plus two lenient retries (plan section 37).
 MAX_AGENT_ATTEMPTS = 3
+
+# How many rounds of scoping questions may reach the operator before
+# the run continues with whatever has been answered (ADR 0032).
+MAX_SCOPING_ROUNDS = 3
 
 
 class AgentStageFailure(Exception):
@@ -169,7 +177,11 @@ def build_graph(execution, audit, checkpointer):
         return {"workbook_outline_path": str(workspace.workbook_outline_json)}
 
     def claude_scope(state):
-        progress.emit("Starting scoping pass...")
+        # Re-run in full each round (ADR 0032): the pass reads the
+        # transcript of everything answered so far and may revise the
+        # schema in light of it, not just drop its remaining questions.
+        round_number = state["scoping_round"] + 1
+        progress.emit(f"Starting scoping pass (round {round_number})...")
         result = run_agent(
             state,
             "CLAUDE_SCOPE",
@@ -183,27 +195,51 @@ def build_graph(execution, audit, checkpointer):
             render_scoping_questions_md(questions)
         )
         progress.emit(
-            f"Scoping complete: {len(result.workbook_schema.sheets)} sheets,"
+            f"Scoping round {round_number} complete:"
+            f" {len(result.workbook_schema.sheets)} sheets,"
             f" {len(questions.questions)} questions"
         )
-        update = {"scoping_questions_path": str(workspace.scoping_questions_json)}
+        update = {
+            "scoping_questions_path": str(workspace.scoping_questions_json),
+            "scoping_round": round_number,
+            "scoping_pending": False,
+        }
         if inputs.scoping_answers is not None:
             # PREPARE_WORKSPACE already put the operator's answers at this
             # path, so writing anything here would destroy them.
             return update
         if not questions.questions:
-            # The pass had nothing to ask, so the run should not stop to
-            # ask it. Answering the question of whether to pause is the
-            # scoping agent's call (ADR 0032); setting the answers path
-            # here is what routes the run straight to the filler.
+            # Whether the run stops to ask is the scoping agent's call.
             progress.emit("No scoping questions; continuing without a pause.")
-            workspace.scoping_answers_md.write_text(render_no_scoping_questions())
+            if not workspace.scoping_answers_md.is_file():
+                workspace.scoping_answers_md.write_text(render_no_scoping_questions())
             update["scoping_answers_path"] = str(workspace.scoping_answers_md)
             return update
-        # Pre-created template the user edits before resuming.
-        workspace.scoping_answers_md.write_text(
-            render_scoping_answers_template(questions)
+        if round_number > MAX_SCOPING_ROUNDS:
+            # The operator has answered as many rounds as the run allows.
+            # Continuing beats failing: unanswered questions become
+            # ambiguous proposals that the review cycle surfaces.
+            progress.emit(
+                f"Scoping asked again after {MAX_SCOPING_ROUNDS} rounds;"
+                " continuing with the answers already given."
+            )
+            audit.record_event(
+                state["run_id"],
+                "scoping_rounds_exhausted",
+                {
+                    "rounds": MAX_SCOPING_ROUNDS,
+                    "unanswered": [question.id for question in questions.questions],
+                },
+            )
+            update["scoping_answers_path"] = str(workspace.scoping_answers_md)
+            return update
+        # Placeholder section the operator edits before resuming; the UI
+        # replaces it with structured answers instead.
+        append_scoping_round(
+            workspace.scoping_answers_md,
+            render_scoping_answers_template(questions, round_number),
         )
+        update["scoping_pending"] = True
         return update
 
     def load_schema(state):
@@ -856,15 +892,13 @@ def build_graph(execution, audit, checkpointer):
         return "FINALIZE"
 
     def route_after_load_schema(state):
-        # The answers are already in hand in two cases: the operator
-        # pre-provided them, or the scoping pass asked nothing and wrote
-        # the no-questions note itself. Either way there is nothing to
-        # pause for. The scoping pass always runs regardless — it is
-        # where the schema comes from (ADR 0032, narrowing plan
-        # section 20).
-        if state["scoping_answers_path"] is not None:
-            return "CLAUDE_FILL"
-        return "AWAIT_SCOPING_ANSWERS"
+        # CLAUDE_SCOPE decides: it sets scoping_pending only when it has
+        # questions the operator should still see. Anything else — answers
+        # pre-provided, nothing to ask, rounds exhausted — goes straight
+        # on (ADR 0032, narrowing plan section 20).
+        if state["scoping_pending"]:
+            return "AWAIT_SCOPING_ANSWERS"
+        return "CLAUDE_FILL"
 
     def route_after_apply(state):
         if routing.rebutted_cells(load_revision(state).decisions):
@@ -909,7 +943,9 @@ def build_graph(execution, audit, checkpointer):
             "CLAUDE_FILL": "CLAUDE_FILL",
         },
     )
-    graph.add_edge("AWAIT_SCOPING_ANSWERS", "CLAUDE_FILL")
+    # Answers feed the next round: the pass reads them, may revise the
+    # schema, and asks again only if something is still open.
+    graph.add_edge("AWAIT_SCOPING_ANSWERS", "CLAUDE_SCOPE")
     graph.add_edge("CLAUDE_FILL", "VALIDATE")
     graph.add_edge("VALIDATE", "WRITE_DRAFT")
     graph.add_edge("WRITE_DRAFT", "CODEX_REVIEW")

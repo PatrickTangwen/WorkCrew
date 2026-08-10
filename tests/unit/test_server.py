@@ -246,7 +246,7 @@ def test_concurrent_resume_requests_claim_a_paused_run_once(tmp_path):
             task=TwoResumeWaiters(),
         )
         coordinator.runs[tracked.record.run_id] = tracked
-        request = ResumeRunRequest(answers={"Q1": "One source file."})
+        request = ResumeRunRequest(answers={"Q1": {"value": "One source file."}})
 
         results = await asyncio.gather(
             coordinator.resume(tracked.record.run_id, request),
