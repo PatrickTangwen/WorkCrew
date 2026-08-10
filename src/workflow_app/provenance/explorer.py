@@ -26,6 +26,7 @@ STRINGS = {
         "stat_cells": "cells populated",
         "findings_heading": "Findings for review",
         "final_cycle_heading": "Final review cycle",
+        "revision_outcomes": "Revision outcomes",
         "proposal_status": "Proposal status",
         "proposal_value": "Proposal value",
         "confidence": "Confidence",
@@ -40,6 +41,9 @@ STRINGS = {
         "recommended_value": "Recommended value",
         "proposed_value": "Proposed value",
         "note_append": "Note append",
+        "applied_change": "Applied change",
+        "before_value": "Before",
+        "after_value": "After",
         "verdicts": "Reviewer verdicts",
         "actions": "Revision actions",
         "re_reviews": "Re-review verdicts",
@@ -60,6 +64,10 @@ STRINGS = {
         "action_unresolved": "Unresolved",
         "re_review_withdrawn": "Withdrawn",
         "re_review_upheld": "Upheld",
+        "change_filled": "Filled",
+        "change_revised": "Revised",
+        "change_cleared": "Cleared",
+        "change_rebutted": "Rebutted",
         "confidence_low": "Low",
         "confidence_medium": "Medium",
         "confidence_high": "High",
@@ -99,6 +107,7 @@ STRINGS = {
         "stat_cells": "已填单元格",
         "findings_heading": "待审阅发现",
         "final_cycle_heading": "最终审查周期",
+        "revision_outcomes": "修订结果",
         "proposal_status": "提案状态",
         "proposal_value": "提案值",
         "confidence": "置信度",
@@ -113,6 +122,9 @@ STRINGS = {
         "recommended_value": "建议值",
         "proposed_value": "提议值",
         "note_append": "追加备注",
+        "applied_change": "已应用变更",
+        "before_value": "修订前",
+        "after_value": "修订后",
         "verdicts": "Reviewer 结论",
         "actions": "Revision 操作",
         "re_reviews": "复审结论",
@@ -133,6 +145,10 @@ STRINGS = {
         "action_unresolved": "未决",
         "re_review_withdrawn": "撤回",
         "re_review_upheld": "维持",
+        "change_filled": "填充",
+        "change_revised": "修改",
+        "change_cleared": "清空",
+        "change_rebutted": "反驳",
         "confidence_low": "低",
         "confidence_medium": "中",
         "confidence_high": "高",
@@ -382,7 +398,8 @@ const fieldMatches = (f, q) => {
       proposal.rules_applied.some(rule => contains(rule, needle)) ||
       evidenceMatches(proposal.evidence, needle))) ||
     auditMatches(f.review, needle) || auditMatches(f.revision, needle) ||
-    auditMatches(f.re_review, needle) || contains(f.unresolved_reason, needle);
+    auditMatches(f.revision_change, needle) || auditMatches(f.re_review, needle) ||
+    contains(f.unresolved_reason, needle);
 };
 
 function groupHtml(name, label, badge, items) {
@@ -495,6 +512,14 @@ function proposalMetaHtml(f) {
 }
 const auditBadge = (prefix, value) => '<span class="audit-badge">' +
   esc(enumLabel(prefix, value)) + '</span>';
+function revisionChangeHtml(change) {
+  if (!change) return '';
+  const value = item => item === null ? '—' : hl(item);
+  return '<div class="audit-card"><div class="audit-title">' +
+    esc(STRINGS.applied_change) + auditBadge('change', change.kind) + '</div>' +
+    '<div><b>' + esc(STRINGS.before_value) + ':</b> ' + value(change.before) + '</div>' +
+    '<div><b>' + esc(STRINGS.after_value) + ':</b> ' + value(change.after) + '</div></div>';
+}
 function auditHtml(f) {
   const cards = [];
   if (f.review) {
@@ -517,6 +542,7 @@ function auditHtml(f) {
       '<div>' + hl(f.revision.justification) + '</div>' + proposed + note +
       evidenceHtml(f.revision.evidence, '') + '</div>');
   }
+  if (f.revision_change) cards.push(revisionChangeHtml(f.revision_change));
   if (f.re_review) {
     cards.push('<div class="audit-card"><div class="audit-title">' +
       esc(STRINGS.re_review) + auditBadge('re_review', f.re_review.verdict) + '</div><div>' +
@@ -541,7 +567,7 @@ function renderRow(r) {
   const index = DATA.rows.indexOf(r);
   const prev = DATA.rows[index - 1], next = DATA.rows[index + 1];
   const visible = r.fields.filter(f => f.value !== null || f.proposal || f.review ||
-    f.revision || f.re_review || f.unresolved_reason);
+    f.revision || f.revision_change || f.re_review || f.unresolved_reason);
   const empty = r.fields.filter(f => !visible.includes(f));
 
   let html = '<div class="crumb"><span class="home" id="homelink">' + esc(STRINGS.home) +
@@ -599,7 +625,9 @@ function qualitySummaryHtml() {
   const cycle = DATA.review_cycle;
   if (!cycle) return '';
   return '<section class="quality-summary"><h2>' + esc(STRINGS.final_cycle_heading) +
-    '</h2>' + summaryGroupHtml(STRINGS.verdicts, cycle.verdict_counts, 'verdict') +
+    '</h2>' + summaryGroupHtml(
+      STRINGS.revision_outcomes, cycle.change_counts || {}, 'change') +
+    summaryGroupHtml(STRINGS.verdicts, cycle.verdict_counts, 'verdict') +
     summaryGroupHtml(STRINGS.actions, cycle.action_counts, 'action') +
     summaryGroupHtml(STRINGS.re_reviews, cycle.re_review_counts, 're_review') +
     '<div class="summary-group"><span class="summary-label">' +

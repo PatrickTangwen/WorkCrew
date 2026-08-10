@@ -327,12 +327,15 @@ def build_graph(execution, audit, checkpointer):
             return []
         return json.loads(path.read_text())[key]
 
-    def explorer_review_cycle():
+    def explorer_review_cycle(state):
         return {
             "findings": read_artifact_items(workspace.review_json, "findings"),
             "decisions": read_artifact_items(workspace.revision_json, "decisions"),
             "verdicts": read_artifact_items(workspace.re_review_json, "verdicts"),
             "unresolved": read_artifact_items(workspace.unresolved_json, "cells"),
+            "revision_mutations": audit.list_applied_mutations(
+                state["run_id"], "revision"
+            ),
         }
 
     def write_explorers(state, version_suffix="", include_review_cycle=False):
@@ -349,7 +352,7 @@ def build_graph(execution, audit, checkpointer):
             provenance,
             handoff,
             manifest,
-            explorer_review_cycle() if include_review_cycle else None,
+            explorer_review_cycle(state) if include_review_cycle else None,
         )
         targets = {
             "": (workspace.review_explorer_html, workspace.review_explorer_zh_html),

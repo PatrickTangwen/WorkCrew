@@ -153,6 +153,12 @@ def test_shell_exposes_proposal_and_final_audit_layers():
         "action_counts": {"REBUT": 1},
         "re_review_counts": {"UPHELD": 1},
         "unresolved_count": 1,
+        "change_counts": {
+            "filled": 0,
+            "revised": 0,
+            "cleared": 0,
+            "rebutted": 1,
+        },
     }
 
     en = render_explorer_html(data, "en")
@@ -171,15 +177,23 @@ def test_shell_exposes_proposal_and_final_audit_layers():
     assert "Proposal status" in en
     assert "Proposal value" in en
     assert "Final review cycle" in en
+    assert "Revision outcomes" in en
     assert "contains(proposal.value, needle)" in en
     assert "return evidenceHtml(f.sources, STRINGS.current_provenance)" in en
     assert "auditBadge('verdict', f.review.verdict)" in en
     assert "auditBadge('action', f.revision.action)" in en
     assert "auditBadge('re_review', f.re_review.verdict)" in en
+    assert "revisionChangeHtml(f.revision_change)" in en
+    assert "cycle.change_counts" in en
     assert "提案状态" in zh
     assert "提案值" in zh
     assert "最终审查周期" in zh
+    assert "修订结果" in zh
     strings = embedded(zh, "STRINGS")
     assert strings["verdict_unresolved"] == "未决"
     assert strings["action_rebut"] == "反驳"
     assert strings["re_review_upheld"] == "维持"
+    assert strings["change_filled"] == "填充"
+    assert strings["change_revised"] == "修改"
+    assert strings["change_cleared"] == "清空"
+    assert strings["change_rebutted"] == "反驳"

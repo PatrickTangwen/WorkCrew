@@ -116,6 +116,7 @@ def build(
     manifest_paths=(),
     handoff=None,
     config=SCHEMA_CONFIG,
+    review_cycle=None,
 ):
     return build_explorer_data(
         make_draft(tmp_path, cells),
@@ -123,6 +124,7 @@ def build(
         {"entries": list(provenance)},
         handoff or empty_handoff(),
         make_manifest(manifest_paths),
+        review_cycle,
     )
 
 
@@ -160,6 +162,123 @@ def test_fill_counts_use_schema_fields_only(tmp_path):
     assert data["field_count"] == 4
     (row,) = data["rows"]
     assert row["filled"] == 2
+
+
+def test_revision_outcomes_derive_from_each_cells_first_old_and_final_new_value(
+    tmp_path,
+):
+    decisions = [
+        {
+            "cell": "B2",
+            "action": "FIX",
+            "proposed_value": "Renamed Org",
+            "note_append": None,
+            "justification": "The source gives the full name.",
+            "evidence": [],
+        },
+        {
+            "cell": "D2",
+            "action": "CLEAR",
+            "proposed_value": None,
+            "note_append": None,
+            "justification": "The date is unsupported.",
+            "evidence": [],
+        },
+        {
+            "cell": "G2",
+            "action": "FIX",
+            "proposed_value": "Education",
+            "note_append": None,
+            "justification": "The controlled value was corrected.",
+            "evidence": [],
+        },
+        {
+            "cell": "A2",
+            "action": "REBUT",
+            "proposed_value": None,
+            "note_append": None,
+            "justification": "The existing ID is supported.",
+            "evidence": [],
+        },
+    ]
+    review_cycle = {
+        "findings": [],
+        "decisions": decisions,
+        "verdicts": [],
+        "unresolved": [],
+        "revision_mutations": [
+            {
+                "sheet": SHEET,
+                "cell": "B2",
+                "old_value": None,
+                "new_value": "Org",
+            },
+            {
+                "sheet": SHEET,
+                "cell": "B2",
+                "old_value": "Org",
+                "new_value": "Renamed Org",
+            },
+            {
+                "sheet": SHEET,
+                "cell": "D2",
+                "old_value": "2025-01-01",
+                "new_value": None,
+            },
+            {
+                "sheet": SHEET,
+                "cell": "G2",
+                "old_value": "Healthcare",
+                "new_value": "Education",
+            },
+            {
+                "sheet": SHEET,
+                "cell": "G3",
+                "old_value": "Education",
+                "new_value": "Education",
+            },
+        ],
+    }
+
+    data = build(
+        tmp_path,
+        {
+            "A2": "PRJ-0001",
+            "B2": "Renamed Org",
+            "G2": "Education",
+            "G3": "Education",
+        },
+        review_cycle=review_cycle,
+    )
+
+    assert data["review_cycle"]["change_counts"] == {
+        "filled": 1,
+        "revised": 1,
+        "cleared": 1,
+        "rebutted": 1,
+    }
+    fields = {
+        f"{field['column']}{row['row']}": field
+        for row in data["rows"]
+        for field in row["fields"]
+        if field["column"] is not None
+    }
+    assert fields["B2"]["revision_change"] == {
+        "kind": "filled",
+        "before": None,
+        "after": "Renamed Org",
+    }
+    assert fields["D2"]["revision_change"] == {
+        "kind": "cleared",
+        "before": "2025-01-01",
+        "after": None,
+    }
+    assert fields["G2"]["revision_change"] == {
+        "kind": "revised",
+        "before": "Healthcare",
+        "after": "Education",
+    }
+    assert fields["G3"]["revision_change"] is None
 
 
 def test_rows_referenced_only_by_provenance_are_included(tmp_path):
