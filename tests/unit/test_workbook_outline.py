@@ -68,15 +68,21 @@ def test_blank_rows_are_dropped_without_renumbering_the_rest(tmp_path):
     assert [row.row for row in rows] == [1, 3]
 
 
-def test_only_the_first_rows_are_previewed(tmp_path):
+def test_headers_after_a_long_title_block_stay_visible(tmp_path):
     path = write_workbook(
         tmp_path / "template.xlsx",
-        {f"A{number}": f"row {number}" for number in range(1, 10)},
+        {
+            "A1": "Quarterly register",
+            "A2": "Prepared for the audit committee",
+            "A7": "Invoice No",
+            "B7": "Vendor",
+        },
     )
 
-    rows = build_outline(path, preview_rows=3).sheets[0].rows
+    rows = build_outline(path).sheets[0].rows
 
-    assert [row.row for row in rows] == [1, 2, 3]
+    assert [row.row for row in rows] == [1, 2, 7]
+    assert [cell.value for cell in rows[-1].cells] == ["Invoice No", "Vendor"]
 
 
 def test_values_are_stringified(tmp_path):

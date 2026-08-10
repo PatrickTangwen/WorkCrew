@@ -57,15 +57,15 @@ def sheet_names(workbook):
     return list(workbook.sheetnames)
 
 
-def preview_rows(workbook, sheet, limit):
-    """Column letter and text of every non-empty cell in the first rows."""
+def outline_rows(workbook, sheet):
+    """Column letter and text of every non-empty cell in the used rows."""
     return [
         [
             (cell.column_letter, str(cell.value).strip())
             for cell in cells
             if cell.value is not None and str(cell.value).strip()
         ]
-        for cells in workbook[sheet].iter_rows(min_row=1, max_row=limit)
+        for cells in workbook[sheet].iter_rows()
     ]
 
 

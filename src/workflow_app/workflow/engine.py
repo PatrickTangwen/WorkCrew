@@ -133,6 +133,11 @@ def resume_workflow(
                 ) from exc
             if run["status"] == "completed":
                 raise ValueError(f"run {run_id!r} already completed; nothing to resume")
+            if run["task"] is None:
+                raise ValueError(
+                    f"run {run_id!r} predates agent-derived workbook schemas"
+                    " and cannot be resumed"
+                )
             if not workspace.checkpoint_db.is_file():
                 raise FileNotFoundError(f"run {run_id!r} has no resumable checkpoint")
             # The pause is over once resumption starts; FINALIZE records the
@@ -146,7 +151,7 @@ def resume_workflow(
         inputs = RunInputs(
             source=Path(run["source_path"]),
             workbook=Path(run["workbook_path"]),
-            task=run["task"] or "",
+            task=run["task"],
             rules_file=None if run["rules_path"] is None else Path(run["rules_path"]),
             scoping_answers=None
             if run["scoping_answers_path"] is None

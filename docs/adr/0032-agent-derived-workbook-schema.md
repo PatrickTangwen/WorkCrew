@@ -143,3 +143,12 @@ checkable, and was deliberately not taken.
   not solved here.
 - `--runtimes fake` derives its degenerate schema's target sheet from the
   operator's actual workbook, because that schema is now checked against it.
+
+## Follow-up amendment: the outline covers the full non-empty used range
+
+A code review found that the original implementation limited the outline to
+five rows. That bound could hide a real header below a longer title block and
+leave the scoping pass deriving a write allowlist from incomplete structure.
+The outline now includes every non-empty cell in each sheet's used rows. It
+remains neutral about which row is the header; the change only removes the
+arbitrary visibility cutoff.

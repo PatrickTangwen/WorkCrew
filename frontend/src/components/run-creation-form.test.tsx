@@ -78,6 +78,8 @@ describe("RunCreationForm", () => {
       task: "One row per charity folder",
       rules_text: null,
       rules_file: null,
+      scoping_answers: null,
+      review_policy: null,
     })
   })
 
@@ -135,6 +137,24 @@ describe("RunCreationForm", () => {
     expect(vi.mocked(createRun).mock.calls[0][0]).toMatchObject({
       rules_text: null,
       rules_file: "/home/operator/rules.txt",
+    })
+  })
+
+  it("sends optional scoping answers and review policy files", async () => {
+    render(<RunCreationForm onCreated={vi.fn()} />)
+    await fillRequiredInputs()
+
+    await selectPath(
+      "Scoping answers input",
+      "/home/operator/scoping-answers.md"
+    )
+    await selectPath("Review policy input", "/home/operator/review-policy.yaml")
+    fireEvent.click(screen.getByRole("button", { name: "Start run" }))
+
+    await waitFor(() => expect(createRun).toHaveBeenCalled())
+    expect(vi.mocked(createRun).mock.calls[0][0]).toMatchObject({
+      scoping_answers: "/home/operator/scoping-answers.md",
+      review_policy: "/home/operator/review-policy.yaml",
     })
   })
 

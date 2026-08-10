@@ -38,7 +38,7 @@ from workflow_app.models import (
     ReReviewResult,
     ReviewResult,
     RevisionResult,
-    ScopingQuestions,
+    ScopingQuestionRound,
     ScopingResult,
 )
 from workflow_app.provenance.explorer import render_explorer_html
@@ -189,7 +189,10 @@ def build_graph(execution, audit, checkpointer):
             workspace.filler_outputs / "scoping.json",
             ScopingResult,
         )
-        questions = ScopingQuestions(questions=result.questions)
+        questions = ScopingQuestionRound(
+            round=round_number,
+            questions=result.questions,
+        )
         workspace.scoping_questions_json.write_text(questions.model_dump_json(indent=2))
         workspace.scoping_questions_md.write_text(
             render_scoping_questions_md(questions)

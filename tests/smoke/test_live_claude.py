@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from workflow_app.models.extraction import ExtractionResult
-from workflow_app.models.scoping import ScopingQuestions
+from workflow_app.models.scoping import ScopingQuestionRound
 from workflow_app.runtimes.base import AgentResult
 from workflow_app.runtimes.claude_code import ClaudeCodeRuntime
 from workflow_app.workflow.engine import run_workflow
@@ -79,7 +79,7 @@ def test_live_scoping_pass(inputs, monkeypatch, capsys):
     assert "__interrupt__" in state
     workspace = Workspace(Path(state["workspace_path"]))
 
-    questions = ScopingQuestions.model_validate_json(
+    questions = ScopingQuestionRound.model_validate_json(
         workspace.scoping_questions_json.read_text()
     )
     assert questions.questions, "live scoping produced no questions"

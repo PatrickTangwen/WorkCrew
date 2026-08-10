@@ -9,6 +9,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def validate_task_and_rules(task, rules_text, rules_file):
+    if not task.strip():
+        raise ValueError("task description must not be empty")
+    if rules_text is not None and rules_file is not None:
+        raise ValueError("rules may be given as text or as a file, not both")
+
+
 @dataclass(frozen=True)
 class RunInputs:
     source: Path
@@ -35,10 +42,7 @@ class RunInputs:
             raise FileNotFoundError(f"source folder not found: {self.source}")
         if not self.workbook.is_file():
             raise FileNotFoundError(f"workbook not found: {self.workbook}")
-        if not self.task.strip():
-            raise ValueError("task description must not be empty")
-        if self.rules_text is not None and self.rules_file is not None:
-            raise ValueError("rules may be given as text or as a file, not both")
+        validate_task_and_rules(self.task, self.rules_text, self.rules_file)
         if self.rules_file is not None and not self.rules_file.is_file():
             raise FileNotFoundError(f"rules file not found: {self.rules_file}")
         if self.scoping_answers is not None and not self.scoping_answers.is_file():

@@ -73,7 +73,7 @@ export type ScopingAnswer = {
 }
 
 export type ScopingAnswers = Record<string, ScopingAnswer>
-export type ScopingQuestions = { questions: ScopingQuestion[] }
+export type ScopingQuestions = { round: number; questions: ScopingQuestion[] }
 
 export type ArtifactType = "html" | "md" | "xlsx" | "json"
 
@@ -92,6 +92,8 @@ export type CreateRunInput = {
   task: string
   rules_text: string | null
   rules_file: string | null
+  scoping_answers: string | null
+  review_policy: string | null
 }
 
 async function responseError(response: Response) {

@@ -39,8 +39,8 @@ Your working directory is an isolated run workspace:
 - `input/workbook/` — the target workbook template (do not edit).
 - `artifacts/manifest.json` — hashed inventory of every source file; files
   flagged UNSUPPORTED / ENCRYPTED / CORRUPT cannot be read by you.
-- `artifacts/workbook_outline.json` — every sheet in the template with the
-  text of its first rows, each cell tagged with its Excel column letter.
+- `artifacts/workbook_outline.json` — every sheet in the template with every
+  non-empty cell in its used rows, each tagged with its Excel column letter.
 - `artifacts/scoping_answers.md` — the transcript of the rounds answered
   so far; absent on the first round.
 
@@ -59,7 +59,7 @@ Work from it rather than from assumptions:
 
 - **Find the header row yourself.** The outline lists the first rows verbatim
   and does not claim which one holds the headers — a template may open with a
-  title banner, a blank row, or notes before its real header row.
+  long title block, blank rows, or notes before its real header row.
 - **Take column letters from the outline**, never by counting positions. The
   letter recorded next to a header is the letter that header actually sits in.
 - **Pick exactly one target sheet**: the one whose rows the run must fill.
@@ -113,7 +113,7 @@ part of the schema records it: the extraction pass writes wherever your
 answers say, so a wrong first row overwrites the header row and destroys the
 workbook's structure. Your questions must leave no doubt about:
 
-- **Which row the first record goes on.** The outline's top rows show you
+- **Which row the first record goes on.** The outline's used rows show you
   where the banner, header, and any existing data sit — state the first
   writable row explicitly in a question and have the operator confirm it.
   Never assume the header is row 1.

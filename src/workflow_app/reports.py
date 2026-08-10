@@ -109,15 +109,6 @@ def render_scoping_answers(questions, answers, round_number):
     return "\n".join(lines)
 
 
-_ROUND_HEADING = re.compile(r"^## Round \d+$", re.MULTILINE)
-
-
-def scoping_rounds_in(path):
-    if not path.is_file():
-        return 0
-    return len(_ROUND_HEADING.findall(path.read_text()))
-
-
 def append_scoping_round(path, section):
     """Add a round to the transcript, starting the file on the first round."""
     existing = path.read_text() if path.is_file() else f"{SCOPING_ANSWERS_TITLE}\n"
@@ -125,19 +116,22 @@ def append_scoping_round(path, section):
     path.write_text(f"{existing}{separator}{section}")
 
 
-def replace_last_scoping_round(path, section):
-    """Answer the open round in place, leaving earlier rounds untouched.
+def replace_scoping_round(path, round_number, section):
+    """Answer the structured open round, leaving earlier rounds untouched.
 
     The scoping pass appends a placeholder section for the round it just
     asked; the CLI operator edits it, and the UI posts structured answers
     that land here instead.
     """
     text = path.read_text() if path.is_file() else ""
-    headings = list(_ROUND_HEADING.finditer(text))
-    if not headings:
-        append_scoping_round(path, section)
-        return
-    path.write_text(text[: headings[-1].start()] + section)
+    heading = re.compile(rf"^## Round {round_number}$", re.MULTILINE)
+    matches = list(heading.finditer(text))
+    if len(matches) != 1:
+        raise ValueError(
+            f"expected one placeholder for scoping round {round_number},"
+            f" found {len(matches)}"
+        )
+    path.write_text(text[: matches[0].start()] + section)
 
 
 def render_review_md(review):

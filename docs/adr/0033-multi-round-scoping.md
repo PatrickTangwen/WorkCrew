@@ -76,3 +76,11 @@ touched, because they are the pass's own memory of what it already knows.
 - The UI store no longer short-circuits a "ready" question load. Every pause is
   a new round, and skipping the fetch left the form showing the previous
   round's questions.
+
+## Follow-up amendment: round identity is structured state
+
+`artifacts/scoping_questions.json` records the current `round` alongside its
+questions. The resume API uses that value to replace the matching transcript
+placeholder instead of counting headings in the editable Markdown file.
+`scoping_answers.md` remains the cumulative human/agent transcript, but it is
+not the sole source of workflow round identity.

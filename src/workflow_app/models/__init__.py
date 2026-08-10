@@ -13,6 +13,7 @@ from workflow_app.models.revision import RevisionDecision, RevisionResult
 from workflow_app.models.scoping import (
     ScopingAnswer,
     ScopingQuestion,
+    ScopingQuestionRound,
     ScopingQuestions,
     ScopingResult,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "RevisionResult",
     "ScopingAnswer",
     "ScopingQuestion",
+    "ScopingQuestionRound",
     "ScopingQuestions",
     "ScopingResult",
 ]

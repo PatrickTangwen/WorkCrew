@@ -131,6 +131,20 @@ def test_resume_api_writes_answers_and_restarts_the_real_engine(inputs):
             while not events or events[-1]["type"] != "paused":
                 events.append(websocket.receive_json())
 
+            workspace = inputs["runs_root"] / run_id
+            question_round = client.get(
+                f"/api/runs/{run_id}/artifacts/scoping_questions.json"
+            ).json()
+            assert question_round["round"] == 1
+
+            # Round identity comes from structured workflow state, not from
+            # counting editable Markdown headings. A stray heading after the
+            # open placeholder must not turn this submission into round 2.
+            answers_path = workspace / "artifacts/scoping_answers.md"
+            answers_path.write_text(
+                answers_path.read_text() + "\n## Round 98\n\nstale text\n"
+            )
+
             resumed = client.post(
                 f"/api/runs/{run_id}/resume",
                 json={

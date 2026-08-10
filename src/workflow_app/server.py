@@ -23,16 +23,15 @@ from workflow_app.artifacts import (
 )
 from workflow_app.audit.db import AuditStore
 from workflow_app.cancellation import CancellationToken, WorkflowCancelled
-from workflow_app.models import ScopingAnswer, ScopingQuestions
+from workflow_app.models import ScopingAnswer, ScopingQuestionRound
 from workflow_app.native_picker import PickerUnavailable, pick_path
 from workflow_app.progress import emit
 from workflow_app.reports import (
     render_scoping_answers,
-    replace_last_scoping_round,
-    scoping_rounds_in,
+    replace_scoping_round,
 )
 from workflow_app.workflow.engine import new_run_id, resume_workflow, run_workflow
-from workflow_app.workspace import RunInputs, Workspace
+from workflow_app.workspace import RunInputs, Workspace, validate_task_and_rules
 
 UI_HOST = "127.0.0.1"
 DEFAULT_UI_PORT = 8470
@@ -53,10 +52,7 @@ class CreateRunRequest(BaseModel):
     def _usable_run_request(self):
         # RunInputs enforces these too, but only once the run is under
         # way; rejecting here turns a failed run into a 422.
-        if not self.task.strip():
-            raise ValueError("task must not be empty")
-        if self.rules_text is not None and self.rules_file is not None:
-            raise ValueError("rules may be given as text or as a file, not both")
+        validate_task_and_rules(self.task, self.rules_text, self.rules_file)
         return self
 
 
@@ -216,7 +212,7 @@ class RunCoordinator:
         status = tracked.record.status
         if status == "paused":
             workspace = Workspace((Path(self.options.runs_root) / run_id).resolve())
-            questions = ScopingQuestions.model_validate_json(
+            questions = ScopingQuestionRound.model_validate_json(
                 workspace.scoping_questions_json.read_text()
             )
             expected = {question.id for question in questions.questions}
@@ -232,10 +228,10 @@ class RunCoordinator:
             # The scoping pass appended a placeholder section for the
             # round it just asked; these answers take its place, leaving
             # earlier rounds intact for the next pass to read.
-            round_number = max(1, scoping_rounds_in(workspace.scoping_answers_md))
-            replace_last_scoping_round(
+            replace_scoping_round(
                 workspace.scoping_answers_md,
-                render_scoping_answers(questions, request.answers, round_number),
+                questions.round,
+                render_scoping_answers(questions, request.answers, questions.round),
             )
 
         if status in {"failed", "cancelled"}:

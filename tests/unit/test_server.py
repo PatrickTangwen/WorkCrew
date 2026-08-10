@@ -222,7 +222,10 @@ def test_concurrent_resume_requests_claim_a_paused_run_once(tmp_path):
         workspace = Workspace(runs_root / "run-paused")
         workspace.create_layout()
         workspace.scoping_questions_json.write_text(
-            '{"questions":[{"id":"Q1","question":"What is one row?"}]}'
+            '{"round":1,"questions":[{"id":"Q1","question":"What is one row?"}]}'
+        )
+        workspace.scoping_answers_md.write_text(
+            "# Scoping answers\n\n## Round 1\n\n(your answer here)\n"
         )
         resumer_calls = []
 

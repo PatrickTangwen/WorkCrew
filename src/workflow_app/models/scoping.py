@@ -50,6 +50,12 @@ class ScopingQuestions(BaseModel):
     questions: list[ScopingQuestion]
 
 
+class ScopingQuestionRound(ScopingQuestions):
+    """The questions artifact plus its structured workflow round."""
+
+    round: int
+
+
 class ScopingResult(BaseModel):
     """What the scoping invocation must return: the schema and the questions."""
 

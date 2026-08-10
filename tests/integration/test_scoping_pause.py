@@ -13,8 +13,8 @@ from pathlib import Path
 import pytest
 
 from tests.integration.conftest import WORKBOOK_SCHEMA_CONFIG
-from workflow_app.models import ScopingQuestions
-from workflow_app.reports import replace_last_scoping_round
+from workflow_app.models import ScopingQuestionRound
+from workflow_app.reports import replace_scoping_round
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.workflow.engine import resume_workflow, run_workflow
 from workflow_app.workflow.graph import MAX_SCOPING_ROUNDS
@@ -130,7 +130,11 @@ def test_run_pauses_after_scoping_with_question_artifacts(inputs):
 
     stored = json.loads((workspace / "artifacts/scoping_questions.json").read_text())
     assert (
-        stored == ScopingQuestions(questions=SCOPING_OUTPUT["questions"]).model_dump()
+        stored
+        == ScopingQuestionRound(
+            round=1,
+            questions=SCOPING_OUTPUT["questions"],
+        ).model_dump()
     )
     assert Path(state["scoping_questions_path"]) == (
         workspace / "artifacts/scoping_questions.json"
@@ -321,6 +325,51 @@ def test_resume_without_a_checkpoint_reports_a_clear_error(inputs):
         )
 
 
+def test_resume_refuses_a_run_from_before_agent_derived_schemas(inputs):
+    run_id = "20260809-120000-legacy"
+    workspace = inputs["runs_root"] / run_id
+    state_dir = workspace / "state"
+    state_dir.mkdir(parents=True)
+    with sqlite3.connect(state_dir / "audit.sqlite") as conn:
+        conn.execute(
+            """
+            CREATE TABLE runs (
+                run_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                source_path TEXT NOT NULL,
+                workbook_path TEXT NOT NULL,
+                rules_path TEXT NOT NULL,
+                workbook_schema_path TEXT NOT NULL,
+                scoping_answers_path TEXT,
+                review_policy_path TEXT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO runs VALUES (?, 'paused', ?, NULL, ?, ?, ?, ?, NULL, NULL)",
+            (
+                run_id,
+                "2026-08-09T12:00:00+00:00",
+                str(inputs["source"]),
+                str(inputs["workbook"]),
+                str(inputs["rules_file"].parent),
+                str(workspace / "legacy-schema.json"),
+            ),
+        )
+    (state_dir / "checkpoints.sqlite").touch()
+
+    with pytest.raises(ValueError, match="predates agent-derived workbook schemas"):
+        resume_workflow(
+            run_id=run_id,
+            runs_root=inputs["runs_root"],
+            runtimes=make_runtimes(scoping=SCOPING_DONE),
+        )
+
+    assert run_status(workspace, run_id) == "paused"
+
+
 def test_resume_works_from_a_different_working_directory(inputs, monkeypatch):
     # Start the run with a *relative* runs root, as the CLI default does.
     monkeypatch.chdir(inputs["runs_root"].parent)
@@ -405,7 +454,14 @@ SECOND_ROUND = {
 
 
 def answer_open_round(workspace, text):
-    replace_last_scoping_round(workspace / "artifacts/scoping_answers.md", text)
+    round_number = json.loads(
+        (workspace / "artifacts/scoping_questions.json").read_text()
+    )["round"]
+    replace_scoping_round(
+        workspace / "artifacts/scoping_answers.md",
+        round_number,
+        text,
+    )
 
 
 def test_answers_feed_a_second_round_the_pass_asks_for(inputs):
