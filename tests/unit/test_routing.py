@@ -105,7 +105,7 @@ def test_source_conflicts_are_human_only_revision_findings():
     ]
     extraction = ExtractionResult(
         proposals=[
-            proposal("H5", "conflict"),
+            proposal("h5", "conflict"),
             proposal("J5", "conflict"),
             proposal("G5", "ambiguous"),
         ]
@@ -152,7 +152,7 @@ def test_review_target_plan_rejects_duplicate_proposal_cells():
     extraction = ExtractionResult(
         proposals=[
             proposal("A2", column_name="Alpha"),
-            proposal("A2", column_name="Alpha"),
+            proposal("a2", column_name="Alpha"),
         ]
     )
 
@@ -226,6 +226,12 @@ def test_review_coverage_allows_extra_findings_only_for_missed_data():
     assert allowed is None
 
 
+def test_review_coverage_compares_canonical_cell_identities():
+    targets = [{"cell": "A2", "reason": "full coverage"}]
+
+    assert check_review_coverage(targets, [finding("a2", "PASS")]) is None
+
+
 # --- decision legality (plan section 27 behavior table) ------------------
 
 
@@ -269,6 +275,14 @@ def test_decision_for_unknown_cell_is_illegal():
         [finding("F2", "WARN", recommended="x")], [decision("Z9", "ACCEPT")]
     )
     assert reason is not None and "Z9" in reason
+
+
+def test_decision_cells_use_canonical_identity():
+    reason = check_decisions(
+        [finding("A2", "FAIL", recommended="x")],
+        [decision("a2", "FIX", proposed="x")],
+    )
+    assert reason is None
 
 
 def test_pass_cells_must_not_receive_decisions():
@@ -346,7 +360,7 @@ def test_unresolved_collects_all_three_sources():
 
 
 def test_protected_source_conflicts_have_an_explicit_human_reason():
-    conflict = finding("H5", "UNRESOLVED")
+    conflict = finding("h5", "UNRESOLVED")
 
     unresolved = collect_unresolved([conflict], [], [], human_only=[conflict])
 
@@ -399,6 +413,17 @@ def compose(decisions, findings, current=None, priors=None):
         lambda ref: (current or {}).get(ref),
         lambda ref, source_ref: (priors or {}).get((ref, source_ref)),
     )
+
+
+def test_accept_composition_uses_canonical_cell_identity():
+    mutations, _ = compose(
+        [decision("f4", "ACCEPT")],
+        [finding("F4", "WARN", recommended="Replacement note.")],
+    )
+
+    assert [(mutation.cell, mutation.value) for mutation in mutations] == [
+        ("f4", "Replacement note.")
+    ]
 
 
 def test_same_batch_note_appends_compose_cumulatively():
