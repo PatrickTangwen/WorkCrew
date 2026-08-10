@@ -13,7 +13,7 @@
     }
   ],
   "rules_applied": ["MAIN_ISSUE_AREA_STANDARDIZATION"],
-  "confidence": 0.93,
+  "confidence": "high",
   "status": "proposed",
   "notes": null
 }

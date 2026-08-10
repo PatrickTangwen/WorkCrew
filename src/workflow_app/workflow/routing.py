@@ -1,12 +1,12 @@
 """Review/revision routing rules (plan sections 27, 29, 30).
 
-Pure deterministic decision logic shared by the graph's conditional
-edges and the human-fallback artifact generation. Only non-PASS
-findings are actionable; the section-27 behavior table binds which
-revision actions are legal per verdict; the unresolved set feeds human
-review. The module also derives the revision mutation batch (plan
-sections 28, 37): decisions compose in order with read-your-writes
-note composition and audited-prior replay (ADR 0021).
+Pure deterministic review targeting and decision logic shared by the
+graph's agent inputs, validators, conditional edges, and human-fallback
+artifact generation. Source conflicts are protected for human review;
+the section-27 behavior table binds which revision actions are legal for
+the remaining findings. The module also derives the revision mutation
+batch (plan sections 28, 37): decisions compose in order with
+read-your-writes note composition and audited-prior replay (ADR 0021).
 """
 
 from workflow_app.workbook import writer
@@ -20,18 +20,132 @@ ACTIONS_BY_VERDICT = {
 }
 
 
+def _cell_identity(cell):
+    """Canonicalize valid A1 addresses while preserving malformed values for errors."""
+    return writer.normalize_cell(cell) or cell
+
+
+def _duplicate_cell_identities(cells):
+    seen = set()
+    duplicates = []
+    for cell in cells:
+        identity = _cell_identity(cell)
+        if identity in seen and identity not in duplicates:
+            duplicates.append(identity)
+        seen.add(identity)
+    return duplicates
+
+
+def plan_review_targets(extraction, schema, policy):
+    """Return the deterministic cell ledger the Reviewer must cover."""
+    field_order = {
+        name: index for index, name in enumerate(schema.target_sheet().fields)
+    }
+    proposals_by_cell = {}
+    for proposal in extraction.proposals:
+        identity = _cell_identity(proposal.cell)
+        if identity in proposals_by_cell:
+            raise ValueError(
+                f"extraction has duplicate proposals for cell {identity!r}"
+            )
+        proposals_by_cell[identity] = proposal
+    proposals = sorted(
+        proposals_by_cell.values(),
+        key=lambda proposal: (
+            proposal.row,
+            field_order.get(proposal.column_name, len(field_order)),
+            proposal.cell,
+        ),
+    )
+    if policy.coverage == "full":
+        return [
+            {"cell": _cell_identity(proposal.cell), "reason": "full coverage"}
+            for proposal in proposals
+        ]
+
+    reasons = {}
+
+    def add_reason(proposal, reason):
+        reasons.setdefault(_cell_identity(proposal.cell), []).append(reason)
+
+    for proposal in proposals:
+        if proposal.column_name in policy.strict_fields:
+            add_reason(proposal, "strict field")
+        if proposal.status == "proposed" and proposal.confidence in ("low", "medium"):
+            add_reason(proposal, f"{proposal.confidence} confidence")
+        if proposal.status in ("ambiguous", "conflict"):
+            add_reason(proposal, f"{proposal.status} proposal")
+
+    proposals_by_row = {}
+    for proposal in proposals:
+        proposals_by_row.setdefault(proposal.row, []).append(proposal)
+    sample_count = policy.high_confidence_sampling_per_record
+    field_count = len(field_order)
+    for row_offset, row in enumerate(sorted(proposals_by_row)):
+        if not sample_count or not field_count:
+            continue
+        start = row_offset * sample_count % field_count
+        high_confidence = [
+            proposal
+            for proposal in proposals_by_row[row]
+            if proposal.status == "proposed"
+            and proposal.confidence == "high"
+            and _cell_identity(proposal.cell) not in reasons
+        ]
+        high_confidence.sort(
+            key=lambda proposal: (
+                (field_order.get(proposal.column_name, field_count) - start)
+                % field_count,
+                proposal.cell,
+            )
+        )
+        for proposal in high_confidence[:sample_count]:
+            add_reason(proposal, "high-confidence rotation sample")
+
+    return [
+        {
+            "cell": _cell_identity(proposal.cell),
+            "reason": "; ".join(reasons[_cell_identity(proposal.cell)]),
+        }
+        for proposal in proposals
+        if _cell_identity(proposal.cell) in reasons
+    ]
+
+
 def non_pass_findings(findings):
     return [finding for finding in findings if finding.verdict != "PASS"]
 
 
-def has_actionable_findings(findings):
-    return bool(non_pass_findings(findings))
+def route_revision_findings(findings, extraction):
+    """Separate automatable findings from source conflicts reserved for people."""
+    conflict_cells = {
+        _cell_identity(proposal.cell)
+        for proposal in extraction.proposals
+        if proposal.status == "conflict"
+    }
+    actionable = non_pass_findings(findings)
+    return {
+        "agent_actionable": [
+            finding
+            for finding in actionable
+            if _cell_identity(finding.cell) not in conflict_cells
+        ],
+        "human_only": [
+            finding
+            for finding in findings
+            if _cell_identity(finding.cell) in conflict_cells
+        ],
+    }
 
 
 def check_decisions(findings, decisions):
-    by_cell = {finding.cell: finding for finding in findings}
+    duplicates = _duplicate_cell_identities([decision.cell for decision in decisions])
+    if duplicates:
+        return f"revision returned duplicate decisions for cells: {duplicates}"
+
+    by_cell = {_cell_identity(finding.cell): finding for finding in findings}
     for decision in decisions:
-        finding = by_cell.get(decision.cell)
+        finding = by_cell.get(_cell_identity(decision.cell))
         if finding is None:
             return f"decision for {decision.cell!r} has no matching finding"
         if finding.verdict == "PASS":
@@ -60,21 +174,56 @@ def check_decisions(findings, decisions):
                 f"note_append on {decision.cell!r} requires a primary edit"
                 f" (ACCEPT/FIX/CLEAR), got {decision.action}"
             )
+        if decision.action in ("ACCEPT", "FIX", "CLEAR", "REBUT") and not (
+            decision.evidence
+        ):
+            return (
+                f"decision action {decision.action!r} on {decision.cell!r}"
+                " requires evidence"
+            )
     return None
 
 
 def rebutted_cells(decisions):
-    return [decision.cell for decision in decisions if decision.action == "REBUT"]
+    return [
+        _cell_identity(decision.cell)
+        for decision in decisions
+        if decision.action == "REBUT"
+    ]
 
 
 def check_re_review_coverage(rebutted, verdicts):
-    verdict_cells = [verdict.cell for verdict in verdicts]
+    rebutted = [_cell_identity(cell) for cell in rebutted]
+    verdict_cells = [_cell_identity(verdict.cell) for verdict in verdicts]
+    duplicates = _duplicate_cell_identities(verdict_cells)
+    if duplicates:
+        return f"re-review returned duplicate verdicts for cells: {duplicates}"
     missing = [cell for cell in rebutted if cell not in verdict_cells]
     if missing:
         return f"re-review returned no verdict for rebutted cells: {missing}"
     extra = [cell for cell in verdict_cells if cell not in rebutted]
     if extra:
         return f"re-review added verdicts for non-rebutted cells: {extra}"
+    return None
+
+
+def check_review_coverage(targets, findings):
+    planned_cells = [_cell_identity(target["cell"]) for target in targets]
+    finding_cells = [_cell_identity(finding.cell) for finding in findings]
+    duplicates = _duplicate_cell_identities(finding_cells)
+    if duplicates:
+        return f"review returned duplicate findings for cells: {duplicates}"
+    missing = [cell for cell in planned_cells if cell not in finding_cells]
+    if missing:
+        return f"review returned no finding for planned targets: {missing}"
+    planned = set(planned_cells)
+    extra = [
+        _cell_identity(finding.cell)
+        for finding in findings
+        if _cell_identity(finding.cell) not in planned and not finding.missed_data
+    ]
+    if extra:
+        return f"review added non-completeness findings outside the plan: {extra}"
     return None
 
 
@@ -104,7 +253,13 @@ def compose_revision_mutations(
     # pending value, never on the stale batch-start read. `find_prior`
     # supplies the audited prior for idempotent replay (plan section
     # 37), which also seeds the pending value on a partial replay.
-    findings_by_cell = {finding.cell: finding for finding in findings}
+    duplicates = _duplicate_cell_identities([decision.cell for decision in decisions])
+    if duplicates:
+        raise ValueError(
+            f"cannot compose duplicate revision decisions for cells: {duplicates}"
+        )
+
+    findings_by_cell = {_cell_identity(finding.cell): finding for finding in findings}
     mutations, decision_by_ref, pending = [], {}, {}
     for index, decision in enumerate(decisions):
         source_ref = f"decisions[{index}]"
@@ -122,7 +277,9 @@ def compose_revision_mutations(
 
         if decision.action in ("ACCEPT", "FIX", "CLEAR"):
             if decision.action == "ACCEPT":
-                value = findings_by_cell[decision.cell].recommended_value
+                value = findings_by_cell[
+                    _cell_identity(decision.cell)
+                ].recommended_value
             elif decision.action == "FIX":
                 value = decision.proposed_value
             else:
@@ -188,38 +345,54 @@ def derive_revision_allowlist(findings, schema):
     return sorted(cells)
 
 
-def collect_unresolved(findings, decisions, verdicts):
-    decisions_by_cell = {decision.cell: decision for decision in decisions}
-    verdict_cells = {verdict.cell for verdict in verdicts}
-    upheld = {verdict.cell for verdict in verdicts if verdict.verdict == "UPHELD"}
+def collect_unresolved(findings, decisions, verdicts, human_only=()):
+    decisions_by_cell = {
+        _cell_identity(decision.cell): decision for decision in decisions
+    }
+    verdict_cells = {_cell_identity(verdict.cell) for verdict in verdicts}
+    upheld = {
+        _cell_identity(verdict.cell)
+        for verdict in verdicts
+        if verdict.verdict == "UPHELD"
+    }
+    human_only_cells = {_cell_identity(finding.cell) for finding in human_only}
 
-    unresolved = []
+    unresolved = [
+        {
+            "cell": _cell_identity(finding.cell),
+            "reason": "protected source conflict requires human review",
+        }
+        for finding in human_only
+    ]
     for finding in non_pass_findings(findings):
-        decision = decisions_by_cell.get(finding.cell)
+        identity = _cell_identity(finding.cell)
+        if identity in human_only_cells:
+            continue
+        decision = decisions_by_cell.get(identity)
         if decision is None:
             unresolved.append(
-                {"cell": finding.cell, "reason": "no revision decision was returned"}
+                {"cell": identity, "reason": "no revision decision was returned"}
             )
         elif decision.action == "UNRESOLVED":
             unresolved.append(
                 {
-                    "cell": finding.cell,
+                    "cell": identity,
                     "reason": "revision could not determine the correct action",
                 }
             )
-        elif decision.action == "REBUT" and finding.cell in upheld:
+        elif decision.action == "REBUT" and identity in upheld:
             unresolved.append(
                 {
-                    "cell": finding.cell,
+                    "cell": identity,
                     "reason": "rebuttal upheld by the targeted re-review",
                 }
             )
-        elif decision.action == "REBUT" and finding.cell not in verdict_cells:
+        elif decision.action == "REBUT" and identity not in verdict_cells:
             # A rebuttal that never received adjudication (the targeted
             # re-review did not complete) must not pass silently.
             unresolved.append(
                 {
-                    "cell": finding.cell,
+                    "cell": identity,
                     "reason": "rebuttal received no re-review verdict",
                 }
             )

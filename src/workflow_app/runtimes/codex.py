@@ -31,7 +31,7 @@ PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 # Role key -> (prompt file, structured-output contract). Role keys name
 # invocation kinds (ADR 0014); both Codex roles map to this one runtime.
 ROLES = {
-    "reviewer": ("reviewer.md", ReviewResult),
+    "reviewer": ("reviewer_independent.md", ReviewResult),
     "re_review": ("re_review.md", ReReviewResult),
 }
 

@@ -1,9 +1,10 @@
 """Explorer data assembly (plan section 22).
 
 Builds the language-neutral data model the review explorer embeds,
-deterministically, from the draft workbook, provenance, handoff, and
-manifest. Rendering to HTML lives in provenance/explorer.py. Workbook
-access goes through the writer isolation layer (plan section 14).
+deterministically, from the draft workbook, provenance, handoff, manifest,
+and optional final review-cycle artifacts. Rendering to HTML lives in
+provenance/explorer.py. Workbook access goes through the writer isolation
+layer (plan section 14).
 """
 
 from workflow_app.workbook import writer
@@ -33,7 +34,91 @@ def _pill_values(value, spec):
     return [value]
 
 
-def _row_numbers(book, sheet, provenance):
+def _evidence_data(evidence):
+    return [
+        {
+            "file": item["source_file"],
+            "location": item["source_location"],
+            "text": item["evidence_text"],
+            "type": item["evidence_type"],
+        }
+        for item in evidence
+    ]
+
+
+def _count_by(items, key):
+    counts = {}
+    for item in items:
+        value = item[key]
+        counts[value] = counts.get(value, 0) + 1
+    return counts
+
+
+def _review_cycle_data(review_cycle):
+    if review_cycle is None:
+        return None, {}, {}, {}, {}
+
+    findings = {
+        writer.normalize_cell(item["cell"]): {
+            "verdict": item["verdict"],
+            "recommended_value": item["recommended_value"],
+            "comment": item["reviewer_comment"],
+            "evidence": _evidence_data(item["evidence"]),
+            "missed_data": item["missed_data"],
+        }
+        for item in review_cycle["findings"]
+    }
+    decisions = {
+        writer.normalize_cell(item["cell"]): {
+            "action": item["action"],
+            "proposed_value": item["proposed_value"],
+            "note_append": item["note_append"],
+            "justification": item["justification"],
+            "evidence": _evidence_data(item["evidence"]),
+        }
+        for item in review_cycle["decisions"]
+    }
+    verdicts = {
+        writer.normalize_cell(item["cell"]): {
+            "verdict": item["verdict"],
+            "comment": item["reviewer_comment"],
+        }
+        for item in review_cycle["verdicts"]
+    }
+    unresolved = {
+        writer.normalize_cell(item["cell"]): item["reason"]
+        for item in review_cycle["unresolved"]
+    }
+    summary = {
+        "verdict_counts": _count_by(review_cycle["findings"], "verdict"),
+        "action_counts": _count_by(review_cycle["decisions"], "action"),
+        "re_review_counts": _count_by(review_cycle["verdicts"], "verdict"),
+        "unresolved_count": len(review_cycle["unresolved"]),
+    }
+    return summary, findings, decisions, verdicts, unresolved
+
+
+def _decision_records(handoff, sheet):
+    records = []
+    for record in handoff.get("decision_records", []):
+        record_sheet, _, cell_ref = record["cell"].rpartition("!")
+        normalized = writer.normalize_cell(cell_ref)
+        field = sheet.fields.get(record["column_name"])
+        if (
+            record_sheet != sheet.name
+            or normalized is None
+            or field is None
+            or field.column is None
+            or writer.column_of(normalized) != field.column
+            or writer.row_of(normalized) != record["row"]
+            or record["row"] < FIRST_DATA_ROW
+        ):
+            continue
+        records.append((normalized, record))
+    return records
+
+
+def _row_numbers(book, sheet, provenance, decisions):
     rows = set()
     columns = [spec.column for spec in sheet.fields.values() if spec.column]
     for row in range(FIRST_DATA_ROW, writer.max_row(book, sheet.name) + 1):
@@ -46,6 +131,7 @@ def _row_numbers(book, sheet, provenance):
         entry_sheet, cell_ref = entry["cell"].split("!", 1)
         if entry_sheet == sheet.name:
             rows.add(writer.row_of(cell_ref))
+    rows.update(record["row"] for _, record in decisions)
     return sorted(rows)
 
 
@@ -59,7 +145,7 @@ def _folder_names(manifest):
     return names
 
 
-def _row_folders(sheet, provenance, folder_names):
+def _row_folders(sheet, provenance, decisions, folder_names):
     # Row -> evidence folders, each row's list in manifest order.
     known = set(folder_names)
     referenced = {}
@@ -69,6 +155,13 @@ def _row_folders(sheet, provenance, folder_names):
             continue
         row = writer.row_of(cell_ref)
         for evidence in entry["evidence"]:
+            source = evidence["source_file"] or ""
+            head, separator, _ = source.partition("/")
+            if separator and head in known:
+                referenced.setdefault(row, set()).add(head)
+    for _, record in decisions:
+        row = record["row"]
+        for evidence in record["evidence"]:
             source = evidence["source_file"] or ""
             head, separator, _ = source.partition("/")
             if separator and head in known:
@@ -117,9 +210,18 @@ def _findings(handoff):
     return findings
 
 
-def build_explorer_data(draft_path, schema, provenance, handoff, manifest):
+def build_explorer_data(
+    draft_path, schema, provenance, handoff, manifest, review_cycle=None
+):
     sheet = schema.target_sheet()
     book = writer.open_draft(draft_path)
+    (
+        review_summary,
+        findings_by_cell,
+        revisions_by_cell,
+        verdicts_by_cell,
+        unresolved_by_cell,
+    ) = _review_cycle_data(review_cycle)
 
     entries_by_cell = {}
     for entry in provenance["entries"]:
@@ -127,9 +229,11 @@ def build_explorer_data(draft_path, schema, provenance, handoff, manifest):
         if entry_sheet == sheet.name:
             entries_by_cell[cell_ref] = entry
 
+    decisions = _decision_records(handoff, sheet)
+    proposals_by_cell = dict(decisions)
     folder_names = _folder_names(manifest)
-    row_folders = _row_folders(sheet, provenance, folder_names)
-    row_numbers = _row_numbers(book, sheet, provenance)
+    row_folders = _row_folders(sheet, provenance, decisions, folder_names)
+    row_numbers = _row_numbers(book, sheet, provenance, decisions)
     folder_rows = {
         name: [row for row in row_numbers if name in row_folders.get(row, [])]
         for name in folder_names
@@ -168,6 +272,12 @@ def build_explorer_data(draft_path, schema, provenance, handoff, manifest):
                 if spec.column
                 else None
             )
+            proposal = (
+                proposals_by_cell.get(f"{spec.column}{row_number}")
+                if spec.column
+                else None
+            )
+            cell_ref = f"{spec.column}{row_number}" if spec.column else None
             fields.append(
                 {
                     "name": name,
@@ -176,16 +286,21 @@ def build_explorer_data(draft_path, schema, provenance, handoff, manifest):
                     "role": entry["agent_role"] if entry else None,
                     "pill_values": _pill_values(value, spec),
                     "gloss_zh": spec.gloss_zh,
-                    "sources": [
-                        {
-                            "file": evidence["source_file"],
-                            "location": evidence["source_location"],
-                            "text": evidence["evidence_text"],
-                        }
-                        for evidence in entry["evidence"]
-                    ]
-                    if entry
-                    else [],
+                    "proposal": {
+                        "status": proposal["status"],
+                        "value": proposal["value"],
+                        "confidence": proposal["confidence"],
+                        "evidence": _evidence_data(proposal["evidence"]),
+                        "rules_applied": proposal["rules_applied"],
+                        "review_note": proposal["review_note"],
+                    }
+                    if proposal
+                    else None,
+                    "review": findings_by_cell.get(cell_ref),
+                    "revision": revisions_by_cell.get(cell_ref),
+                    "re_review": verdicts_by_cell.get(cell_ref),
+                    "unresolved_reason": unresolved_by_cell.get(cell_ref),
+                    "sources": _evidence_data(entry["evidence"]) if entry else [],
                 }
             )
         title = None
@@ -228,6 +343,7 @@ def build_explorer_data(draft_path, schema, provenance, handoff, manifest):
         ],
         "ungrouped_rows": [row for row in row_numbers if not row_folders.get(row)],
         "findings": _findings(handoff),
+        "review_cycle": review_summary,
         "field_count": len(sheet.fields),
         # Derived from the workbook being rendered, so v2 stays exact
         # after revisions change the fill.

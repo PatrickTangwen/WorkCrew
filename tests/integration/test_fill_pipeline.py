@@ -47,14 +47,14 @@ def proposal(row, column_name, cell, value, confidence, status="proposed", **ext
 FILLER_OUTPUT = {
     "proposals": [
         # Written: free-text field at high confidence.
-        proposal(2, "Notes", "F2", "Community healthcare delivery.", 0.95),
+        proposal(2, "Notes", "F2", "Community healthcare delivery.", "high"),
         # Written: vocabulary field below the cap, web-sourced evidence.
         proposal(
             2,
             "Main Issue Area(s)",
             "G2",
             "Healthcare",
-            0.80,
+            "medium",
             evidence=evidence("Program page names healthcare.", "external_web"),
         ),
         # Written: constructed ID below the cap.
@@ -63,19 +63,43 @@ FILLER_OUTPUT = {
             "Project ID*",
             "A2",
             "PRJ-0001",
-            0.70,
+            "medium",
             rules_applied=["PROJECT_ID_FORMAT"],
         ),
         # Validation-rejected: mapped field at the high threshold.
-        proposal(2, "Maturity", "E2", "Established", 0.90),
+        proposal(2, "Maturity", "E2", "Established", "high"),
         # Safety-rejected: outside the controlled vocabulary.
-        proposal(3, "Main Issue Area(s)", "G3", "Sorcery", 0.70),
+        proposal(3, "Main Issue Area(s)", "G3", "Sorcery", "medium"),
         # Never written: uncertainty statuses.
-        proposal(3, "Project ID*", "A3", None, 0.30, status="not_found"),
-        proposal(3, "Maturity", "E3", "Emerging", 0.50, status="ambiguous"),
-        proposal(4, "Notes", "F4", "Two sources disagree.", 0.40, status="conflict"),
+        proposal(
+            3,
+            "Project ID*",
+            "A3",
+            None,
+            None,
+            status="not_found",
+            notes="No project identifier was found.",
+        ),
+        proposal(
+            3,
+            "Maturity",
+            "E3",
+            None,
+            None,
+            status="ambiguous",
+            notes="Emerging and established are both plausible.",
+        ),
+        proposal(
+            4,
+            "Notes",
+            "F4",
+            None,
+            None,
+            status="conflict",
+            notes="Two sources disagree.",
+        ),
         # Written, but low confidence: must surface for extra review.
-        proposal(4, "Main Issue Area(s)", "G4", "Education", 0.55),
+        proposal(4, "Main Issue Area(s)", "G4", "Education", "low"),
     ]
 }
 
@@ -88,8 +112,21 @@ APPLIED_CELLS = {
 BLOCKED_CELLS = ["E2", "G3", "A3", "E3", "F4"]
 
 
+REVIEW_OUTPUT = {
+    "findings": [
+        {
+            "cell": cell,
+            "verdict": "PASS",
+            "evidence": [],
+            "reviewer_comment": "Covered by the deterministic review plan.",
+        }
+        for cell in ("A2", "E2", "F2", "G2", "E3", "G3", "F4", "G4")
+    ]
+}
+
+
 def start_run(inputs):
-    fake = FakeAgentRuntime({"filler": FILLER_OUTPUT, "reviewer": {"findings": []}})
+    fake = FakeAgentRuntime({"filler": FILLER_OUTPUT, "reviewer": REVIEW_OUTPUT})
     return run_workflow(
         inputs=RunInputs(
             source=inputs["source"],
@@ -118,7 +155,7 @@ def test_declared_merges_flow_into_the_handoff(inputs):
             }
         ],
     }
-    fake = FakeAgentRuntime({"filler": output, "reviewer": {"findings": []}})
+    fake = FakeAgentRuntime({"filler": output, "reviewer": REVIEW_OUTPUT})
     state = run_workflow(
         inputs=RunInputs(
             source=inputs["source"],
@@ -177,7 +214,7 @@ def test_every_written_cell_has_a_full_provenance_record(inputs):
     assert id_entry["agent_role"] == "filler"
     assert id_entry["agent_runtime"] == "fake"
     assert id_entry["rules_applied"] == ["PROJECT_ID_FORMAT"]
-    assert id_entry["confidence"] == 0.70
+    assert id_entry["confidence"] == "medium"
     assert id_entry["run_id"] == state["run_id"]
     (id_evidence,) = id_entry["evidence"]
     assert id_evidence["source_file"] == BRIEF
@@ -218,6 +255,32 @@ def test_handoff_summarizes_the_fill(inputs):
     assert extra_review_cells == {f"{SHEET}!E2", f"{SHEET}!G3", f"{SHEET}!G4"}
 
 
+def test_handoff_indexes_every_fill_decision_with_exact_evidence(inputs):
+    state = start_run(inputs)
+
+    handoff = json.loads((artifacts(inputs, state) / "handoff.json").read_text())
+    records = {item["cell"]: item for item in handoff["decision_records"]}
+
+    assert len(records) == len(FILLER_OUTPUT["proposals"])
+    assert records[f"{SHEET}!A2"] == {
+        "cell": f"{SHEET}!A2",
+        "row": 2,
+        "column_name": "Project ID*",
+        "status": "proposed",
+        "value": "PRJ-0001",
+        "confidence": "medium",
+        "evidence": [evidence("Stated in the brief.")],
+        "rules_applied": ["PROJECT_ID_FORMAT"],
+        "review_note": "verify rule application: PROJECT_ID_FORMAT",
+    }
+    assert records[f"{SHEET}!A3"]["status"] == "not_found"
+    assert records[f"{SHEET}!A3"]["review_note"] == ("No project identifier was found.")
+    assert records[f"{SHEET}!F4"]["status"] == "conflict"
+    assert records[f"{SHEET}!F2"]["review_note"] == (
+        "confirm exact supporting evidence and target ownership"
+    )
+
+
 def test_handoff_markdown_is_rendered_for_humans(inputs):
     state = start_run(inputs)
 
@@ -225,3 +288,9 @@ def test_handoff_markdown_is_rendered_for_humans(inputs):
     assert "legacy_archive.zip" in text
     assert "Confidence" in text
     assert f"{SHEET}!E2" in text
+    assert "## Decision ledger" in text
+    assert f"### {SHEET} — row 2" in text
+    assert BRIEF in text
+    assert "[direct]" in text
+    assert "Stated in the brief." in text
+    assert "verify rule application: PROJECT_ID_FORMAT" in text

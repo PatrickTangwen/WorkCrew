@@ -9,7 +9,7 @@ import json
 
 from pydantic import BaseModel, ConfigDict
 
-from workflow_app.models import CellValue, Evidence
+from workflow_app.models import CellValue, ConfidenceLevel, Evidence
 from workflow_app.workbook.safety import cell_key
 
 
@@ -22,9 +22,9 @@ class ProvenanceEntry(BaseModel):
     agent_runtime: str
     evidence: list[Evidence]
     rules_applied: list[str]
-    # Revision decisions carry no confidence score (plan section 18),
+    # Revision decisions carry no confidence level (ADR 0024),
     # so revision-authored entries record None.
-    confidence: float | None
+    confidence: ConfidenceLevel | None
     run_id: str
 
 

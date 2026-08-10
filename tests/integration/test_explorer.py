@@ -41,8 +41,8 @@ FILLER_OUTPUT = {
                 }
             ],
             "rules_applied": [],
-            # Constructed fields cap at medium confidence (ADR 0012).
-            "confidence": 0.7 if column_name == "Project ID*" else 0.9,
+            # Constructed fields cap at medium confidence (ADR 0024).
+            "confidence": "medium" if column_name == "Project ID*" else "high",
             "status": "proposed",
         }
         for column_name, cell, value in (
@@ -54,6 +54,12 @@ FILLER_OUTPUT = {
 
 REVIEW_OUTPUT = {
     "findings": [
+        {
+            "cell": "A2",
+            "verdict": "PASS",
+            "evidence": [],
+            "reviewer_comment": "The constructed ID follows the rule.",
+        },
         {
             "cell": "F2",
             "verdict": "WARN",
@@ -67,7 +73,7 @@ REVIEW_OUTPUT = {
                 }
             ],
             "reviewer_comment": "Note misses the community name.",
-        }
+        },
     ]
 }
 
@@ -91,19 +97,64 @@ REVISION_OUTPUT = {
     ]
 }
 
+REBUTTAL_OUTPUT = {
+    "decisions": [
+        {
+            "cell": "F2",
+            "action": "REBUT",
+            "proposed_value": None,
+            "note_append": None,
+            "evidence": [
+                {
+                    "source_file": BRIEF,
+                    "source_location": "page 1",
+                    "evidence_text": "The original wording is stated verbatim.",
+                    "evidence_type": "direct",
+                }
+            ],
+            "justification": "The original source supports the current value.",
+        }
+    ]
+}
+
+RE_REVIEW_OUTPUT = {
+    "verdicts": [
+        {
+            "cell": "F2",
+            "verdict": "UPHELD",
+            "reviewer_comment": "The broader source context still supports correction.",
+        }
+    ]
+}
+
 
 def filler_fixture():
     proposal = json.loads((CONTRACT_FIXTURES / "cell_proposal.json").read_text())
     return {"proposals": [proposal]}
 
 
-def start_run(inputs, filler=None, review=None, revision=None):
+def default_review():
+    return {
+        "findings": [
+            {
+                "cell": "G12",
+                "verdict": "PASS",
+                "evidence": [],
+                "reviewer_comment": "Verified against the source.",
+            }
+        ]
+    }
+
+
+def start_run(inputs, filler=None, review=None, revision=None, re_review=None):
     outputs = {
         "filler": filler or filler_fixture(),
-        "reviewer": review or {"findings": []},
+        "reviewer": review or default_review(),
     }
     if revision is not None:
         outputs["revision"] = revision
+    if re_review is not None:
+        outputs["re_review"] = re_review
     fake = FakeAgentRuntime(outputs)
     return run_workflow(
         inputs=RunInputs(
@@ -166,12 +217,25 @@ def test_run_generates_selfcontained_bilingual_v1_explorers(inputs):
         } in data["findings"]
 
 
-def test_straight_through_run_has_no_v2_explorers(inputs):
+def test_straight_through_run_has_final_v2_audit(inputs):
     state = start_run(inputs)
     artifacts = artifacts_dir(inputs, state)
 
+    v1 = embedded_data((artifacts / "review_explorer.html").read_text())
+    assert v1["review_cycle"] is None
     for name in V2_FILES:
-        assert not (artifacts / name).exists()
+        html = (artifacts / name).read_text()
+        assert_selfcontained(html)
+        data = embedded_data(html)
+        assert data["review_cycle"] == {
+            "verdict_counts": {"PASS": 1},
+            "action_counts": {},
+            "re_review_counts": {},
+            "unresolved_count": 0,
+        }
+        review = field_value(data, 12, "Main Issue Area(s)", "review")
+        assert review["verdict"] == "PASS"
+        assert review["comment"] == "Verified against the source."
 
 
 def test_v2_explorers_match_revised_workbook_and_provenance(inputs):
@@ -230,6 +294,7 @@ def test_v2_explorers_match_revised_workbook_and_provenance(inputs):
                 "file": item["source_file"],
                 "location": item["source_location"],
                 "text": item["evidence_text"],
+                "type": item["evidence_type"],
             }
             for item in entry["evidence"]
         ]
@@ -238,6 +303,38 @@ def test_v2_explorers_match_revised_workbook_and_provenance(inputs):
 
     for name in V2_FILES:
         assert_selfcontained((artifacts / name).read_text())
+
+
+def test_v2_audit_includes_re_review_and_final_unresolved_reason(inputs):
+    state = start_run(
+        inputs,
+        filler=FILLER_OUTPUT,
+        review=REVIEW_OUTPUT,
+        revision=REBUTTAL_OUTPUT,
+        re_review=RE_REVIEW_OUTPUT,
+    )
+    artifacts = artifacts_dir(inputs, state)
+
+    data = embedded_data((artifacts / "review_explorer_v2.html").read_text())
+    (row,) = [item for item in data["rows"] if item["row"] == 2]
+    audit = next(item for item in row["fields"] if item["name"] == "Notes")
+
+    assert audit["review"]["verdict"] == "WARN"
+    assert audit["revision"]["action"] == "REBUT"
+    assert audit["revision"]["justification"] == (
+        "The original source supports the current value."
+    )
+    assert audit["re_review"] == {
+        "verdict": "UPHELD",
+        "comment": "The broader source context still supports correction.",
+    }
+    assert "upheld" in audit["unresolved_reason"]
+    assert data["review_cycle"] == {
+        "verdict_counts": {"PASS": 1, "WARN": 1},
+        "action_counts": {"REBUT": 1},
+        "re_review_counts": {"UPHELD": 1},
+        "unresolved_count": 1,
+    }
 
 
 def test_language_variants_embed_identical_data(inputs):

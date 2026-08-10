@@ -322,7 +322,20 @@ def build_graph(execution, audit, checkpointer):
         progress.emit(f"Draft written: {len(applied)} cells populated")
         return {"draft_xlsx_path": str(workspace.draft_xlsx)}
 
-    def write_explorers(state, version_suffix=""):
+    def read_artifact_items(path, key):
+        if not path.is_file():
+            return []
+        return json.loads(path.read_text())[key]
+
+    def explorer_review_cycle():
+        return {
+            "findings": read_artifact_items(workspace.review_json, "findings"),
+            "decisions": read_artifact_items(workspace.revision_json, "decisions"),
+            "verdicts": read_artifact_items(workspace.re_review_json, "verdicts"),
+            "unresolved": read_artifact_items(workspace.unresolved_json, "cells"),
+        }
+
+    def write_explorers(state, version_suffix="", include_review_cycle=False):
         progress.emit(f"Rendering review explorer (EN/ZH){version_suffix and ' v2'}...")
         schema = schema_from(state)
         provenance = json.loads(workspace.provenance_json.read_text())
@@ -331,7 +344,12 @@ def build_graph(execution, audit, checkpointer):
             json.loads(Path(state["manifest_path"]).read_text())
         )
         data = build_explorer_data(
-            workspace.draft_xlsx, schema, provenance, handoff, manifest
+            workspace.draft_xlsx,
+            schema,
+            provenance,
+            handoff,
+            manifest,
+            explorer_review_cycle() if include_review_cycle else None,
         )
         targets = {
             "": (workspace.review_explorer_html, workspace.review_explorer_zh_html),
@@ -412,6 +430,11 @@ def build_graph(execution, audit, checkpointer):
         )
         return result.verdicts
 
+    def revision_route(state):
+        return routing.route_revision_findings(
+            load_review(state).findings, load_extraction(state)
+        )
+
     def codex_review(state):
         progress.emit("Starting Reviewer...")
         # The Reviewer's explicit inputs (plan section 23): the review
@@ -419,12 +442,16 @@ def build_graph(execution, audit, checkpointer):
         policy = ReviewPolicy.model_validate_json(
             workspace.review_policy_json.read_text()
         )
+        review_targets = routing.plan_review_targets(
+            load_extraction(state), schema_from(state), policy
+        )
 
         def relative(path):
             return str(path.relative_to(workspace.root))
 
         reviewer_inputs = {
             "review_policy": policy.model_dump(),
+            "review_targets": review_targets,
             "draft_workbook": relative(workspace.draft_xlsx),
             "extraction": relative(workspace.extraction_json),
             "provenance": relative(workspace.provenance_json),
@@ -451,6 +478,9 @@ def build_graph(execution, audit, checkpointer):
         reason = routing.check_finding_cells(review.findings)
         if reason is not None:
             raise ValueError(reason)
+        reason = routing.check_review_coverage(review_targets, review.findings)
+        if reason is not None:
+            raise ValueError(reason)
         workspace.review_json.write_text(review.model_dump_json(indent=2))
         workspace.review_md.write_text(render_review_md(review))
         counts = verdict_counts(review.findings)
@@ -460,33 +490,33 @@ def build_graph(execution, audit, checkpointer):
 
     def claude_revise(state):
         progress.emit("Starting Revision...")
-        review = load_review(state)
         schema = schema_from(state)
         extraction = load_extraction(state)
         provenance = json.loads(workspace.provenance_json.read_text())
 
-        actionable = routing.non_pass_findings(review.findings)
-        flagged_cells = {finding.cell for finding in actionable}
+        actionable = revision_route(state)["agent_actionable"]
+        flagged_cells = {writer.normalize_cell(finding.cell) for finding in actionable}
         sheet_name = schema.target_sheet().name
         flagged_keys = {cell_key(sheet_name, cell): cell for cell in flagged_cells}
         # Only the allowed context (plan section 27): non-PASS findings,
         # their proposals and provenance, the mutation allowlist, and a
         # pointer to the rules the agent reads via its workspace.
         restricted_inputs = {
-            "findings": [finding.model_dump() for finding in actionable],
+            "findings": [
+                {**finding.model_dump(), "cell": writer.normalize_cell(finding.cell)}
+                for finding in actionable
+            ],
             "proposals": {
-                proposal.cell: proposal.model_dump()
+                writer.normalize_cell(proposal.cell): proposal.model_dump()
                 for proposal in extraction.proposals
-                if proposal.cell in flagged_cells
+                if writer.normalize_cell(proposal.cell) in flagged_cells
             },
             "provenance": {
                 flagged_keys[entry["cell"]]: entry
                 for entry in provenance["entries"]
                 if entry["cell"] in flagged_keys
             },
-            "mutation_allowlist": routing.derive_revision_allowlist(
-                review.findings, schema
-            ),
+            "mutation_allowlist": routing.derive_revision_allowlist(actionable, schema),
             "rules_dir": "input/rules",
         }
         (workspace.revision_outputs / "inputs.json").write_text(
@@ -504,7 +534,7 @@ def build_graph(execution, audit, checkpointer):
         except AgentStageFailure as failure:
             degrade(state, "CLAUDE_REVISE", failure)
             return {"revision_path": None}
-        reason = routing.check_decisions(review.findings, revision.decisions)
+        reason = routing.check_decisions(actionable, revision.decisions)
         if reason is not None:
             raise ValueError(reason)
         workspace.revision_json.write_text(revision.model_dump_json(indent=2))
@@ -517,10 +547,10 @@ def build_graph(execution, audit, checkpointer):
 
     def apply_allowed_revisions(state):
         progress.emit("Applying authorized revisions...")
-        review = load_review(state)
         revision = load_revision(state)
         schema = schema_from(state)
         sheet = schema.target_sheet()
+        actionable = revision_route(state)["agent_actionable"]
 
         draft = writer.open_draft(workspace.draft_xlsx)
 
@@ -533,12 +563,10 @@ def build_graph(execution, audit, checkpointer):
             )
 
         mutations, decision_by_ref = routing.compose_revision_mutations(
-            revision.decisions, review.findings, sheet, read_current, find_prior
+            revision.decisions, actionable, sheet, read_current, find_prior
         )
 
-        allowlist = Allowlist(
-            routing.derive_revision_allowlist(review.findings, schema)
-        )
+        allowlist = Allowlist(routing.derive_revision_allowlist(actionable, schema))
         outcomes = apply_mutations(
             workspace.draft_xlsx, mutations, schema, allowlist, audit, state["run_id"]
         )
@@ -559,9 +587,6 @@ def build_graph(execution, audit, checkpointer):
         workspace.revision_log_md.write_text(
             render_revision_log_md(revision.decisions, outcomes)
         )
-        # The explorer regenerates so it matches the revised workbook
-        # and updated provenance exactly (plan section 22).
-        write_explorers(state, version_suffix="_v2")
         applied = sum(1 for outcome in outcomes if outcome.status == "applied")
         progress.emit(f"Applied {applied} authorized revisions")
 
@@ -570,7 +595,9 @@ def build_graph(execution, audit, checkpointer):
         rebutted = routing.rebutted_cells(revision.decisions)
         progress.emit(f"Starting targeted re-review: {len(rebutted)} rebutted cells...")
         review = load_review(state)
-        findings_by_cell = {finding.cell: finding for finding in review.findings}
+        findings_by_cell = {
+            writer.normalize_cell(finding.cell): finding for finding in review.findings
+        }
         restricted_inputs = {
             "rebutted": [
                 {
@@ -578,7 +605,8 @@ def build_graph(execution, audit, checkpointer):
                     "decision": next(
                         decision.model_dump()
                         for decision in revision.decisions
-                        if decision.cell == cell and decision.action == "REBUT"
+                        if writer.normalize_cell(decision.cell) == cell
+                        and decision.action == "REBUT"
                     ),
                 }
                 for cell in rebutted
@@ -614,8 +642,12 @@ def build_graph(execution, audit, checkpointer):
         review = load_review(state)
         revision = load_revision(state)
         verdicts = load_verdicts(state)
+        human_only = revision_route(state)["human_only"]
         unresolved = routing.collect_unresolved(
-            review.findings, revision.decisions, verdicts
+            review.findings,
+            revision.decisions,
+            verdicts,
+            human_only=human_only,
         )
 
         workspace.unresolved_json.write_text(
@@ -624,9 +656,16 @@ def build_graph(execution, audit, checkpointer):
 
         sheet_name = schema_from(state).target_sheet().name
         draft = writer.open_draft(workspace.draft_xlsx)
-        findings_by_cell = {finding.cell: finding for finding in review.findings}
-        decisions_by_cell = {decision.cell: decision for decision in revision.decisions}
-        verdicts_by_cell = {verdict.cell: verdict for verdict in verdicts}
+        findings_by_cell = {
+            writer.normalize_cell(finding.cell): finding for finding in review.findings
+        }
+        decisions_by_cell = {
+            writer.normalize_cell(decision.cell): decision
+            for decision in revision.decisions
+        }
+        verdicts_by_cell = {
+            writer.normalize_cell(verdict.cell): verdict for verdict in verdicts
+        }
 
         items = []
         for entry in unresolved:
@@ -665,18 +704,29 @@ def build_graph(execution, audit, checkpointer):
         workspace.human_review_md.write_text(render_human_review_md(items))
 
     def unreviewed_human_review(state):
-        # The review stage never completed: every agent-written cell is
-        # unreviewed and escalates with both agents' columns empty.
+        # The review stage never completed: every agent-written cell and
+        # every still-blank source conflict escalates with agent columns empty.
         provenance = json.loads(workspace.provenance_json.read_text())
         sheet_name = schema_from(state).target_sheet().name
         draft = writer.open_draft(workspace.draft_xlsx)
-        reason = "the review stage did not complete after retries"
+        review_failure_reason = "the review stage did not complete after retries"
+        conflict_reason = "protected source conflict requires human review"
 
-        items = []
+        reasons_by_cell = {}
         for entry in provenance["entries"]:
             entry_sheet, cell_ref = entry["cell"].split("!", 1)
             if entry_sheet != sheet_name:
                 continue
+            reasons_by_cell[cell_ref] = review_failure_reason
+        for proposal in load_extraction(state).proposals:
+            if proposal.sheet != sheet_name or proposal.status != "conflict":
+                continue
+            cell_ref = writer.normalize_cell(proposal.cell)
+            if cell_ref is not None:
+                reasons_by_cell[cell_ref] = conflict_reason
+
+        items = []
+        for cell_ref, reason in reasons_by_cell.items():
             items.append(
                 {
                     "cell": cell_ref,
@@ -689,7 +739,12 @@ def build_graph(execution, audit, checkpointer):
             )
         workspace.unresolved_json.write_text(
             json.dumps(
-                {"cells": [{"cell": item["cell"], "reason": reason} for item in items]},
+                {
+                    "cells": [
+                        {"cell": item["cell"], "reason": item["reason"]}
+                        for item in items
+                    ]
+                },
                 indent=2,
             )
         )
@@ -698,6 +753,7 @@ def build_graph(execution, audit, checkpointer):
 
     def finalize(state):
         progress.emit("Finalizing run...")
+        write_explorers(state, version_suffix="_v2", include_review_cycle=True)
         shutil.copy2(workspace.draft_xlsx, workspace.final_xlsx)
         audit.record_run_finished(state["run_id"], "completed")
         _write_run_summary(workspace, audit, state["run_id"])
@@ -705,8 +761,12 @@ def build_graph(execution, audit, checkpointer):
     def route_unresolved(state):
         review = load_review(state)
         revision = load_revision(state)
+        human_only = revision_route(state)["human_only"]
         unresolved = routing.collect_unresolved(
-            review.findings, revision.decisions, load_verdicts(state)
+            review.findings,
+            revision.decisions,
+            load_verdicts(state),
+            human_only=human_only,
         )
         return "HUMAN_REVIEW" if unresolved else "FINALIZE"
 
@@ -715,8 +775,11 @@ def build_graph(execution, audit, checkpointer):
         # run wrote goes straight to human review.
         if state.get("review_path") is None:
             return "HUMAN_REVIEW"
-        if routing.has_actionable_findings(load_review(state).findings):
+        routed = revision_route(state)
+        if routed["agent_actionable"]:
             return "CLAUDE_REVISE"
+        if routed["human_only"]:
+            return "HUMAN_REVIEW"
         return "FINALIZE"
 
     def route_after_load_schema(state):

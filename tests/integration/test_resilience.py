@@ -68,7 +68,7 @@ FILLER_OUTPUT = {
             "value": "First note.",
             "evidence": [evidence("Stated in the brief.")],
             "rules_applied": [],
-            "confidence": 0.9,
+            "confidence": "high",
             "status": "proposed",
         },
         {
@@ -79,7 +79,7 @@ FILLER_OUTPUT = {
             "value": "PRJ-0001",
             "evidence": [evidence("Constructed from the folder name.")],
             "rules_applied": [],
-            "confidence": 0.7,
+            "confidence": "medium",
             "status": "proposed",
         },
     ]
@@ -113,7 +113,7 @@ FILLER_OUTPUT["proposals"].append(
         "value": "Education",
         "evidence": [evidence("Mentioned once in the archive notes.")],
         "rules_applied": [],
-        "confidence": 0.7,
+        "confidence": "medium",
         "status": "proposed",
     }
 )
@@ -343,6 +343,45 @@ def test_reviewer_triple_failure_escalates_all_written_cells(inputs):
         "completed",
         2,
         "runtime_process_failure",
+    )
+
+
+def test_reviewer_triple_failure_preserves_blank_source_conflicts(inputs):
+    conflict_output = {
+        "proposals": [
+            *FILLER_OUTPUT["proposals"],
+            {
+                "sheet": SHEET,
+                "row": 4,
+                "column_name": "Start Date",
+                "cell": "D4",
+                "value": None,
+                "evidence": [evidence("Two authoritative source dates disagree.")],
+                "rules_applied": [],
+                "confidence": None,
+                "status": "conflict",
+                "notes": "The dates cannot be reconciled.",
+            },
+        ]
+    }
+    runtimes, _ = make_runtimes(
+        {
+            "filler": [conflict_output],
+            "reviewer": ["error", "raise", "error"],
+        }
+    )
+
+    state = start_run(inputs, runtimes)
+    workspace = inputs["runs_root"] / state["run_id"]
+    items = human_review_items(workspace)
+
+    assert set(items) == {"F2", "A2", "G4", "D4"}
+    assert items["D4"]["current_value"] is None
+    assert items["D4"]["reviewer"] is None
+    assert items["D4"]["reason"] == ("protected source conflict requires human review")
+    unresolved = json.loads((workspace / "artifacts/unresolved.json").read_text())
+    assert {item["cell"]: item["reason"] for item in unresolved["cells"]}["D4"] == (
+        "protected source conflict requires human review"
     )
 
 

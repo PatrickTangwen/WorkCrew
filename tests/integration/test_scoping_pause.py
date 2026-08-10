@@ -34,8 +34,20 @@ def filler_fixture():
     return {"proposals": [proposal]}
 
 
+PASS_REVIEW = {
+    "findings": [
+        {
+            "cell": "G12",
+            "verdict": "PASS",
+            "evidence": [],
+            "reviewer_comment": "Covered by the deterministic review plan.",
+        }
+    ]
+}
+
+
 def make_runtimes(*, with_scoping=True):
-    outputs = {"filler": filler_fixture(), "reviewer": {"findings": []}}
+    outputs = {"filler": filler_fixture(), "reviewer": PASS_REVIEW}
     if with_scoping:
         outputs["scoping"] = SCOPING_OUTPUT
     fake = FakeAgentRuntime(outputs)

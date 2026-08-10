@@ -35,6 +35,34 @@ Your working directory is an isolated run workspace:
 - You may research online when local sources are insufficient; evidence
   found on the web MUST be tagged `evidence_type: "external_web"`.
 
+## Procedure
+
+1. Read the scoping answers, workbook schema, and every file in
+   `input/rules/` before extracting values. Build a scratch
+   **row-to-folder ledger** that assigns each in-scope top-level source
+   folder to its workbook row exactly as the scoping answers require.
+   This step is complete only when every in-scope folder appears once,
+   every target row appears once, and the ordering has been checked
+   against the actual folder names.
+2. Process one ledger entry at a time. Open every readable document in
+   that folder, finish all target columns for its row, and only then move
+   to the next entry. Keep the row, folder, and document bound together;
+   do not collect values across folders and assign rows afterward.
+3. For each candidate value, apply the field's schema and every relevant
+   local rule before deciding its status. Compare the candidate with the
+   exact evidence text and check that any normalization, construction, or
+   mapping is authorized by a rule.
+4. Before returning output, audit every proposal against the ledger. The
+   **source_file prefix** of source evidence must equal the folder assigned
+   to that proposal's row. Rule evidence under `input/rules/` and external
+   web URLs are the only exceptions. Re-open and repair every mismatch;
+   a path label that names the wrong folder is not a harmless metadata
+   error.
+5. Finish with an uncertainty sweep: every target cell has one proposal,
+   every unreadable source is accounted for, and every ambiguity or source
+   conflict found while reading is represented in the affected proposal
+   statuses and notes.
+
 ## Proposals
 
 Your structured output must match the provided JSON schema: a `proposals`
@@ -55,8 +83,8 @@ list of cell proposals. For each proposal:
   - `evidence_type`: `direct` | `cross_reference` | `rule` | `derived` |
     `external_web`.
 - `rules_applied` — names of the rules from `input/rules/` you applied.
-- `confidence` — 0.0 to 1.0: below 0.60 is low, 0.60 to 0.85 is medium,
-  0.85 and above is high.
+- `confidence` — `"low"` | `"medium"` | `"high"` for a `proposed`
+  value; null for `not_found`, `ambiguous`, or `conflict`.
 - `status` and `notes` — see the uncertainty policy.
 
 Alongside `proposals`, your output carries a `merges` list (empty when
@@ -74,19 +102,43 @@ multiple rows to avoid declaring a merge.
 Distinguish honestly; never return unsupported values merely to increase
 the fill rate:
 
-- `proposed` — a supportable value with evidence.
-- `not_found` — you searched and nothing supports a value (value null).
-- `ambiguous` — multiple readings are possible; explain them in `notes`.
-- `conflict` — sources contradict each other; describe both in `notes`.
+- `proposed` — a supportable, rule-compliant value with evidence.
+- `not_found` — after checking every readable document in the assigned
+  folder, no evidence supports a value (`value: null`, `confidence: null`).
+  Use another status when evidence exists but is ambiguous or
+  contradictory. In `notes`, name what was searched and why the field
+  remains unsupported.
+- `ambiguous` — multiple readings are possible; set value and confidence
+  null, explain the candidates in `notes`, and cite the evidence for them.
+- `conflict` — equally authoritative evidence contradicts each other; set
+  value and confidence null, describe both claims in `notes`, and cite both
+  sides.
+
+Propagate a source conflict to every constructed, mapped, or otherwise
+dependent field whose input is no longer determinable. Such a dependent
+proposal also has value and confidence null and `status: "conflict"`; cite
+the conflicting input evidence plus the dependency rule. A conflict is never
+downgraded to `not_found` merely because its final value is blank.
+
+Do not invent a temporal distinction to reconcile contradictory values.
+Words such as `latest`, `current`, or `prior`, and an undated extract, do not
+prove that claims belong to different target periods. Treat them as different
+periods only when explicit dates or reporting periods in the sources
+distinguish them. When the target period cannot be distinguished and the
+applicable rule treats the sources as equally authoritative, return a
+`conflict` status.
 
 ## Confidence policy
 
-- Cap confidence below 0.85 (medium) for every field whose `value_kind`
-  is `constructed` (a value assembled by naming format) or `mapped` (a
-  value chosen from a controlled vocabulary or judgment scale), no matter
-  how certain you are — this forces those values into review sampling.
-- Reserve 0.85 and above for values read directly from an authoritative
-  source.
+- `low` — one supportable candidate exists, but its evidence is weak or
+  requires a material judgment. Explain the weakness in `notes`.
+- `medium` — the evidence supports the value, but the value requires an
+  authorized normalization, construction, mapping, or limited OCR
+  interpretation.
+- `high` — an authoritative source states the value directly and clearly,
+  with no material transformation or competing evidence.
+- Every field whose `value_kind` is `constructed` or `mapped`, including a
+  controlled-vocabulary field, is capped at `medium`.
 
 ## Mutation policy
 

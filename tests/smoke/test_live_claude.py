@@ -14,19 +14,36 @@ import pytest
 
 from workflow_app.models.extraction import ExtractionResult
 from workflow_app.models.scoping import ScopingQuestions
+from workflow_app.runtimes.base import AgentResult
 from workflow_app.runtimes.claude_code import ClaudeCodeRuntime
-from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.workflow.engine import run_workflow
 from workflow_app.workspace import RunInputs, Workspace
 
 pytestmark = pytest.mark.smoke
 
-ALL_CLEAR_REVIEW = {"reviewer": {"findings": []}}
-
-# Fields capped at medium confidence (constructed / mapped, plan
-# section 20) in the sample workspace's schema config.
+# Fields capped at medium confidence (constructed / mapped, ADR 0024)
+# in the sample workspace's schema config.
 CAPPED_FIELDS = {"Project ID*", "Maturity"}
-MEDIUM_CAP = 0.85
+
+
+class AllClearReviewerRuntime:
+    name = "fake"
+
+    def run(self, request):
+        inputs_path = (
+            Path(request.workspace_path) / "agent_outputs/reviewer/inputs.json"
+        )
+        targets = json.loads(inputs_path.read_text())["review_targets"]
+        findings = [
+            {
+                "cell": target["cell"],
+                "verdict": "PASS",
+                "evidence": [],
+                "reviewer_comment": "Covered by the deterministic review plan.",
+            }
+            for target in targets
+        ]
+        return AgentResult(status="ok", output={"findings": findings})
 
 
 def live_runtimes():
@@ -34,7 +51,7 @@ def live_runtimes():
     return {
         "scoping": claude,
         "filler": claude,
-        "reviewer": FakeAgentRuntime(ALL_CLEAR_REVIEW),
+        "reviewer": AllClearReviewerRuntime(),
     }
 
 
@@ -123,7 +140,7 @@ def test_live_fill(inputs, monkeypatch):
                 f"proposed cell {proposal.cell} carries no evidence"
             )
         if proposal.column_name in CAPPED_FIELDS:
-            assert proposal.confidence < MEDIUM_CAP, (
+            assert proposal.confidence in {"low", "medium"}, (
                 f"{proposal.column_name} is constructed/mapped but has "
                 f"confidence {proposal.confidence}"
             )
