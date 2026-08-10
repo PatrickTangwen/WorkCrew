@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from workflow_app import server
 from workflow_app.audit.db import AuditStore
+from workflow_app.native_picker import PickerUnavailable
 from workflow_app.server import (
     ResumeRunRequest,
     RunCoordinator,
@@ -438,51 +439,75 @@ def test_get_historical_run_reads_detail_from_audit_store(tmp_path):
     }
 
 
-def test_browse_lists_home_directory_entries(tmp_path):
-    home = tmp_path / "home"
-    source = home / "source"
-    source.mkdir(parents=True)
-    workbook = home / "template.xlsx"
-    workbook.write_bytes(b"workbook")
-    client = TestClient(
-        create_app(
-            tmp_path / "missing-static",
-            options=ServerOptions(home_dir=home),
-        )
-    )
-
-    response = client.get("/api/browse")
-
-    assert response.status_code == 200
-    listing = response.json()
-    assert listing["path"] == str(home)
-    assert listing["root"] == str(home)
-    assert [(entry["name"], entry["type"]) for entry in listing["entries"]] == [
-        ("source", "directory"),
-        ("template.xlsx", "file"),
-    ]
-    assert all(
-        set(entry) == {"name", "type", "size", "modified"}
-        for entry in listing["entries"]
-    )
-
-
-def test_browse_rejects_paths_outside_home(tmp_path):
+def test_pick_opens_native_chooser_and_returns_the_path(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
-    outside = tmp_path / "outside"
-    outside.mkdir()
+    calls = []
+
+    def picker(mode, prompt, default_location):
+        calls.append((mode, prompt, default_location))
+        return str(home / "source")
+
     client = TestClient(
         create_app(
             tmp_path / "missing-static",
-            options=ServerOptions(home_dir=home),
+            options=ServerOptions(home_dir=home, picker=picker),
         )
     )
 
-    response = client.get(
-        "/api/browse",
-        params={"path": str(Path(home) / ".." / outside.name)},
+    response = client.post(
+        "/api/pick",
+        json={"mode": "directory", "prompt": "Choose source folder"},
     )
 
-    assert response.status_code == 403
-    assert response.json() == {"detail": "Path must stay within the home directory"}
+    assert response.status_code == 200
+    assert response.json() == {"path": str(home / "source")}
+    assert calls == [("directory", "Choose source folder", home)]
+
+
+def test_pick_reports_a_cancelled_chooser_as_no_path(tmp_path):
+    client = TestClient(
+        create_app(
+            tmp_path / "missing-static",
+            options=ServerOptions(home_dir=tmp_path, picker=lambda *_: None),
+        )
+    )
+
+    response = client.post(
+        "/api/pick", json={"mode": "file", "prompt": "Choose workbook"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"path": None}
+
+
+def test_pick_surfaces_an_unavailable_chooser(tmp_path):
+    def picker(*_):
+        raise PickerUnavailable("no display available")
+
+    client = TestClient(
+        create_app(
+            tmp_path / "missing-static",
+            options=ServerOptions(home_dir=tmp_path, picker=picker),
+        )
+    )
+
+    response = client.post(
+        "/api/pick", json={"mode": "file", "prompt": "Choose workbook"}
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "no display available"}
+
+
+def test_pick_rejects_an_unknown_mode(tmp_path):
+    client = TestClient(
+        create_app(
+            tmp_path / "missing-static",
+            options=ServerOptions(home_dir=tmp_path, picker=lambda *_: None),
+        )
+    )
+
+    response = client.post("/api/pick", json={"mode": "drive", "prompt": "Choose"})
+
+    assert response.status_code == 422

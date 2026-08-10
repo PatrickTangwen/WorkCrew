@@ -1,7 +1,6 @@
-import { useRef, useState, type FormEvent } from "react"
+import { useState, type FormEvent } from "react"
 import { FileJson, FileSpreadsheet, FileText, Folder, Play } from "lucide-react"
 
-import { FileBrowserModal } from "@/components/file-browser-modal"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -10,7 +9,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { createRun, type CreateRunInput, type RunRecord } from "@/lib/api"
+import {
+  createRun,
+  pickPath,
+  type CreateRunInput,
+  type PickMode,
+  type RunRecord,
+} from "@/lib/api"
 
 type FieldKey = keyof CreateRunInput
 
@@ -18,7 +23,7 @@ const fields: Array<{
   key: FieldKey
   label: string
   description: string
-  mode: "directory" | "file"
+  mode: PickMode
   required: boolean
   icon: typeof Folder
 }> = [
@@ -82,15 +87,29 @@ const initialValues: CreateRunInput = {
 }
 
 function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void }) {
-  const fileBrowserOpenerRef = useRef<HTMLButtonElement>(null)
   const [values, setValues] = useState(initialValues)
-  const [activeField, setActiveField] = useState<(typeof fields)[number] | null>(null)
+  const [pickingKey, setPickingKey] = useState<FieldKey | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const ready = fields
     .filter((field) => field.required)
     .every((field) => Boolean(values[field.key]))
+
+  async function choose(field: (typeof fields)[number]) {
+    setPickingKey(field.key)
+    setError(null)
+    try {
+      const picked = await pickPath(field.mode, `Choose ${field.label.toLowerCase()}`)
+      if (picked) setValues((current) => ({ ...current, [field.key]: picked }))
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Unable to open the file chooser"
+      )
+    } finally {
+      setPickingKey(null)
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -107,8 +126,7 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
   }
 
   return (
-    <>
-      <div className="mx-auto w-full max-w-4xl">
+    <div className="mx-auto w-full max-w-4xl">
         <div className="mb-6">
           <p className="text-xs font-semibold tracking-[0.18em] text-muted-foreground uppercase">
             New run
@@ -117,7 +135,7 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
             Assemble the working set.
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Choose local inputs from your home directory. WorkCrew copies them into an isolated run workspace before any agent begins.
+            Choose local inputs with your system file chooser. WorkCrew copies them into an isolated run workspace before any agent begins.
           </p>
         </div>
 
@@ -162,12 +180,11 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={(event) => {
-                          fileBrowserOpenerRef.current = event.currentTarget
-                          setActiveField(field)
-                        }}
+                        type="button"
+                        disabled={pickingKey !== null}
+                        onClick={() => void choose(field)}
                       >
-                        Choose
+                        {pickingKey === field.key ? "Choosing…" : "Choose"}
                       </Button>
                     </div>
                   </div>
@@ -190,21 +207,7 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
             </div>
           </Card>
         </form>
-      </div>
-
-      <FileBrowserModal
-        open={activeField !== null}
-        title={activeField ? `Choose ${activeField.label.toLowerCase()}` : "Choose input"}
-        mode={activeField?.mode ?? "file"}
-        returnFocusRef={fileBrowserOpenerRef}
-        onClose={() => setActiveField(null)}
-        onSelect={(path) => {
-          if (activeField) {
-            setValues((current) => ({ ...current, [activeField.key]: path }))
-          }
-        }}
-      />
-    </>
+    </div>
   )
 }
 

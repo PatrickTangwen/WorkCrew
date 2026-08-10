@@ -1,29 +1,24 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { RunCreationForm } from "@/components/run-creation-form"
-import {
-  browseFiles,
-  createRun,
-  type BrowseEntry,
-  type RunRecord,
-} from "@/lib/api"
+import { createRun, pickPath, type RunRecord } from "@/lib/api"
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/api")>()
   return {
     ...original,
-    browseFiles: vi.fn(),
+    pickPath: vi.fn(),
     createRun: vi.fn(),
   }
 })
-
-const homeEntries: BrowseEntry[] = [
-  { name: "source", type: "directory", size: 0, modified: "2026-08-09T12:00:00Z" },
-  { name: "rules", type: "directory", size: 0, modified: "2026-08-09T12:00:00Z" },
-  { name: "template.xlsx", type: "file", size: 10, modified: "2026-08-09T12:00:00Z" },
-  { name: "workbook-schema.json", type: "file", size: 10, modified: "2026-08-09T12:00:00Z" },
-]
 
 const createdRun: RunRecord = {
   run_id: "20260809-120000-abc123",
@@ -35,45 +30,23 @@ const createdRun: RunRecord = {
   workbook_name: "template.xlsx",
 }
 
-async function selectInput(
-  fieldLabel: string,
-  entryName: string,
-  mode: "file" | "directory"
-) {
+function chooseButtonFor(fieldLabel: string) {
   const inputGroup = screen.getByRole("group", { name: `${fieldLabel} input` })
-  fireEvent.click(within(inputGroup).getByRole("button", { name: "Choose" }))
-  const dialog = await screen.findByRole("dialog")
-  const escapedName = entryName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-  fireEvent.click(
-    within(dialog).getByRole("button", { name: new RegExp(`^${escapedName}`) })
-  )
-  if (mode === "directory") {
-    const breadcrumbs = within(dialog).getByRole("navigation", {
-      name: "Current path",
-    })
-    await waitFor(() =>
-      expect(
-        within(breadcrumbs).getByRole("button", {
-          name: new RegExp(`^${escapedName}$`),
-        })
-      ).toBeVisible()
-    )
-  }
-  fireEvent.click(
-    within(dialog).getByRole("button", {
-      name: mode === "directory" ? "Select folder" : "Select file",
-    })
-  )
+  return within(inputGroup).getByRole("button", { name: /^Choos/ })
+}
+
+async function selectInput(fieldLabel: string, path: string) {
+  vi.mocked(pickPath).mockResolvedValueOnce(path)
+  fireEvent.click(chooseButtonFor(fieldLabel))
+  await screen.findByTitle(path)
 }
 
 describe("RunCreationForm", () => {
+  afterEach(cleanup)
+
   beforeEach(() => {
-    vi.mocked(browseFiles).mockImplementation(async (path) => ({
-      path: path ?? "/home/operator",
-      root: "/home/operator",
-      entries: path ? [] : homeEntries,
-    }))
     vi.mocked(createRun).mockResolvedValue(createdRun)
+    vi.mocked(pickPath).mockReset()
   })
 
   it("requires every engine input before creating a run", async () => {
@@ -82,10 +55,10 @@ describe("RunCreationForm", () => {
     const startButton = screen.getByRole("button", { name: "Start run" })
 
     expect(startButton).toBeDisabled()
-    await selectInput("Source folder", "source", "directory")
-    await selectInput("Workbook", "template.xlsx", "file")
-    await selectInput("Rules folder", "rules", "directory")
-    await selectInput("Workbook schema", "workbook-schema.json", "file")
+    await selectInput("Source folder", "/home/operator/source")
+    await selectInput("Workbook", "/home/operator/template.xlsx")
+    await selectInput("Rules folder", "/home/operator/rules")
+    await selectInput("Workbook schema", "/home/operator/workbook-schema.json")
 
     expect(startButton).toBeEnabled()
     fireEvent.click(startButton)
@@ -99,5 +72,37 @@ describe("RunCreationForm", () => {
       scoping_answers: null,
       review_policy: null,
     })
+  })
+
+  it("asks the chooser for the mode each input needs", async () => {
+    render(<RunCreationForm onCreated={vi.fn()} />)
+
+    await selectInput("Source folder", "/home/operator/source")
+    await selectInput("Workbook", "/home/operator/template.xlsx")
+
+    expect(vi.mocked(pickPath).mock.calls).toEqual([
+      ["directory", "Choose source folder"],
+      ["file", "Choose workbook"],
+    ])
+  })
+
+  it("keeps the current value when the operator cancels the chooser", async () => {
+    render(<RunCreationForm onCreated={vi.fn()} />)
+    await selectInput("Source folder", "/home/operator/source")
+
+    vi.mocked(pickPath).mockResolvedValueOnce(null)
+    fireEvent.click(chooseButtonFor("Source folder"))
+
+    await waitFor(() => expect(chooseButtonFor("Source folder")).toBeEnabled())
+    expect(screen.getByTitle("/home/operator/source")).toBeVisible()
+  })
+
+  it("reports a chooser that cannot open", async () => {
+    render(<RunCreationForm onCreated={vi.fn()} />)
+
+    vi.mocked(pickPath).mockRejectedValueOnce(new Error("no display available"))
+    fireEvent.click(chooseButtonFor("Source folder"))
+
+    expect(await screen.findByText("no display available")).toBeVisible()
   })
 })

@@ -24,6 +24,7 @@ from workflow_app.artifacts import (
 from workflow_app.audit.db import AuditStore
 from workflow_app.cancellation import CancellationToken, WorkflowCancelled
 from workflow_app.models import ScopingQuestions
+from workflow_app.native_picker import PickerUnavailable, pick_path
 from workflow_app.progress import emit
 from workflow_app.reports import render_scoping_answers
 from workflow_app.workflow.engine import new_run_id, resume_workflow, run_workflow
@@ -46,6 +47,11 @@ class CreateRunRequest(BaseModel):
 
 class ResumeRunRequest(BaseModel):
     answers: dict[str, str | list[str] | bool]
+
+
+class PickPathRequest(BaseModel):
+    mode: Literal["directory", "file"]
+    prompt: str
 
 
 class RunRecord(BaseModel):
@@ -131,6 +137,7 @@ class ServerOptions:
     runs_root: Path = Path("runs")
     runner: Callable = run_workflow
     resumer: Callable = resume_workflow
+    picker: Callable = pick_path
     runtimes: dict | None = None
 
 
@@ -433,52 +440,6 @@ def _duration(started_at, finished_at=None):
     return max(0.0, (finished - started).total_seconds())
 
 
-class HomeBrowser:
-    def __init__(self, home_dir):
-        self.root = Path(home_dir).resolve()
-
-    def list_directory(self, path=None):
-        selected = self._resolve(path)
-        if not selected.exists():
-            raise HTTPException(status_code=404, detail="Path not found")
-        if not selected.is_dir():
-            raise HTTPException(status_code=400, detail="Path must be a directory")
-
-        entries = []
-        for entry in selected.iterdir():
-            stat = entry.stat()
-            entries.append(
-                {
-                    "name": entry.name,
-                    "type": "directory" if entry.is_dir() else "file",
-                    "size": stat.st_size,
-                    "modified": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
-                }
-            )
-        entries.sort(
-            key=lambda entry: (
-                entry["type"] != "directory",
-                entry["name"].casefold(),
-            )
-        )
-        return {"path": str(selected), "root": str(self.root), "entries": entries}
-
-    def _resolve(self, path):
-        if path is None or path == "~":
-            selected = self.root
-        elif path.startswith("~/"):
-            selected = self.root / path[2:]
-        else:
-            selected = Path(path)
-        selected = selected.resolve()
-        if not selected.is_relative_to(self.root):
-            raise HTTPException(
-                status_code=403,
-                detail="Path must stay within the home directory",
-            )
-        return selected
-
-
 def bind_available_socket(host=UI_HOST, starting_port=DEFAULT_UI_PORT):
     """Reserve the first available TCP port at or above ``starting_port``."""
     for port in range(starting_port, 65536):
@@ -511,7 +472,6 @@ def create_app(static_dir=DEFAULT_STATIC_DIR, require_frontend=False, options=No
     coordinator = RunCoordinator(options)
     history = RunHistory(options.runs_root)
     artifacts = ArtifactCatalog(options.runs_root)
-    browser = HomeBrowser(options.home_dir)
 
     @app.post("/api/runs", status_code=201)
     async def create_run(request: CreateRunRequest):
@@ -584,9 +544,15 @@ def create_app(static_dir=DEFAULT_STATIC_DIR, require_frontend=False, options=No
             filename=filename,
         )
 
-    @app.get("/api/browse")
-    def browse(path: str | None = None):
-        return browser.list_directory(path)
+    @app.post("/api/pick")
+    async def pick_input_path(request: PickPathRequest):
+        try:
+            path = await asyncio.to_thread(
+                options.picker, request.mode, request.prompt, options.home_dir
+            )
+        except PickerUnavailable as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return {"path": path}
 
     if index.is_file():
         app.mount("/", StaticFiles(directory=static_dir, html=True), name="frontend")

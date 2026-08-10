@@ -1,15 +1,4 @@
-export type BrowseEntry = {
-  name: string
-  type: "directory" | "file"
-  size: number
-  modified: string
-}
-
-export type BrowseListing = {
-  path: string
-  root: string
-  entries: BrowseEntry[]
-}
+export type PickMode = "directory" | "file"
 
 export type RunStatus = "running" | "paused" | "completed" | "failed" | "cancelled"
 
@@ -107,10 +96,15 @@ async function readResponse<T>(response: Response) {
   throw await responseError(response)
 }
 
-export async function browseFiles(path?: string) {
-  const search = path ? `?${new URLSearchParams({ path })}` : ""
-  const response = await fetch(`/api/browse${search}`)
-  return readResponse<BrowseListing>(response)
+/** Opens the host's native chooser; resolves to null when the operator cancels it. */
+export async function pickPath(mode: PickMode, prompt: string) {
+  const response = await fetch("/api/pick", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode, prompt }),
+  })
+  const { path } = await readResponse<{ path: string | null }>(response)
+  return path
 }
 
 export async function createRun(input: CreateRunInput) {
