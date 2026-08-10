@@ -127,16 +127,37 @@ def test_pinned_model_defaults(inputs):
     assert args.codex_effort == "high"
 
 
-def test_ui_command_starts_the_web_server(monkeypatch):
+def test_ui_command_starts_the_web_server_on_the_default_port(monkeypatch):
     calls = []
-    monkeypatch.setattr(cli, "run_ui", lambda: calls.append("started"))
+    monkeypatch.setattr(cli, "run_ui", lambda port: calls.append(port))
 
     assert main(["ui"]) == 0
-    assert calls == ["started"]
+    assert calls == [8470]
+
+
+def test_ui_command_starts_the_web_server_on_an_explicit_port(monkeypatch):
+    calls = []
+    monkeypatch.setattr(cli, "run_ui", lambda port: calls.append(port))
+
+    assert main(["ui", "--port", "9000"]) == 0
+    assert calls == [9000]
+
+
+@pytest.mark.parametrize("port", ["0", "65536", "not-a-port"])
+def test_ui_command_rejects_invalid_ports_before_startup(port, monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(cli, "run_ui", lambda requested: calls.append(requested))
+
+    with pytest.raises(SystemExit) as excinfo:
+        main(["ui", "--port", port])
+
+    assert excinfo.value.code == 2
+    assert "--port" in capsys.readouterr().err
+    assert calls == []
 
 
 def test_ui_keyboard_interrupt_stops_without_a_traceback(monkeypatch, capsys):
-    def interrupt():
+    def interrupt(port):
         raise KeyboardInterrupt
 
     monkeypatch.setattr(cli, "run_ui", interrupt)

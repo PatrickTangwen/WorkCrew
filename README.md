@@ -44,9 +44,10 @@ uv run workflow ui
 ```
 
 `workflow ui` binds only to `127.0.0.1`, starting at port 8470 and advancing
-to the next available port when necessary. For frontend development with HMR,
-run `pnpm dev` in `frontend/`. Run the FastAPI backend with Python hot reload
-in a second terminal:
+to the next available port when necessary. Pass `--port`, for example
+`uv run workflow ui --port 9000`, to choose a different starting port. For
+frontend development with HMR, run `pnpm dev` in `frontend/`. Run the FastAPI
+backend with Python hot reload in a second terminal:
 
 ```bash
 uv run uvicorn workflow_app.server:create_app \

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react"
+import { useRef, useState, type FormEvent } from "react"
 import { FileJson, FileSpreadsheet, FileText, Folder, Play } from "lucide-react"
 
 import { FileBrowserModal } from "@/components/file-browser-modal"
@@ -82,6 +82,7 @@ const initialValues: CreateRunInput = {
 }
 
 function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void }) {
+  const fileBrowserOpenerRef = useRef<HTMLButtonElement>(null)
   const [values, setValues] = useState(initialValues)
   const [activeField, setActiveField] = useState<(typeof fields)[number] | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -158,7 +159,14 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
                       >
                         {value || "Nothing selected"}
                       </div>
-                      <Button size="sm" variant="outline" onClick={() => setActiveField(field)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={(event) => {
+                          fileBrowserOpenerRef.current = event.currentTarget
+                          setActiveField(field)
+                        }}
+                      >
                         Choose
                       </Button>
                     </div>
@@ -188,6 +196,7 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
         open={activeField !== null}
         title={activeField ? `Choose ${activeField.label.toLowerCase()}` : "Choose input"}
         mode={activeField?.mode ?? "file"}
+        returnFocusRef={fileBrowserOpenerRef}
         onClose={() => setActiveField(null)}
         onSelect={(path) => {
           if (activeField) {
