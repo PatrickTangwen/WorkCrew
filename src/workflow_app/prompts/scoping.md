@@ -47,8 +47,21 @@ Ask only questions the workspace cannot answer by itself. Make each
 question specific and answerable in one or two sentences; reference
 concrete folders or files where relevant.
 
+Choose the control that makes each answer least ambiguous:
+
+- `text` for a short free-form answer.
+- `single_select` when exactly one listed option may be chosen.
+- `multi_select` when more than one listed option may be chosen.
+- `confirm` for a yes/no decision.
+
+Include `options` for `single_select` and `multi_select`; each option has a
+stable machine `value` and a human-readable `label`. Omit `options` for
+`text` and `confirm`. The question contract defaults to `text` when `type`
+is omitted, but emit an explicit type for every new question.
+
 ## Output
 
-Your structured output must match the provided JSON schema:
-`{"questions": [{"id": "Q1", "question": "..."}]}` with sequential ids
-Q1, Q2, ... Write the questions in English.
+Your structured output must match the provided JSON schema. For example:
+`{"questions": [{"id": "Q1", "question": "Is this the full set?", "type": "confirm"}, {"id": "Q2", "question": "Which period applies?", "type": "single_select", "options": [{"value": "spring", "label": "Spring"}, {"value": "fall", "label": "Fall"}]}]}`.
+Use sequential ids Q1, Q2, ... Write the questions and option labels in
+English.

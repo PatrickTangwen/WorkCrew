@@ -12,6 +12,7 @@ from typing import Literal, Protocol
 class AgentRequest:
     role: str
     workspace_path: str
+    cancellation: object | None = None
 
 
 @dataclass(frozen=True)

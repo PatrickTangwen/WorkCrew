@@ -24,6 +24,7 @@ from workflow_app.progress import emit
 from workflow_app.runtimes.claude_code import ClaudeCodeRuntime
 from workflow_app.runtimes.codex import CodexRuntime
 from workflow_app.runtimes.fake import FakeAgentRuntime
+from workflow_app.server import run_ui
 from workflow_app.workflow.engine import resume_workflow, run_workflow
 from workflow_app.workspace import RunInputs
 
@@ -99,6 +100,8 @@ def build_parser():
         description="Local-first document-to-workbook workflow engine",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    subparsers.add_parser("ui", help="start the local WorkCrew web UI")
 
     run = subparsers.add_parser("run", help="start a new workflow run")
     run.add_argument("--source", required=True, help="source documents folder")
@@ -227,6 +230,13 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
 
     try:
+        if args.command == "ui":
+            try:
+                run_ui()
+            except KeyboardInterrupt:
+                emit("WorkCrew UI stopped.")
+                return 130
+            return 0
         if args.command == "evaluate":
             run_evaluation(args)
             return 0

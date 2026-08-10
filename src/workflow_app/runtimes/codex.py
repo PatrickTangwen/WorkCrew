@@ -13,10 +13,10 @@ engine.
 
 import json
 import os
-import subprocess
 import tempfile
 from pathlib import Path
 
+from workflow_app.cancellation import run_process
 from workflow_app.models.review import ReReviewResult, ReviewResult
 from workflow_app.progress import emit
 from workflow_app.runtimes.base import AgentResult
@@ -142,14 +142,12 @@ class CodexRuntime:
             if self._effort is not None:
                 argv += ["-c", f'model_reasoning_effort="{self._effort}"']
 
-            process = subprocess.run(
+            process = run_process(
                 argv,
                 input=prompt,
                 cwd=request.workspace_path,
                 env=child_env(),
-                capture_output=True,
-                text=True,
-                check=False,
+                cancellation=request.cancellation,
             )
             if process.returncode != 0:
                 detail = process.stderr.strip() or process.stdout.strip()
