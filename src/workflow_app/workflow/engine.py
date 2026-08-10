@@ -16,6 +16,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
 from workflow_app.audit.db import AuditStore
+from workflow_app.cancellation import CancellationToken, WorkflowCancelled
 from workflow_app.progress import ProgressReporter
 from workflow_app.review_policy import check_strict_fields, load_review_policy
 from workflow_app.workbook.schema import load_workbook_schema
@@ -35,10 +36,20 @@ class WorkflowExecution:
     runs_root: Path
     run_id: str
     progress: ProgressReporter
+    cancellation: CancellationToken
 
 
-def run_workflow(inputs, runs_root, runtimes, *, run_id=None, progress_callback=None):
+def run_workflow(
+    inputs,
+    runs_root,
+    runtimes,
+    *,
+    run_id=None,
+    progress_callback=None,
+    cancellation=None,
+):
     progress = ProgressReporter(progress_callback)
+    cancellation = cancellation or CancellationToken()
     try:
         inputs.validate()
         # Fail fast on malformed configs — before the workspace exists and
@@ -59,6 +70,7 @@ def run_workflow(inputs, runs_root, runtimes, *, run_id=None, progress_callback=
             runs_root=Path(runs_root),
             run_id=run_id,
             progress=progress,
+            cancellation=cancellation,
         )
         initial_state = {
             "run_id": run_id,
@@ -75,13 +87,19 @@ def run_workflow(inputs, runs_root, runtimes, *, run_id=None, progress_callback=
             "phase": "",
         }
         return _invoke(execution, initial_state)
+    except WorkflowCancelled:
+        progress.cancelled()
+        raise
     except BaseException as exc:
         progress.failed(exc)
         raise
 
 
-def resume_workflow(run_id, runs_root, runtimes, *, progress_callback=None):
+def resume_workflow(
+    run_id, runs_root, runtimes, *, progress_callback=None, cancellation=None
+):
     progress = ProgressReporter(progress_callback)
+    cancellation = cancellation or CancellationToken()
     try:
         workspace = Workspace((Path(runs_root) / run_id).resolve())
         if not workspace.root.is_dir():
@@ -133,8 +151,12 @@ def resume_workflow(run_id, runs_root, runtimes, *, progress_callback=None):
             runs_root=Path(runs_root),
             run_id=run_id,
             progress=progress,
+            cancellation=cancellation,
         )
         return _invoke(execution, None)
+    except WorkflowCancelled:
+        progress.cancelled()
+        raise
     except BaseException as exc:
         progress.failed(exc)
         raise
@@ -159,6 +181,9 @@ def _invoke(execution, initial_state):
 
         try:
             final_state = graph.invoke(graph_input, config)
+        except WorkflowCancelled:
+            audit.record_run_finished(run_id, "cancelled")
+            raise
         except BaseException:
             # Kill or failure: the checkpoint survives for a later
             # resume; the run row records the abnormal exit.

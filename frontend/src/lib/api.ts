@@ -59,6 +59,7 @@ export type WorkflowEvent =
   | (EventBase & {
       type: "failed"
       error: string
+      reason?: "cancelled"
     })
 
 export type ScopingQuestionType =
@@ -156,6 +157,13 @@ export async function resumeRun(runId: string, answers: ScopingAnswers) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ answers }),
+  })
+  return readResponse<RunRecord>(response)
+}
+
+export async function cancelRun(runId: string) {
+  const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/cancel`, {
+    method: "POST",
   })
   return readResponse<RunRecord>(response)
 }

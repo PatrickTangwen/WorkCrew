@@ -153,6 +153,73 @@ describe("run progress", () => {
     expect(stages.every((stage) => stage.dataset.status === "completed")).toBe(true)
   })
 
+  it("offers Cancel only while running and updates detail state from the response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ ...run, status: "cancelled" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+    )
+    act(() => useAppStore.getState().showRun(run))
+    render(<StoredRunDetail />)
+
+    expect(screen.getByRole("button", { name: "Cancel run" })).toBeVisible()
+    expect(screen.queryByRole("button", { name: "Retry run" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Cancel run" }))
+
+    await waitFor(() =>
+      expect(useAppStore.getState().currentRun?.status).toBe("cancelled")
+    )
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/runs/run-streaming/cancel",
+      expect.objectContaining({ method: "POST" })
+    )
+    expect(useAppStore.getState().runs[0].status).toBe("cancelled")
+    expect(screen.queryByRole("button", { name: "Cancel run" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Retry run" })).toBeVisible()
+  })
+
+  it.each(["failed", "cancelled"] as const)(
+    "offers Retry for a %s run and reconnects the restarted stream",
+    async (status) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({ ...run, status: "running" }), {
+            status: 202,
+            headers: { "Content-Type": "application/json" },
+          })
+        )
+      )
+      act(() => useAppStore.getState().showRun({ ...run, status }))
+      render(<StoredRunDetail />)
+      const socketsBeforeRetry = MockWebSocket.instances.length
+
+      expect(screen.getByRole("button", { name: "Retry run" })).toBeVisible()
+      expect(screen.queryByRole("button", { name: "Cancel run" })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole("button", { name: "Retry run" }))
+
+      await waitFor(() =>
+        expect(useAppStore.getState().currentRun?.status).toBe("running")
+      )
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/runs/run-streaming/resume",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ answers: {} }),
+        })
+      )
+      expect(useAppStore.getState().runs[0].status).toBe("running")
+      expect(screen.getByRole("button", { name: "Cancel run" })).toBeVisible()
+      await waitFor(() =>
+        expect(MockWebSocket.instances.length).toBeGreaterThan(socketsBeforeRetry)
+      )
+    }
+  )
+
   it("replays the failing stage and error when a failed run detail mounts", () => {
     render(<RunDetail run={{ ...run, status: "failed", phase: "CODEX_REVIEW" }} />)
 

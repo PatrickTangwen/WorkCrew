@@ -50,6 +50,9 @@ class ProgressReporter:
     def failed(self, error):
         self._send("failed", error=str(error))
 
+    def cancelled(self):
+        self._send("failed", error="Run cancelled", reason="cancelled")
+
     def _send(self, event_type, **payload):
         if self.callback is not None:
             self.callback(_event(event_type, **payload))

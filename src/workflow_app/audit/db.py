@@ -178,6 +178,14 @@ class AuditStore:
             (classification, _now()),
         )
 
+    def record_stage_cancelled(self, run_id, stage):
+        self._update_latest_unfinished_stage(
+            run_id,
+            stage,
+            "status = 'cancelled', failure = 'cancelled', finished_at = ?",
+            (_now(),),
+        )
+
     def record_stage_degraded(self, run_id, stage, classification):
         # The stage completes (the run continues), but its output was
         # degraded after exhausted retries; the classification records

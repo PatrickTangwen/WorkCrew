@@ -4,11 +4,13 @@ import type { RunRecord } from "@/lib/api"
 import { useAppStore } from "@/store/use-app-store"
 
 const apiMocks = vi.hoisted(() => ({
+  cancelRun: vi.fn(),
   resumeRun: vi.fn(),
 }))
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
+  cancelRun: apiMocks.cancelRun,
   resumeRun: apiMocks.resumeRun,
 }))
 
@@ -35,6 +37,42 @@ beforeEach(() => {
   useAppStore.getState().disconnectRunStream()
   useAppStore.setState(useAppStore.getInitialState())
   apiMocks.resumeRun.mockReset()
+  apiMocks.cancelRun.mockReset()
+})
+
+it("applies cancellation to the selected detail and its sidebar summary", async () => {
+  const running = { ...pausedRun, status: "running" as const }
+  apiMocks.cancelRun.mockResolvedValue({ ...running, status: "cancelled" })
+  useAppStore.getState().showRun(running)
+
+  await useAppStore.getState().cancelRun(running.run_id)
+
+  expect(useAppStore.getState().currentRun?.status).toBe("cancelled")
+  expect(useAppStore.getState().runs[0].status).toBe("cancelled")
+})
+
+it("applies retry to a terminal detail and its sidebar summary", async () => {
+  const failed = { ...pausedRun, status: "failed" as const }
+  apiMocks.resumeRun.mockResolvedValue({ ...failed, status: "running" })
+  useAppStore.getState().showRun(failed)
+  useAppStore.setState({
+    streamRunId: failed.run_id,
+    streamEvents: [
+      {
+        type: "failed",
+        timestamp: "2026-08-09T12:01:00Z",
+        error: "Temporary failure",
+      },
+    ],
+  })
+
+  await useAppStore.getState().retryRun(failed.run_id)
+
+  expect(apiMocks.resumeRun).toHaveBeenCalledWith(failed.run_id, {})
+  expect(useAppStore.getState().currentRun?.status).toBe("running")
+  expect(useAppStore.getState().runs[0].status).toBe("running")
+  expect(useAppStore.getState().streamRunId).toBeNull()
+  expect(useAppStore.getState().streamEvents).toEqual([])
 })
 
 it("does not apply a stale resume result after another run is selected", async () => {
