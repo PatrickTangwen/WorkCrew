@@ -27,6 +27,7 @@ STRINGS = {
         "findings_heading": "Findings for review",
         "final_cycle_heading": "Final review cycle",
         "proposal_status": "Proposal status",
+        "proposal_value": "Proposal value",
         "confidence": "Confidence",
         "applied_rules": "Applied rules",
         "review_note": "Review direction",
@@ -47,6 +48,18 @@ STRINGS = {
         "status_not_found": "Not found",
         "status_ambiguous": "Ambiguous",
         "status_conflict": "Conflict · human review",
+        "verdict_pass": "Pass",
+        "verdict_warn": "Warning",
+        "verdict_fail": "Fail",
+        "verdict_unresolved": "Unresolved",
+        "action_accept": "Accept",
+        "action_fix": "Fix",
+        "action_rebut": "Rebut",
+        "action_clear": "Clear",
+        "action_no_change": "No change",
+        "action_unresolved": "Unresolved",
+        "re_review_withdrawn": "Withdrawn",
+        "re_review_upheld": "Upheld",
         "confidence_low": "Low",
         "confidence_medium": "Medium",
         "confidence_high": "High",
@@ -87,6 +100,7 @@ STRINGS = {
         "findings_heading": "待审阅发现",
         "final_cycle_heading": "最终审查周期",
         "proposal_status": "提案状态",
+        "proposal_value": "提案值",
         "confidence": "置信度",
         "applied_rules": "已应用规则",
         "review_note": "审查方向",
@@ -107,6 +121,18 @@ STRINGS = {
         "status_not_found": "未找到",
         "status_ambiguous": "存在歧义",
         "status_conflict": "来源冲突 · 人工审查",
+        "verdict_pass": "通过",
+        "verdict_warn": "警告",
+        "verdict_fail": "失败",
+        "verdict_unresolved": "未决",
+        "action_accept": "接受",
+        "action_fix": "修正",
+        "action_rebut": "反驳",
+        "action_clear": "清空",
+        "action_no_change": "不变",
+        "action_unresolved": "未决",
+        "re_review_withdrawn": "撤回",
+        "re_review_upheld": "维持",
         "confidence_low": "低",
         "confidence_medium": "中",
         "confidence_high": "高",
@@ -350,7 +376,7 @@ const fieldMatches = (f, q) => {
   const proposal = f.proposal;
   return contains(f.name, needle) || contains(f.value, needle) ||
     evidenceMatches(f.sources, needle) ||
-    (proposal && (contains(proposal.status, needle) ||
+    (proposal && (contains(proposal.status, needle) || contains(proposal.value, needle) ||
       contains(proposal.confidence, needle) ||
       contains(proposal.review_note, needle) ||
       proposal.rules_applied.some(rule => contains(rule, needle)) ||
@@ -441,7 +467,6 @@ function evidenceHtml(items, heading) {
   }).join('') + '</div>';
 }
 function sourcesHtml(f) {
-  if (f.proposal && f.role === 'filler') return '';
   return evidenceHtml(f.sources, STRINGS.current_provenance);
 }
 const enumLabel = (prefix, value) => {
@@ -458,6 +483,8 @@ function proposalMetaHtml(f) {
     '<div class="meta-line"><span class="meta-label">' + esc(STRINGS.proposal_status) +
     '</span><span class="status-badge status-' + esc(p.status) + '">' +
     esc(enumLabel('status', p.status)) + '</span></div>' +
+    '<div class="meta-line"><span class="meta-label">' + esc(STRINGS.proposal_value) +
+    '</span><span>' + hl(p.value === null ? '—' : p.value) + '</span></div>' +
     '<div class="meta-line"><span class="meta-label">' + esc(STRINGS.confidence) +
     '</span><span>' + esc(enumLabel('confidence', p.confidence)) + '</span></div>' +
     '<div class="meta-line"><span class="meta-label">' + esc(STRINGS.applied_rules) +
@@ -466,7 +493,8 @@ function proposalMetaHtml(f) {
     '</span><span>' + hl(p.review_note || '—') + '</span></div>' +
     evidenceHtml(p.evidence, STRINGS.proposal_evidence) + '</div>';
 }
-const auditBadge = value => '<span class="audit-badge">' + esc(value) + '</span>';
+const auditBadge = (prefix, value) => '<span class="audit-badge">' +
+  esc(enumLabel(prefix, value)) + '</span>';
 function auditHtml(f) {
   const cards = [];
   if (f.review) {
@@ -474,7 +502,7 @@ function auditHtml(f) {
       '<div><b>' + esc(STRINGS.recommended_value) + ':</b> ' +
       hl(f.review.recommended_value) + '</div>';
     cards.push('<div class="audit-card"><div class="audit-title">' +
-      esc(STRINGS.reviewer) + auditBadge(f.review.verdict) + '</div>' +
+      esc(STRINGS.reviewer) + auditBadge('verdict', f.review.verdict) + '</div>' +
       '<div>' + hl(f.review.comment) + '</div>' + recommended +
       evidenceHtml(f.review.evidence, '') + '</div>');
   }
@@ -485,13 +513,13 @@ function auditHtml(f) {
     const note = f.revision.note_append === null ? '' :
       '<div><b>' + esc(STRINGS.note_append) + ':</b> ' + hl(f.revision.note_append) + '</div>';
     cards.push('<div class="audit-card"><div class="audit-title">' +
-      esc(STRINGS.revision) + auditBadge(f.revision.action) + '</div>' +
+      esc(STRINGS.revision) + auditBadge('action', f.revision.action) + '</div>' +
       '<div>' + hl(f.revision.justification) + '</div>' + proposed + note +
       evidenceHtml(f.revision.evidence, '') + '</div>');
   }
   if (f.re_review) {
     cards.push('<div class="audit-card"><div class="audit-title">' +
-      esc(STRINGS.re_review) + auditBadge(f.re_review.verdict) + '</div><div>' +
+      esc(STRINGS.re_review) + auditBadge('re_review', f.re_review.verdict) + '</div><div>' +
       hl(f.re_review.comment) + '</div></div>');
   }
   if (f.unresolved_reason) {
@@ -560,9 +588,10 @@ function renderRow(r) {
   });
 }
 
-function summaryGroupHtml(label, counts) {
+function summaryGroupHtml(label, counts, prefix) {
   const chips = Object.entries(counts).map(([name, count]) =>
-    '<span class="summary-chip">' + esc(name) + ' · ' + count + '</span>').join('');
+    '<span class="summary-chip">' + esc(enumLabel(prefix, name)) + ' · ' + count +
+    '</span>').join('');
   return '<div class="summary-group"><span class="summary-label">' + esc(label) +
     '</span>' + (chips || '<span class="summary-chip">0</span>') + '</div>';
 }
@@ -570,9 +599,9 @@ function qualitySummaryHtml() {
   const cycle = DATA.review_cycle;
   if (!cycle) return '';
   return '<section class="quality-summary"><h2>' + esc(STRINGS.final_cycle_heading) +
-    '</h2>' + summaryGroupHtml(STRINGS.verdicts, cycle.verdict_counts) +
-    summaryGroupHtml(STRINGS.actions, cycle.action_counts) +
-    summaryGroupHtml(STRINGS.re_reviews, cycle.re_review_counts) +
+    '</h2>' + summaryGroupHtml(STRINGS.verdicts, cycle.verdict_counts, 'verdict') +
+    summaryGroupHtml(STRINGS.actions, cycle.action_counts, 'action') +
+    summaryGroupHtml(STRINGS.re_reviews, cycle.re_review_counts, 're_review') +
     '<div class="summary-group"><span class="summary-label">' +
     esc(STRINGS.unresolved_items) + '</span><span class="summary-chip">' +
     cycle.unresolved_count + '</span></div></section>';
