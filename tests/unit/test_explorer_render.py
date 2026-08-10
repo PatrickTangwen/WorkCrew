@@ -81,6 +81,7 @@ def empty_handoff():
         "populated_cells": 0,
         "confidence_distribution": {"low": 0, "medium": 0, "high": 0},
         "evidence_summary": {},
+        "decision_records": [],
         "missing_fields": [],
         "ambiguities": [],
         "source_conflicts": [],
@@ -173,6 +174,85 @@ def test_rows_referenced_only_by_provenance_are_included(tmp_path):
     assert [row["row"] for row in data["rows"]] == [2, 5]
 
 
+def test_blank_proposal_row_and_decision_are_visible(tmp_path):
+    handoff = empty_handoff()
+    handoff["decision_records"] = [
+        {
+            "cell": f"{SHEET}!D5",
+            "row": 5,
+            "column_name": "Start Date",
+            "status": "conflict",
+            "value": None,
+            "confidence": None,
+            "evidence": [
+                {
+                    "source_file": "India 2008/brief.txt",
+                    "source_location": "page 2",
+                    "evidence_text": "The brief and addendum give different dates.",
+                    "evidence_type": "direct",
+                }
+            ],
+            "rules_applied": ["DATE_AUTHORITY"],
+            "review_note": "The dates require human adjudication.",
+        }
+    ]
+
+    data = build(
+        tmp_path,
+        {},
+        handoff=handoff,
+        manifest_paths=MANIFEST_PATHS,
+    )
+
+    assert [row["row"] for row in data["rows"]] == [5]
+    (row,) = data["rows"]
+    assert row["folders"] == ["India 2008"]
+    field = next(item for item in row["fields"] if item["name"] == "Start Date")
+    assert field["proposal"] == {
+        "status": "conflict",
+        "value": None,
+        "confidence": None,
+        "evidence": [
+            {
+                "file": "India 2008/brief.txt",
+                "location": "page 2",
+                "text": "The brief and addendum give different dates.",
+                "type": "direct",
+            }
+        ],
+        "rules_applied": ["DATE_AUTHORITY"],
+        "review_note": "The dates require human adjudication.",
+    }
+
+
+def test_unrenderable_rejected_proposal_does_not_break_the_explorer(tmp_path):
+    handoff = empty_handoff()
+    handoff["decision_records"] = [
+        {
+            "cell": f"{SHEET}!12D",
+            "row": 0,
+            "column_name": "Start Date",
+            "status": "proposed",
+            "value": "2026-01-01",
+            "confidence": "high",
+            "evidence": [],
+            "rules_applied": [],
+            "review_note": "Rejected malformed address.",
+        }
+    ]
+    handoff["extra_review"] = [
+        {
+            "cell": f"{SHEET}!12D",
+            "reason": "malformed cell address '12D'",
+        }
+    ]
+
+    data = build(tmp_path, {}, handoff=handoff)
+
+    assert data["rows"] == []
+    assert data["findings"][-1]["detail"] == "malformed cell address '12D'"
+
+
 MANIFEST_PATHS = (
     "India 2008/brief.txt",
     "India 2008/report.pdf",
@@ -201,11 +281,13 @@ def test_fields_carry_provenance_sources_and_author_role(tmp_path):
             "file": "India 2008/brief.txt",
             "location": None,
             "text": "Stated in brief.",
+            "type": "explicit_statement",
         },
         {
             "file": "India 2008/report.pdf",
             "location": "p. 3",
             "text": "Derived from the report header.",
+            "type": "derived",
         },
     ]
     # No provenance for the Organization cell: manually pre-existing.

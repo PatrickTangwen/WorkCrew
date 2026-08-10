@@ -302,7 +302,20 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         emit(f"Draft written: {len(applied)} cells populated")
         return {"draft_xlsx_path": str(workspace.draft_xlsx)}
 
-    def write_explorers(state, version_suffix=""):
+    def read_artifact_items(path, key):
+        if not path.is_file():
+            return []
+        return json.loads(path.read_text())[key]
+
+    def explorer_review_cycle():
+        return {
+            "findings": read_artifact_items(workspace.review_json, "findings"),
+            "decisions": read_artifact_items(workspace.revision_json, "decisions"),
+            "verdicts": read_artifact_items(workspace.re_review_json, "verdicts"),
+            "unresolved": read_artifact_items(workspace.unresolved_json, "cells"),
+        }
+
+    def write_explorers(state, version_suffix="", include_review_cycle=False):
         emit(f"Rendering review explorer (EN/ZH){version_suffix and ' v2'}...")
         schema = schema_from(state)
         provenance = json.loads(workspace.provenance_json.read_text())
@@ -311,7 +324,12 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
             json.loads(Path(state["manifest_path"]).read_text())
         )
         data = build_explorer_data(
-            workspace.draft_xlsx, schema, provenance, handoff, manifest
+            workspace.draft_xlsx,
+            schema,
+            provenance,
+            handoff,
+            manifest,
+            explorer_review_cycle() if include_review_cycle else None,
         )
         targets = {
             "": (workspace.review_explorer_html, workspace.review_explorer_zh_html),
@@ -545,9 +563,6 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         workspace.revision_log_md.write_text(
             render_revision_log_md(revision.decisions, outcomes)
         )
-        # The explorer regenerates so it matches the revised workbook
-        # and updated provenance exactly (plan section 22).
-        write_explorers(state, version_suffix="_v2")
         applied = sum(1 for outcome in outcomes if outcome.status == "applied")
         emit(f"Applied {applied} authorized revisions")
 
@@ -714,6 +729,7 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
 
     def finalize(state):
         emit("Finalizing run...")
+        write_explorers(state, version_suffix="_v2", include_review_cycle=True)
         shutil.copy2(workspace.draft_xlsx, workspace.final_xlsx)
         audit.record_run_finished(state["run_id"], "completed")
         _write_run_summary(workspace, audit, state["run_id"])
