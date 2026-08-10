@@ -47,24 +47,58 @@ def proposal(row, column_name, cell, value, confidence):
     }
 
 
+def conflict_proposal(row, column_name, cell):
+    return {
+        "sheet": SHEET,
+        "row": row,
+        "column_name": column_name,
+        "cell": cell,
+        "value": None,
+        "evidence": [evidence("Two source files disagree.")],
+        "rules_applied": [],
+        "confidence": None,
+        "status": "conflict",
+    }
+
+
 FILLER_OUTPUT = {
     "proposals": [
-        proposal(2, "Notes", "F2", "First draft note.", 0.90),
-        proposal(2, "Main Issue Area(s)", "G2", "Healthcare", 0.80),
-        proposal(2, "Project ID*", "A2", "PRJ-0001", 0.70),
-        proposal(2, "Start Date", "D2", "2026-01-01", 0.70),
-        proposal(4, "Main Issue Area(s)", "G4", "Education", 0.70),
+        proposal(2, "Notes", "F2", "First draft note.", "high"),
+        proposal(2, "Main Issue Area(s)", "G2", "Healthcare", "medium"),
+        proposal(2, "Project ID*", "A2", "PRJ-0001", "medium"),
+        proposal(2, "Start Date", "D2", "2026-01-01", "medium"),
+        proposal(4, "Main Issue Area(s)", "G4", "Education", "medium"),
     ]
 }
 
 
-def finding(cell, verdict, recommended=None, comment="Reviewer comment."):
+def finding(
+    cell,
+    verdict,
+    recommended=None,
+    comment="Reviewer comment.",
+    missed_data=False,
+):
     return {
         "cell": cell,
         "verdict": verdict,
         "recommended_value": recommended,
         "evidence": [evidence("Checked against the annual report.")],
         "reviewer_comment": comment,
+        "missed_data": missed_data,
+    }
+
+
+PLANNED_CELLS = ("F2", "G2", "A2", "D2", "G4")
+
+
+def complete_review(*findings):
+    covered = {item["cell"] for item in findings}
+    return {
+        "findings": [
+            *findings,
+            *(finding(cell, "PASS") for cell in PLANNED_CELLS if cell not in covered),
+        ]
     }
 
 
@@ -76,9 +110,14 @@ REVIEW_OUTPUT = {
         finding("G4", "FAIL", recommended="Healthcare"),
         finding("D2", "WARN", recommended="2026-02-02"),
         # Missed data: cell empty but determinable (FAIL -> FIX).
-        finding("E2", "FAIL", recommended="Established"),
+        finding("E2", "FAIL", recommended="Established", missed_data=True),
         # Reviewer could not adjudicate at all.
-        finding("D4", "UNRESOLVED", comment="Conflicting dates across sources."),
+        finding(
+            "D4",
+            "UNRESOLVED",
+            comment="Conflicting dates across sources.",
+            missed_data=True,
+        ),
     ]
 }
 
@@ -298,7 +337,7 @@ def test_review_artifacts_are_produced(inputs):
 
 
 def test_all_pass_review_short_circuits_to_finalize(inputs):
-    all_pass = {"findings": [finding(cell, "PASS") for cell in ("F2", "G2")]}
+    all_pass = {"findings": [finding(cell, "PASS") for cell in PLANNED_CELLS]}
     # Only filler and reviewer runtimes exist: reaching revision or
     # re-review would raise KeyError inside the fake.
     runtimes = {
@@ -320,17 +359,142 @@ def test_all_pass_review_short_circuits_to_finalize(inputs):
     assert final["F2"].value == "First draft note."
 
 
+def test_source_conflict_bypasses_revision_and_reaches_human_review(inputs):
+    extraction = {"proposals": [conflict_proposal(4, "Start Date", "D4")]}
+    review = {"findings": [finding("D4", "UNRESOLVED")]}
+    runtimes = {
+        "filler": FakeAgentRuntime({"filler": extraction}),
+        "reviewer": FakeAgentRuntime({"reviewer": review}),
+    }
+
+    state = start_run(inputs, runtimes=runtimes)
+
+    stages = stage_names(state)
+    assert "CLAUDE_REVISE" not in stages
+    assert "APPLY_ALLOWED_REVISIONS" not in stages
+    assert "HUMAN_REVIEW" in stages
+
+    final = load_workbook(workspace_of(state) / "output/final.xlsx")[SHEET]
+    assert final["D4"].value is None
+    assert read_artifact(state, "unresolved.json") == {
+        "cells": [
+            {
+                "cell": "D4",
+                "reason": "protected source conflict requires human review",
+            }
+        ]
+    }
+    human = read_artifact(state, "human_review.json")
+    assert human["items"][0]["cell"] == "D4"
+    assert human["items"][0]["revision"] is None
+
+
+def test_pass_finding_cannot_close_a_source_conflict(inputs):
+    extraction = {"proposals": [conflict_proposal(4, "Start Date", "D4")]}
+    review = {"findings": [finding("D4", "PASS")]}
+    runtimes = {
+        "filler": FakeAgentRuntime({"filler": extraction}),
+        "reviewer": FakeAgentRuntime({"reviewer": review}),
+    }
+
+    state = start_run(inputs, runtimes=runtimes)
+
+    stages = stage_names(state)
+    assert "CLAUDE_REVISE" not in stages
+    assert "HUMAN_REVIEW" in stages
+    assert read_artifact(state, "unresolved.json") == {
+        "cells": [
+            {
+                "cell": "D4",
+                "reason": "protected source conflict requires human review",
+            }
+        ]
+    }
+    (item,) = read_artifact(state, "human_review.json")["items"]
+    assert item["reviewer"]["verdict"] == "PASS"
+    assert item["revision"] is None
+
+
+def test_revision_inputs_and_allowlist_exclude_source_conflicts(inputs):
+    extraction = {
+        "proposals": [
+            proposal(4, "Main Issue Area(s)", "G4", "Education", "medium"),
+            conflict_proposal(4, "Start Date", "D4"),
+        ]
+    }
+    review = {
+        "findings": [
+            finding("G4", "FAIL", recommended="Healthcare"),
+            finding("D4", "UNRESOLVED"),
+        ]
+    }
+    revision = {
+        "decisions": [
+            decision(
+                "G4",
+                "CLEAR",
+                note_append=NOTE_TEXT,
+                justification="The issue area cannot be determined.",
+            )
+        ]
+    }
+    outputs = {"filler": extraction, "reviewer": review, "revision": revision}
+    runtimes = {role: FakeAgentRuntime(outputs) for role in outputs}
+
+    state = start_run(inputs, runtimes=runtimes)
+
+    revision_inputs = json.loads(
+        (workspace_of(state) / "agent_outputs/revision/inputs.json").read_text()
+    )
+    assert [item["cell"] for item in revision_inputs["findings"]] == ["G4"]
+    assert set(revision_inputs["proposals"]) == {"G4"}
+    assert all("D4" not in item for item in revision_inputs["mutation_allowlist"])
+
+    unresolved = read_artifact(state, "unresolved.json")
+    assert unresolved["cells"] == [
+        {
+            "cell": "D4",
+            "reason": "protected source conflict requires human review",
+        }
+    ]
+
+
+def test_revision_decision_for_a_protected_source_conflict_is_illegal(inputs):
+    extraction = {
+        "proposals": [
+            proposal(4, "Main Issue Area(s)", "G4", "Education", "medium"),
+            conflict_proposal(4, "Start Date", "D4"),
+        ]
+    }
+    review = {
+        "findings": [
+            finding("G4", "FAIL", recommended="Healthcare"),
+            finding("D4", "UNRESOLVED"),
+        ]
+    }
+    illegal_revision = {
+        "decisions": [decision("D4", "CLEAR", note_append="Tried to clear a conflict.")]
+    }
+    outputs = {
+        "filler": extraction,
+        "reviewer": review,
+        "revision": illegal_revision,
+    }
+    runtimes = {role: FakeAgentRuntime(outputs) for role in outputs}
+
+    with pytest.raises(ValueError, match="no matching finding"):
+        start_run(inputs, runtimes=runtimes)
+
+
 def test_same_batch_note_appends_share_one_notes_cell(inputs):
     # Two non-PASS findings on the same row, both decisions carrying a
     # note_append: the notes compose in decision order on the shared
     # Notes cell instead of clobbering each other.
     second_note = "Start date corrected against the program page."
-    review = {
-        "findings": [
-            finding("G4", "FAIL", recommended="Healthcare"),
-            finding("D4", "FAIL", recommended="2026-04-04"),
-        ]
-    }
+    review = complete_review(
+        finding("G4", "FAIL", recommended="Healthcare"),
+        finding("D4", "FAIL", recommended="2026-04-04", missed_data=True),
+    )
     revision = {
         "decisions": [
             decision(
@@ -374,7 +538,7 @@ def test_clear_on_the_notes_cell_itself_completes_the_run(inputs):
     # The revision prompt REQUIRES a note_append on every CLEAR — so a
     # FAIL finding on a Notes cell steers straight into the
     # self-targeting shape. The batch must apply, not abort.
-    review = {"findings": [finding("F2", "FAIL")]}
+    review = complete_review(finding("F2", "FAIL"))
     revision = {
         "decisions": [
             decision(

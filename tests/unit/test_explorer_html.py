@@ -27,7 +27,14 @@ DATA = {
                     "column": "B",
                     "value": "Health Org </script> & Co <!--<script>",
                     "role": "filler",
-                    "sources": [],
+                    "sources": [
+                        {
+                            "file": "current/workbook.txt",
+                            "location": "row 2",
+                            "text": "Applied workbook value.",
+                            "type": "direct",
+                        }
+                    ],
                     "pill_values": None,
                     "gloss_zh": "组织名称",
                 }
@@ -98,3 +105,81 @@ def test_shell_provides_the_interaction_hooks():
         "show-empty",
     ):
         assert hook in html
+
+
+def test_shell_exposes_proposal_and_final_audit_layers():
+    data = json.loads(json.dumps(DATA))
+    field = data["rows"][0]["fields"][0]
+    field.update(
+        {
+            "proposal": {
+                "status": "conflict",
+                "value": "Candidate Org",
+                "confidence": None,
+                "evidence": [
+                    {
+                        "file": "source/record.txt",
+                        "location": "line 1",
+                        "text": "Two claims disagree.",
+                        "type": "direct",
+                    }
+                ],
+                "rules_applied": ["SOURCE_AUTHORITY"],
+                "review_note": "Requires human adjudication.",
+            },
+            "review": {
+                "verdict": "UNRESOLVED",
+                "recommended_value": None,
+                "comment": "The conflict remains.",
+                "evidence": [],
+                "missed_data": False,
+            },
+            "revision": {
+                "action": "REBUT",
+                "proposed_value": None,
+                "note_append": "Keep unresolved for a human.",
+                "justification": "The sources still conflict.",
+                "evidence": [],
+            },
+            "re_review": {
+                "verdict": "UPHELD",
+                "comment": "The rebuttal does not resolve the conflict.",
+            },
+            "unresolved_reason": "protected source conflict requires human review",
+        }
+    )
+    data["review_cycle"] = {
+        "verdict_counts": {"UNRESOLVED": 1},
+        "action_counts": {"REBUT": 1},
+        "re_review_counts": {"UPHELD": 1},
+        "unresolved_count": 1,
+    }
+
+    en = render_explorer_html(data, "en")
+    zh = render_explorer_html(data, "zh")
+
+    for marker in (
+        "quality-summary",
+        "status-badge",
+        "proposal-meta",
+        "proposal_value",
+        "audit-card",
+        "unresolved_reason",
+        "rules_applied",
+    ):
+        assert marker in en
+    assert "Proposal status" in en
+    assert "Proposal value" in en
+    assert "Final review cycle" in en
+    assert "contains(proposal.value, needle)" in en
+    assert "return evidenceHtml(f.sources, STRINGS.current_provenance)" in en
+    assert "auditBadge('verdict', f.review.verdict)" in en
+    assert "auditBadge('action', f.revision.action)" in en
+    assert "auditBadge('re_review', f.re_review.verdict)" in en
+    assert "提案状态" in zh
+    assert "提案值" in zh
+    assert "最终审查周期" in zh
+    strings = embedded(zh, "STRINGS")
+    assert strings["verdict_unresolved"] == "未决"
+    assert strings["action_rebut"] == "反驳"
+    assert strings["re_review_upheld"] == "维持"

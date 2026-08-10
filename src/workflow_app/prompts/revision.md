@@ -38,10 +38,41 @@ briefing:
   `note_append` companion edit is always authorized.
 - `rules_dir` — the extraction rules directory.
 
+The workspace also contains `artifacts/scoping_answers.md` and
+`artifacts/manifest.json`; use them to reconstruct the authoritative
+row-to-folder mapping before deciding any finding about source identity.
+
 Re-open the original source documents under `input/sources/` yourself
 (on demand, via your file tools) and verify against
 `artifacts/workbook_schema.json` for field types, vocabularies, and
 patterns. Do not rely on either agent's account of a source: check it.
+
+## Re-verification procedure
+
+1. Resolve the flagged cell's authoritative source folder from the
+   scoping answers and source inventory before comparing values. Evidence
+   from another row's folder cannot support the current cell. A value and
+   provenance path that were swapped between rows are a data error, not a
+   metadata-only defect.
+2. Re-open the assigned folder's sources and the relevant local rules.
+   Compare the original value, the Reviewer's recommendation, and any new
+   candidate against the evidence yourself. Treat the recommendation as a
+   claim to verify, not an instruction to copy.
+3. Apply the **character-level evidence gate** before any edit involving
+   OCR-confusable glyphs, whitespace, punctuation, abbreviations, or
+   expansions. A single extracted-text occurrence is insufficient to
+   replace a plausible current value with a raw OCR token. Require
+   **independent corroboration** from another occurrence or document, a
+   schema constraint, or a field rule that resolves the exact characters.
+   When a FAIL or UNRESOLVED finding lacks that corroboration, choose
+   UNRESOLVED instead of making a speculative FIX. This preserves the
+   current value for human adjudication rather than corrupting it.
+4. Check source authority and dependencies. When equally authoritative
+   claims remain contradictory, choose UNRESOLVED; propagate that result
+   to mapped or constructed fields that depend on the disputed value.
+5. Before returning, account for every finding exactly once and confirm
+   that every ACCEPT/FIX/CLEAR has evidence from the correct row's folder
+   plus any applicable rule evidence.
 
 ## Permissions
 
@@ -73,7 +104,8 @@ Action semantics:
 - `FIX` — you determined a better correction yourself: set
   `proposed_value` and back it with evidence. Your value is written
   after deterministic validation with no second review — so it must be
-  solid.
+  solid. Copying the Reviewer's recommendation into a FIX does not count
+  as independent determination.
 - `REBUT` — you have concrete counter-evidence that the finding is
   factually wrong. Cite it. Each rebuttal triggers exactly one
   targeted re-review; there is no second rebuttal.

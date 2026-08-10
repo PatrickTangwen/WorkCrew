@@ -48,6 +48,19 @@ def filler_fixture():
     return {"proposals": [proposal]}
 
 
+def pass_review(cell="G12"):
+    return {
+        "findings": [
+            {
+                "cell": cell,
+                "verdict": "PASS",
+                "evidence": [],
+                "reviewer_comment": "Covered by the deterministic review plan.",
+            }
+        ]
+    }
+
+
 def run_inputs(inputs, **overrides):
     values = {
         "source": inputs["source"],
@@ -62,7 +75,7 @@ def run_inputs(inputs, **overrides):
 
 def start_run(inputs, fixture=None):
     runtime = FakeAgentRuntime(
-        {"filler": fixture or filler_fixture(), "reviewer": {"findings": []}}
+        {"filler": fixture or filler_fixture(), "reviewer": pass_review()}
     )
     return run_workflow(
         inputs=run_inputs(inputs),
@@ -231,12 +244,11 @@ def test_review_policy_reaches_reviewer_inputs(inputs, tmp_path):
     policy_yaml = tmp_path / "review_policy.yaml"
     policy_yaml.write_text(
         "review:\n"
+        "  coverage: full\n"
         "  strict_fields: ['Project ID*']\n"
         "  high_confidence_sampling_per_record: 3\n"
     )
-    runtime = FakeAgentRuntime(
-        {"filler": filler_fixture(), "reviewer": {"findings": []}}
-    )
+    runtime = FakeAgentRuntime({"filler": filler_fixture(), "reviewer": pass_review()})
     state = run_workflow(
         inputs=run_inputs(inputs, review_policy=policy_yaml),
         runs_root=inputs["runs_root"],
@@ -245,23 +257,44 @@ def test_review_policy_reaches_reviewer_inputs(inputs, tmp_path):
     workspace = workspace_of(inputs, state)
 
     canonical = json.loads((workspace / "artifacts" / "review_policy.json").read_text())
-    assert canonical["strict_fields"] == ["Project ID*"]
-    assert canonical["high_confidence_sampling_per_record"] == 3
-    assert canonical["low_confidence_threshold"] == 0.60
+    assert canonical == {
+        "coverage": "full",
+        "strict_fields": ["Project ID*"],
+        "high_confidence_sampling_per_record": 3,
+    }
 
     reviewer_inputs = json.loads(
         (workspace / "agent_outputs" / "reviewer" / "inputs.json").read_text()
     )
     assert reviewer_inputs["review_policy"] == canonical
     assert reviewer_inputs["draft_workbook"] == "working/draft.xlsx"
+    assert reviewer_inputs["review_targets"] == [
+        {"cell": "G12", "reason": "full coverage"}
+    ]
+
+
+def test_missing_planned_review_target_fails_deterministically(inputs):
+    runtime = FakeAgentRuntime(
+        {"filler": filler_fixture(), "reviewer": {"findings": []}}
+    )
+
+    with pytest.raises(ValueError, match="planned targets.*G12"):
+        run_workflow(
+            inputs=run_inputs(inputs),
+            runs_root=inputs["runs_root"],
+            runtimes={"filler": runtime, "reviewer": runtime},
+        )
 
 
 def test_default_review_policy_applies_when_none_is_provided(inputs):
     state = start_run(inputs)
     workspace = workspace_of(inputs, state)
     canonical = json.loads((workspace / "artifacts" / "review_policy.json").read_text())
-    assert canonical["strict_fields"] == []
-    assert canonical["medium_confidence_threshold"] == 0.85
+    assert canonical == {
+        "coverage": "sampled",
+        "strict_fields": [],
+        "high_confidence_sampling_per_record": 2,
+    }
 
 
 def test_unknown_strict_field_fails_before_any_agent_runs(inputs, tmp_path):

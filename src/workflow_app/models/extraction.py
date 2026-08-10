@@ -2,8 +2,9 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
+from workflow_app.models.confidence import ConfidenceLevel
 from workflow_app.models.evidence import Evidence
 from workflow_app.models.values import CellValue
 
@@ -21,7 +22,7 @@ class CellProposal(BaseModel):
     evidence: list[Evidence]
     rules_applied: list[str]
 
-    confidence: float
+    confidence: ConfidenceLevel | None
 
     status: Literal[
         "proposed",
@@ -31,6 +32,14 @@ class CellProposal(BaseModel):
     ]
 
     notes: str | None = None
+
+    @model_validator(mode="after")
+    def _check_confidence_status(self):
+        if self.status == "proposed" and self.confidence is None:
+            raise ValueError("a proposed value requires a confidence level")
+        if self.status != "proposed" and self.confidence is not None:
+            raise ValueError("a non-proposed outcome requires confidence null")
+        return self
 
 
 class FolderMerge(BaseModel):

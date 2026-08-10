@@ -1,5 +1,6 @@
 """Core data contracts (plan section 18)."""
 
+from workflow_app.models.confidence import ConfidenceLevel
 from workflow_app.models.evidence import Evidence
 from workflow_app.models.extraction import CellProposal, ExtractionResult, FolderMerge
 from workflow_app.models.review import (
@@ -15,6 +16,7 @@ from workflow_app.models.values import CellValue
 __all__ = [
     "CellProposal",
     "CellValue",
+    "ConfidenceLevel",
     "Evidence",
     "ExtractionResult",
     "FolderMerge",

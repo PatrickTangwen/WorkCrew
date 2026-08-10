@@ -29,7 +29,7 @@ class FieldSpec(BaseModel):
     column: str | None = Field(default=None, pattern=r"^[A-Z]+$")
     # Constructed = assembled by naming format; mapped = chosen from a
     # controlled vocabulary or judgment scale. Both cap confidence at
-    # medium (plan section 20). controlled_vocabulary fields are mapped
+    # medium (ADR 0024). controlled_vocabulary fields are mapped
     # by nature and need no explicit marking.
     value_kind: Literal["constructed", "mapped"] | None = None
     writable: bool = False
