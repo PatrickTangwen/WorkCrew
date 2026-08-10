@@ -41,14 +41,29 @@ def finding(cell, verdict, recommended=None, comment="because", missed_data=Fals
     )
 
 
-def decision(cell, action, proposed=None, note_append=None, justification="reasoned"):
+def decision(
+    cell,
+    action,
+    proposed=None,
+    note_append=None,
+    justification="reasoned",
+    evidence_items=None,
+):
     return RevisionDecision.model_validate(
         {
             "cell": cell,
             "action": action,
             "proposed_value": proposed,
             "note_append": note_append,
-            "evidence": [],
+            "evidence": evidence_items
+            if evidence_items is not None
+            else [
+                {
+                    "source_file": "record/source.txt",
+                    "evidence_text": "The source supports this decision.",
+                    "evidence_type": "direct",
+                }
+            ],
             "justification": justification,
         }
     )
@@ -119,6 +134,17 @@ def test_source_conflicts_are_human_only_revision_findings():
         check_decisions(routed["agent_actionable"], [decision("G5", "UNRESOLVED")])
         is None
     )
+
+
+def test_source_conflict_status_is_human_only_even_after_a_pass_finding():
+    conflict = finding("C17", "PASS")
+    extraction = ExtractionResult(
+        proposals=[proposal("c17", "conflict", column_name="Gamma")]
+    )
+
+    routed = route_revision_findings([conflict], extraction)
+
+    assert routed == {"agent_actionable": [], "human_only": [conflict]}
 
 
 # --- deterministic review coverage --------------------------------------
@@ -270,6 +296,15 @@ def test_accept_requires_a_recommended_value():
     assert reason is not None and "recommended" in reason
 
 
+def test_workbook_edit_requires_decision_evidence():
+    reason = check_decisions(
+        [finding("F2", "FAIL")],
+        [decision("F2", "CLEAR", evidence_items=[])],
+    )
+
+    assert reason is not None and "evidence" in reason
+
+
 def test_decision_for_unknown_cell_is_illegal():
     reason = check_decisions(
         [finding("F2", "WARN", recommended="x")], [decision("Z9", "ACCEPT")]
@@ -388,6 +423,19 @@ def test_protected_source_conflicts_have_an_explicit_human_reason():
     assert unresolved == [
         {
             "cell": "H5",
+            "reason": "protected source conflict requires human review",
+        }
+    ]
+
+
+def test_protected_pass_conflict_still_has_an_explicit_human_reason():
+    conflict = finding("C17", "PASS")
+
+    unresolved = collect_unresolved([conflict], [], [], human_only=[conflict])
+
+    assert unresolved == [
+        {
+            "cell": "C17",
             "reason": "protected source conflict requires human review",
         }
     ]

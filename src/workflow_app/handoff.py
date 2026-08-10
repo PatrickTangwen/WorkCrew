@@ -62,6 +62,7 @@ def build_handoff(manifest, extraction, rejections, outcomes, schema):
             "high": confidence.get("high", 0),
         },
         "evidence_summary": dict(sorted(evidence_types.items())),
+        "decision_records": [_decision_record(p) for p in proposals],
         "missing_fields": [
             {
                 "cell": cell_key(p.sheet, p.cell),
@@ -103,6 +104,35 @@ def _uncertainty(proposals, status):
     ]
 
 
+def _decision_record(proposal):
+    review_note = proposal.notes
+    if (
+        review_note is None
+        and proposal.status == "proposed"
+        and proposal.confidence in ("low", "medium")
+    ):
+        review_note = f"{proposal.confidence} confidence proposal"
+    if review_note is None and proposal.status != "proposed":
+        review_note = f"{proposal.status} proposal"
+    return {
+        "cell": cell_key(proposal.sheet, proposal.cell),
+        "row": proposal.row,
+        "column_name": proposal.column_name,
+        "status": proposal.status,
+        "value": proposal.value,
+        "confidence": proposal.confidence,
+        "evidence": [item.model_dump() for item in proposal.evidence],
+        "rules_applied": proposal.rules_applied,
+        "review_note": review_note,
+    }
+
+
+def _markdown_cell(value):
+    if value is None:
+        return "—"
+    return str(value).replace("|", "\\|").replace("\n", "<br>")
+
+
 def render_handoff_markdown(handoff):
     sources = handoff["sources"]
     lines = [
@@ -129,6 +159,47 @@ def render_handoff_markdown(handoff):
     lines += ["", "## Evidence types", ""]
     for evidence_type, count in handoff["evidence_summary"].items():
         lines.append(f"- {evidence_type}: {count}")
+
+    lines += ["", "## Decision ledger", ""]
+    current_group = None
+    for item in handoff["decision_records"]:
+        sheet_name, _ = item["cell"].split("!", 1)
+        group = (sheet_name, item["row"])
+        if group != current_group:
+            if current_group is not None:
+                lines.append("")
+            lines += [
+                f"### {sheet_name} — row {item['row']}",
+                "",
+                "| Cell | Field | Status | Value | Confidence | Evidence | Review note |",
+                "| --- | --- | --- | --- | --- | --- | --- |",
+            ]
+            current_group = group
+        evidence_parts = [
+            source["source_file"]
+            + (f" ({source['source_location']})" if source["source_location"] else "")
+            for source in item["evidence"]
+        ]
+        rules = ", ".join(item["rules_applied"])
+        if rules:
+            evidence_parts.append(f"rule: {rules}")
+        evidence = "\n".join(evidence_parts)
+        lines.append(
+            "| "
+            + " | ".join(
+                _markdown_cell(value)
+                for value in (
+                    item["cell"],
+                    item["column_name"],
+                    item["status"],
+                    item["value"],
+                    item["confidence"],
+                    evidence,
+                    item["review_note"],
+                )
+            )
+            + " |"
+        )
 
     for title, key in (
         ("Missing fields", "missing_fields"),

@@ -255,6 +255,29 @@ def test_handoff_summarizes_the_fill(inputs):
     assert extra_review_cells == {f"{SHEET}!E2", f"{SHEET}!G3", f"{SHEET}!G4"}
 
 
+def test_handoff_indexes_every_fill_decision_with_exact_evidence(inputs):
+    state = start_run(inputs)
+
+    handoff = json.loads((artifacts(inputs, state) / "handoff.json").read_text())
+    records = {item["cell"]: item for item in handoff["decision_records"]}
+
+    assert len(records) == len(FILLER_OUTPUT["proposals"])
+    assert records[f"{SHEET}!A2"] == {
+        "cell": f"{SHEET}!A2",
+        "row": 2,
+        "column_name": "Project ID*",
+        "status": "proposed",
+        "value": "PRJ-0001",
+        "confidence": "medium",
+        "evidence": [evidence("Stated in the brief.")],
+        "rules_applied": ["PROJECT_ID_FORMAT"],
+        "review_note": "medium confidence proposal",
+    }
+    assert records[f"{SHEET}!A3"]["status"] == "not_found"
+    assert records[f"{SHEET}!A3"]["review_note"] == ("No project identifier was found.")
+    assert records[f"{SHEET}!F4"]["status"] == "conflict"
+
+
 def test_handoff_markdown_is_rendered_for_humans(inputs):
     state = start_run(inputs)
 
@@ -262,3 +285,6 @@ def test_handoff_markdown_is_rendered_for_humans(inputs):
     assert "legacy_archive.zip" in text
     assert "Confidence" in text
     assert f"{SHEET}!E2" in text
+    assert "## Decision ledger" in text
+    assert f"### {SHEET} — row 2" in text
+    assert BRIEF in text

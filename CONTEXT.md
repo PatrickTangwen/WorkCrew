@@ -16,3 +16,9 @@ An ordinal low, medium, or high assessment of the evidence supporting a
 proposed value. It is not a probability; non-proposed outcomes have no
 confidence level.
 _Avoid_: Confidence score, confidence percentage
+
+**Human-only conflict**:
+An extraction proposal with incompatible authoritative claims. Proposal status
+keeps it in human review even when blank is the correct workbook representation
+or a Reviewer returns PASS.
+_Avoid_: PASS conflict, automatable conflict

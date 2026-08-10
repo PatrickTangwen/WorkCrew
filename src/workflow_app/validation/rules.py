@@ -38,6 +38,9 @@ def check_proposal(proposal, schema):
     if row != proposal.row:
         return f"cell {cell_ref} does not match the declared row {proposal.row}"
 
+    if proposal.status == "proposed" and not proposal.evidence:
+        return f"proposed value for {cell_ref} requires source or rule evidence"
+
     if is_confidence_capped(field) and proposal.confidence == "high":
         kind = field.value_kind or "mapped"
         return (

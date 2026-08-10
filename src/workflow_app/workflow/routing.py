@@ -132,7 +132,7 @@ def route_revision_findings(findings, extraction):
         ],
         "human_only": [
             finding
-            for finding in actionable
+            for finding in findings
             if _cell_identity(finding.cell) in conflict_cells
         ],
     }
@@ -153,6 +153,8 @@ def check_decisions(findings, decisions):
                 f"decision for {decision.cell!r} targets a PASS finding;"
                 " PASS cells are frozen"
             )
+        if decision.action in ("ACCEPT", "FIX", "CLEAR") and not decision.evidence:
+            return f"workbook edit on {decision.cell!r} requires decision evidence"
         allowed = ACTIONS_BY_VERDICT[finding.verdict]
         if decision.action not in allowed:
             return (
@@ -350,16 +352,16 @@ def collect_unresolved(findings, decisions, verdicts, human_only=()):
     }
     human_only_cells = {_cell_identity(finding.cell) for finding in human_only}
 
-    unresolved = []
+    unresolved = [
+        {
+            "cell": _cell_identity(finding.cell),
+            "reason": "protected source conflict requires human review",
+        }
+        for finding in human_only
+    ]
     for finding in non_pass_findings(findings):
         identity = _cell_identity(finding.cell)
         if identity in human_only_cells:
-            unresolved.append(
-                {
-                    "cell": identity,
-                    "reason": "protected source conflict requires human review",
-                }
-            )
             continue
         decision = decisions_by_cell.get(identity)
         if decision is None:

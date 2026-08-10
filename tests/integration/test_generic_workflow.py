@@ -1,0 +1,188 @@
+"""Cross-domain contracts for the schema- and rule-driven workflow."""
+
+import json
+import sqlite3
+from pathlib import Path
+
+import pytest
+from openpyxl import Workbook, load_workbook
+
+from workflow_app.runtimes.fake import FakeAgentRuntime
+from workflow_app.workflow.engine import run_workflow
+from workflow_app.workspace import RunInputs
+
+CASES = [
+    {
+        "id": "invoice_to_ap",
+        "folder": "vendor_batch_07",
+        "sheet": "Accounts Payable Intake",
+        "identity": ("Invoice Code", "B", "INV-007"),
+        "conflict": ("Gross Total", "E"),
+        "source_text": "Invoice INV-007 lists totals of 820 and 870 in two summaries.",
+    },
+    {
+        "id": "application_to_crm",
+        "folder": "candidate_19",
+        "sheet": "Applicant Register",
+        "identity": ("Applicant Key", "C", "APP-019"),
+        "conflict": ("Requested Support", "F"),
+        "source_text": "Application APP-019 requests 40 hours; the addendum requests 60.",
+    },
+]
+
+
+def evidence(source_file, text):
+    return {
+        "source_file": source_file,
+        "source_location": "line 1",
+        "evidence_text": text,
+        "evidence_type": "direct",
+    }
+
+
+def stage_names(workspace, run_id):
+    with sqlite3.connect(workspace / "state/audit.sqlite") as conn:
+        rows = conn.execute(
+            "SELECT stage FROM stages WHERE run_id = ? ORDER BY id", (run_id,)
+        ).fetchall()
+    return [row[0] for row in rows]
+
+
+@pytest.mark.parametrize("case", CASES, ids=[item["id"] for item in CASES])
+def test_workflow_invariants_survive_domain_and_layout_changes(tmp_path, case):
+    source = tmp_path / "source"
+    folder = source / case["folder"]
+    folder.mkdir(parents=True)
+    source_file = f"{case['folder']}/record.txt"
+    (folder / "record.txt").write_text(case["source_text"])
+
+    identity_name, identity_column, identity_value = case["identity"]
+    conflict_name, conflict_column = case["conflict"]
+    workbook = tmp_path / "template.xlsx"
+    book = Workbook()
+    sheet = book.active
+    sheet.title = case["sheet"]
+    sheet[f"{identity_column}1"] = identity_name
+    sheet[f"{conflict_column}1"] = conflict_name
+    book.save(workbook)
+
+    schema = tmp_path / "workbook_schema.json"
+    schema.write_text(
+        json.dumps(
+            {
+                "sheets": [
+                    {
+                        "name": case["sheet"],
+                        "target": True,
+                        "fields": {
+                            identity_name: {
+                                "column": identity_column,
+                                "writable": True,
+                            },
+                            conflict_name: {
+                                "column": conflict_column,
+                                "type": "number",
+                                "writable": True,
+                            },
+                        },
+                    }
+                ]
+            }
+        )
+    )
+    rules = tmp_path / "rules"
+    rules.mkdir()
+    (rules / "field_rules.md").write_text(
+        "Use the source record assigned to the row; preserve unresolved conflicts."
+    )
+    answers = tmp_path / "scoping_answers.md"
+    answers.write_text(f"Row 2 maps to {case['folder']}.\n")
+    policy = tmp_path / "review_policy.yaml"
+    policy.write_text("review:\n  coverage: full\n")
+
+    identity_cell = f"{identity_column}2"
+    conflict_cell = f"{conflict_column}2"
+    fill = {
+        "proposals": [
+            {
+                "sheet": case["sheet"],
+                "row": 2,
+                "column_name": identity_name,
+                "cell": identity_cell,
+                "value": identity_value,
+                "evidence": [
+                    evidence(source_file, "The record states the identifier.")
+                ],
+                "rules_applied": [],
+                "confidence": "high",
+                "status": "proposed",
+            },
+            {
+                "sheet": case["sheet"],
+                "row": 2,
+                "column_name": conflict_name,
+                "cell": conflict_cell,
+                "value": None,
+                "evidence": [
+                    evidence(source_file, "Two authoritative passages disagree.")
+                ],
+                "rules_applied": [],
+                "confidence": None,
+                "status": "conflict",
+                "notes": "The competing values cannot be reconciled.",
+            },
+        ]
+    }
+    review = {
+        "findings": [
+            {
+                "cell": cell,
+                "verdict": "PASS",
+                "evidence": [evidence(source_file, "Checked against the record.")],
+                "reviewer_comment": "The current workbook representation is correct.",
+            }
+            for cell in (identity_cell, conflict_cell)
+        ]
+    }
+    fake = FakeAgentRuntime({"filler": fill, "reviewer": review})
+
+    state = run_workflow(
+        inputs=RunInputs(
+            source=source,
+            workbook=workbook,
+            rules=rules,
+            workbook_schema=schema,
+            scoping_answers=answers,
+            review_policy=policy,
+        ),
+        runs_root=tmp_path / "runs",
+        runtimes={"filler": fake, "reviewer": fake},
+    )
+
+    workspace = Path(state["workspace_path"])
+    final = load_workbook(workspace / "output/final.xlsx")[case["sheet"]]
+    assert final[identity_cell].value == identity_value
+    assert final[conflict_cell].value is None
+    assert "CLAUDE_REVISE" not in stage_names(workspace, state["run_id"])
+
+    reviewer_inputs = json.loads(
+        (workspace / "agent_outputs/reviewer/inputs.json").read_text()
+    )
+    assert reviewer_inputs["review_targets"] == [
+        {"cell": identity_cell, "reason": "full coverage"},
+        {"cell": conflict_cell, "reason": "full coverage"},
+    ]
+    assert json.loads((workspace / "artifacts/unresolved.json").read_text()) == {
+        "cells": [
+            {
+                "cell": conflict_cell,
+                "reason": "protected source conflict requires human review",
+            }
+        ]
+    }
+    handoff = json.loads((workspace / "artifacts/handoff.json").read_text())
+    assert [item["cell"] for item in handoff["decision_records"]] == [
+        f"{case['sheet']}!{identity_cell}",
+        f"{case['sheet']}!{conflict_cell}",
+    ]
+    assert handoff["decision_records"][0]["evidence"][0]["source_file"] == source_file

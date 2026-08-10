@@ -106,6 +106,24 @@ def test_capped_field_accepts_medium_confidence():
 # --- schema consistency --------------------------------------------------
 
 
+def test_proposed_value_without_evidence_is_rejected():
+    reason = check_proposal(proposal(evidence=[]), SCHEMA)
+
+    assert reason is not None and "evidence" in reason
+
+
+def test_not_found_value_may_record_an_empty_search_result():
+    missing = proposal(
+        value=None,
+        evidence=[],
+        confidence=None,
+        status="not_found",
+        notes="Searched every source file; no candidate found.",
+    )
+
+    assert check_proposal(missing, SCHEMA) is None
+
+
 def test_unknown_sheet_is_rejected():
     reason = check_proposal(proposal(sheet="Ghost"), SCHEMA)
     assert reason is not None and "sheet" in reason
