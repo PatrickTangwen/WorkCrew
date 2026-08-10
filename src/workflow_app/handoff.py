@@ -114,6 +114,8 @@ def _decision_record(proposal):
             review_note = f"verify rule application: {rules}"
         elif proposal.confidence == "medium":
             review_note = "verify the evidence-supported transformation or mapping"
+        else:
+            review_note = "confirm exact supporting evidence and target ownership"
     if review_note is None and proposal.status != "proposed":
         review_note = f"{proposal.status} proposal"
     return {

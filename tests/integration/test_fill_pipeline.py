@@ -276,6 +276,9 @@ def test_handoff_indexes_every_fill_decision_with_exact_evidence(inputs):
     assert records[f"{SHEET}!A3"]["status"] == "not_found"
     assert records[f"{SHEET}!A3"]["review_note"] == ("No project identifier was found.")
     assert records[f"{SHEET}!F4"]["status"] == "conflict"
+    assert records[f"{SHEET}!F2"]["review_note"] == (
+        "confirm exact supporting evidence and target ownership"
+    )
 
 
 def test_handoff_markdown_is_rendered_for_humans(inputs):
