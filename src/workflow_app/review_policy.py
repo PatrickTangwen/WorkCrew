@@ -1,13 +1,13 @@
 """Review policy configuration (plan section 25).
 
-Hand-authored YAML controlling review depth: strict fields are always
-verified, low/medium/high confidence levels route directly, and per-record
-spot checks cover high-confidence values. Review depth is configuration,
-not agent whim: the policy is loaded and validated before any agent runs,
-and its canonical JSON form is passed into the Reviewer inputs.
+Hand-authored YAML controlling review depth: coverage is sampled or full,
+strict fields are always verified, confidence levels route directly, and
+per-record spot checks cover high-confidence values. The deterministic
+routing module turns this configuration into the Reviewer's target ledger.
 """
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 class ReviewPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    coverage: Literal["sampled", "full"] = "sampled"
     strict_fields: list[str] = []
     high_confidence_sampling_per_record: int = 2
 

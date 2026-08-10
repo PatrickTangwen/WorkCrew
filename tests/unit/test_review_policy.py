@@ -31,8 +31,18 @@ def write_schema(tmp_path):
 
 def test_no_path_yields_default_policy():
     policy = load_review_policy(None)
+    assert policy.coverage == "sampled"
     assert policy.strict_fields == []
     assert policy.high_confidence_sampling_per_record == 2
+
+
+def test_full_coverage_is_an_explicit_categorical_mode(tmp_path):
+    path = tmp_path / "policy.yaml"
+    path.write_text("review:\n  coverage: full\n")
+
+    policy = load_review_policy(path)
+
+    assert policy.coverage == "full"
 
 
 def test_loads_the_categorical_policy_shape(tmp_path):

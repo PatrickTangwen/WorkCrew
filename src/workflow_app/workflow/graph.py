@@ -388,6 +388,11 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         )
         return result.verdicts
 
+    def revision_route(state):
+        return routing.route_revision_findings(
+            load_review(state).findings, load_extraction(state)
+        )
+
     def codex_review(state):
         emit("Starting Reviewer...")
         # The Reviewer's explicit inputs (plan section 23): the review
@@ -395,12 +400,16 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         policy = ReviewPolicy.model_validate_json(
             workspace.review_policy_json.read_text()
         )
+        review_targets = routing.plan_review_targets(
+            load_extraction(state), schema_from(state), policy
+        )
 
         def relative(path):
             return str(path.relative_to(workspace.root))
 
         reviewer_inputs = {
             "review_policy": policy.model_dump(),
+            "review_targets": review_targets,
             "draft_workbook": relative(workspace.draft_xlsx),
             "extraction": relative(workspace.extraction_json),
             "provenance": relative(workspace.provenance_json),
@@ -427,6 +436,9 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         reason = routing.check_finding_cells(review.findings)
         if reason is not None:
             raise ValueError(reason)
+        reason = routing.check_review_coverage(review_targets, review.findings)
+        if reason is not None:
+            raise ValueError(reason)
         workspace.review_json.write_text(review.model_dump_json(indent=2))
         workspace.review_md.write_text(render_review_md(review))
         counts = verdict_counts(review.findings)
@@ -436,12 +448,11 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
 
     def claude_revise(state):
         emit("Starting Revision...")
-        review = load_review(state)
         schema = schema_from(state)
         extraction = load_extraction(state)
         provenance = json.loads(workspace.provenance_json.read_text())
 
-        actionable = routing.non_pass_findings(review.findings)
+        actionable = revision_route(state)["agent_actionable"]
         flagged_cells = {finding.cell for finding in actionable}
         sheet_name = schema.target_sheet().name
         flagged_keys = {cell_key(sheet_name, cell): cell for cell in flagged_cells}
@@ -460,9 +471,7 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
                 for entry in provenance["entries"]
                 if entry["cell"] in flagged_keys
             },
-            "mutation_allowlist": routing.derive_revision_allowlist(
-                review.findings, schema
-            ),
+            "mutation_allowlist": routing.derive_revision_allowlist(actionable, schema),
             "rules_dir": "input/rules",
         }
         (workspace.revision_outputs / "inputs.json").write_text(
@@ -480,7 +489,7 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         except AgentStageFailure as failure:
             degrade(state, "CLAUDE_REVISE", failure)
             return {"revision_path": None}
-        reason = routing.check_decisions(review.findings, revision.decisions)
+        reason = routing.check_decisions(actionable, revision.decisions)
         if reason is not None:
             raise ValueError(reason)
         workspace.revision_json.write_text(revision.model_dump_json(indent=2))
@@ -493,10 +502,10 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
 
     def apply_allowed_revisions(state):
         emit("Applying authorized revisions...")
-        review = load_review(state)
         revision = load_revision(state)
         schema = schema_from(state)
         sheet = schema.target_sheet()
+        actionable = revision_route(state)["agent_actionable"]
 
         draft = writer.open_draft(workspace.draft_xlsx)
 
@@ -509,12 +518,10 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
             )
 
         mutations, decision_by_ref = routing.compose_revision_mutations(
-            revision.decisions, review.findings, sheet, read_current, find_prior
+            revision.decisions, actionable, sheet, read_current, find_prior
         )
 
-        allowlist = Allowlist(
-            routing.derive_revision_allowlist(review.findings, schema)
-        )
+        allowlist = Allowlist(routing.derive_revision_allowlist(actionable, schema))
         outcomes = apply_mutations(
             workspace.draft_xlsx, mutations, schema, allowlist, audit, state["run_id"]
         )
@@ -590,8 +597,12 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         review = load_review(state)
         revision = load_revision(state)
         verdicts = load_verdicts(state)
+        human_only = revision_route(state)["human_only"]
         unresolved = routing.collect_unresolved(
-            review.findings, revision.decisions, verdicts
+            review.findings,
+            revision.decisions,
+            verdicts,
+            human_only=human_only,
         )
 
         workspace.unresolved_json.write_text(
@@ -681,8 +692,12 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
     def route_unresolved(state):
         review = load_review(state)
         revision = load_revision(state)
+        human_only = revision_route(state)["human_only"]
         unresolved = routing.collect_unresolved(
-            review.findings, revision.decisions, load_verdicts(state)
+            review.findings,
+            revision.decisions,
+            load_verdicts(state),
+            human_only=human_only,
         )
         return "HUMAN_REVIEW" if unresolved else "FINALIZE"
 
@@ -691,8 +706,11 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         # run wrote goes straight to human review.
         if state.get("review_path") is None:
             return "HUMAN_REVIEW"
-        if routing.has_actionable_findings(load_review(state).findings):
+        routed = revision_route(state)
+        if routed["agent_actionable"]:
             return "CLAUDE_REVISE"
+        if routed["human_only"]:
+            return "HUMAN_REVIEW"
         return "FINALIZE"
 
     def route_after_load_schema(state):

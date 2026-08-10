@@ -112,8 +112,21 @@ APPLIED_CELLS = {
 BLOCKED_CELLS = ["E2", "G3", "A3", "E3", "F4"]
 
 
+REVIEW_OUTPUT = {
+    "findings": [
+        {
+            "cell": cell,
+            "verdict": "PASS",
+            "evidence": [],
+            "reviewer_comment": "Covered by the deterministic review plan.",
+        }
+        for cell in ("A2", "E2", "F2", "G2", "E3", "G3", "F4", "G4")
+    ]
+}
+
+
 def start_run(inputs):
-    fake = FakeAgentRuntime({"filler": FILLER_OUTPUT, "reviewer": {"findings": []}})
+    fake = FakeAgentRuntime({"filler": FILLER_OUTPUT, "reviewer": REVIEW_OUTPUT})
     return run_workflow(
         inputs=RunInputs(
             source=inputs["source"],
@@ -142,7 +155,7 @@ def test_declared_merges_flow_into_the_handoff(inputs):
             }
         ],
     }
-    fake = FakeAgentRuntime({"filler": output, "reviewer": {"findings": []}})
+    fake = FakeAgentRuntime({"filler": output, "reviewer": REVIEW_OUTPUT})
     state = run_workflow(
         inputs=RunInputs(
             source=inputs["source"],
