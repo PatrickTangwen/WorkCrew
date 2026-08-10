@@ -24,7 +24,7 @@ from workflow_app.progress import emit
 from workflow_app.runtimes.claude_code import ClaudeCodeRuntime
 from workflow_app.runtimes.codex import CodexRuntime
 from workflow_app.runtimes.fake import FakeAgentRuntime
-from workflow_app.server import run_ui
+from workflow_app.server import DEFAULT_UI_PORT, run_ui
 from workflow_app.workflow.engine import resume_workflow, run_workflow
 from workflow_app.workspace import RunInputs
 
@@ -71,6 +71,18 @@ CODEX_EFFORT_CHOICES = (
 )
 
 
+def ui_port(value):
+    try:
+        port = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "port must be an integer from 1 to 65535"
+        ) from exc
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("port must be an integer from 1 to 65535")
+    return port
+
+
 def build_runtimes(
     choice,
     claude_model=DEFAULT_CLAUDE_MODEL,
@@ -101,7 +113,13 @@ def build_parser():
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("ui", help="start the local WorkCrew web UI")
+    ui = subparsers.add_parser("ui", help="start the local WorkCrew web UI")
+    ui.add_argument(
+        "--port",
+        type=ui_port,
+        default=DEFAULT_UI_PORT,
+        help=f"starting TCP port (default: {DEFAULT_UI_PORT})",
+    )
 
     run = subparsers.add_parser("run", help="start a new workflow run")
     run.add_argument("--source", required=True, help="source documents folder")
@@ -232,7 +250,7 @@ def main(argv=None):
     try:
         if args.command == "ui":
             try:
-                run_ui()
+                run_ui(args.port)
             except KeyboardInterrupt:
                 emit("WorkCrew UI stopped.")
                 return 130

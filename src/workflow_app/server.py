@@ -593,10 +593,10 @@ def create_app(static_dir=DEFAULT_STATIC_DIR, require_frontend=False, options=No
     return app
 
 
-def run_ui():
+def run_ui(starting_port=DEFAULT_UI_PORT):
     """Serve the built UI on loopback and open it in the default browser."""
     app = create_app(require_frontend=True)
-    with bind_available_socket() as selected:
+    with bind_available_socket(starting_port=starting_port) as selected:
         host, port = selected.getsockname()
         url = f"http://{host}:{port}"
         emit(f"WorkCrew UI available at {url}")
