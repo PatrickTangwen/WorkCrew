@@ -40,16 +40,42 @@ def test_independent_variants_preserve_core_evidence_gates():
     assert "return `UNRESOLVED`" in revision
 
 
-def test_independent_reviewer_verifies_canonical_charity_names():
+def test_independent_reviewer_uses_supplied_rules_for_canonical_forms():
     reviewer = prompt("reviewer_independent.md")
 
     assert "review_targets" in reviewer
-    assert "verbatim document heading is insufficient" in reviewer
-    assert "formal registered-name statement" in reviewer
-    assert "leading articles" in reviewer
-    assert "abbreviations versus full words" in reviewer
-    assert "conjunctions" in reviewer
-    assert "punctuation" in reviewer
+    assert "local rule" in reviewer and "canonical" in reviewer and "form" in reviewer
+    assert "declared authority" in reviewer
+    assert "exact" in reviewer and "replacement" in reviewer
+
+
+def test_active_quality_prompts_do_not_name_the_benchmark_domain():
+    active = "\n".join(
+        prompt(name)
+        for name in (
+            "filler_independent.md",
+            "reviewer_independent.md",
+            "revision_independent.md",
+        )
+    )
+
+    for benchmark_term in (
+        "Kleister",
+        "Charity Name",
+        "Registration Number",
+        "Annual Income GBP",
+        "Income Size Band",
+    ):
+        assert benchmark_term not in active
+
+
+def test_independent_reviewer_keeps_conflicts_open_for_human_judgment():
+    reviewer = prompt("reviewer_independent.md")
+
+    assert "conflict proposal remains unresolved" in reviewer.lower()
+    assert (
+        "blank" in reviewer.lower() and "workbook value is correct" in reviewer.lower()
+    )
 
 
 def test_filler_keeps_row_folder_identity_and_propagates_conflicts():

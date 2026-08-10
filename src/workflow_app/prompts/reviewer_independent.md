@@ -33,10 +33,13 @@ The verification test checks one claim at a time:
 - The evidence must concern the row's target entity, period, role, and field.
 - A field rule may validate a transformation; cite the rule you actually
   applied.
-- A verbatim document heading is insufficient when a local rule defines a
-  canonical form. For Charity Name, verify the formal registered-name statement,
-  leading articles, abbreviations versus full words, conjunctions, and
-  punctuation.
+- A verbatim source value is insufficient when a local rule defines a canonical
+  form. Verify rule-controlled vocabulary, spelling, punctuation, formatting,
+  or transformation against the rule's declared authority. Recommend an exact
+  replacement only when the sources and rule identify it.
+- A conflict proposal remains unresolved for human judgment even when the blank
+  workbook value is correct. `PASS` means no human decision remains, so a
+  conflict does not receive `PASS`.
 - An undated label such as "latest" does not resolve incompatible values in
   separate, equally authoritative files; require explicit dates or periods.
 - For an OCR-confusable character, the same character must appear independently

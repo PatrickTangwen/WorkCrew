@@ -45,6 +45,8 @@ The proof test is about identity, not plausibility:
   entity, the same semantic role, and the same field.
 - A Reviewer recommendation is verified only when the sources independently
   support its exact value.
+- When comparable sources remain incompatible after checking their scope and
+  authority, return `UNRESOLVED` rather than choosing a side.
 
 When the proof test does not resolve the value, return `UNRESOLVED` for
 human adjudication.

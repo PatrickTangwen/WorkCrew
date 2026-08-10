@@ -389,6 +389,32 @@ def test_source_conflict_bypasses_revision_and_reaches_human_review(inputs):
     assert human["items"][0]["revision"] is None
 
 
+def test_pass_finding_cannot_close_a_source_conflict(inputs):
+    extraction = {"proposals": [conflict_proposal(4, "Start Date", "D4")]}
+    review = {"findings": [finding("D4", "PASS")]}
+    runtimes = {
+        "filler": FakeAgentRuntime({"filler": extraction}),
+        "reviewer": FakeAgentRuntime({"reviewer": review}),
+    }
+
+    state = start_run(inputs, runtimes=runtimes)
+
+    stages = stage_names(state)
+    assert "CLAUDE_REVISE" not in stages
+    assert "HUMAN_REVIEW" in stages
+    assert read_artifact(state, "unresolved.json") == {
+        "cells": [
+            {
+                "cell": "D4",
+                "reason": "protected source conflict requires human review",
+            }
+        ]
+    }
+    (item,) = read_artifact(state, "human_review.json")["items"]
+    assert item["reviewer"]["verdict"] == "PASS"
+    assert item["revision"] is None
+
+
 def test_revision_inputs_and_allowlist_exclude_source_conflicts(inputs):
     extraction = {
         "proposals": [
