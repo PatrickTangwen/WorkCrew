@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from workflow_app import server
 from workflow_app.audit.db import AuditStore
 from workflow_app.server import (
     ResumeRunRequest,
@@ -102,6 +103,29 @@ def test_bind_available_socket_increments_past_an_occupied_port():
 
     assert selected_host == "127.0.0.1"
     assert selected_port > starting_port
+
+
+def test_run_ui_starts_from_the_requested_port(monkeypatch):
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        requested_port = probe.getsockname()[1]
+
+    opened = []
+    served = []
+    monkeypatch.setattr(server.webbrowser, "open_new_tab", opened.append)
+    monkeypatch.setattr(
+        server.uvicorn.Server,
+        "run",
+        lambda self, sockets: served.append(
+            (self.config.port, sockets[0].getsockname())
+        ),
+    )
+
+    server.run_ui(requested_port)
+
+    expected_address = ("127.0.0.1", requested_port)
+    assert opened == [f"http://127.0.0.1:{requested_port}"]
+    assert served == [(requested_port, expected_address)]
 
 
 def test_create_app_serves_the_built_spa(tmp_path):
