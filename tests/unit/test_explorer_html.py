@@ -98,3 +98,60 @@ def test_shell_provides_the_interaction_hooks():
         "show-empty",
     ):
         assert hook in html
+
+
+def test_shell_exposes_proposal_and_final_audit_layers():
+    data = json.loads(json.dumps(DATA))
+    field = data["rows"][0]["fields"][0]
+    field.update(
+        {
+            "proposal": {
+                "status": "conflict",
+                "value": None,
+                "confidence": None,
+                "evidence": [
+                    {
+                        "file": "source/record.txt",
+                        "location": "line 1",
+                        "text": "Two claims disagree.",
+                        "type": "direct",
+                    }
+                ],
+                "rules_applied": ["SOURCE_AUTHORITY"],
+                "review_note": "Requires human adjudication.",
+            },
+            "review": {
+                "verdict": "UNRESOLVED",
+                "recommended_value": None,
+                "comment": "The conflict remains.",
+                "evidence": [],
+                "missed_data": False,
+            },
+            "revision": None,
+            "re_review": None,
+            "unresolved_reason": "protected source conflict requires human review",
+        }
+    )
+    data["review_cycle"] = {
+        "verdict_counts": {"UNRESOLVED": 1},
+        "action_counts": {},
+        "re_review_counts": {},
+        "unresolved_count": 1,
+    }
+
+    en = render_explorer_html(data, "en")
+    zh = render_explorer_html(data, "zh")
+
+    for marker in (
+        "quality-summary",
+        "status-badge",
+        "proposal-meta",
+        "audit-card",
+        "unresolved_reason",
+        "rules_applied",
+    ):
+        assert marker in en
+    assert "Proposal status" in en
+    assert "Final review cycle" in en
+    assert "提案状态" in zh
+    assert "最终审查周期" in zh

@@ -25,6 +25,31 @@ STRINGS = {
         "stat_fields": "columns",
         "stat_cells": "cells populated",
         "findings_heading": "Findings for review",
+        "final_cycle_heading": "Final review cycle",
+        "proposal_status": "Proposal status",
+        "confidence": "Confidence",
+        "applied_rules": "Applied rules",
+        "review_note": "Review direction",
+        "proposal_evidence": "Proposal evidence",
+        "current_provenance": "Current workbook provenance",
+        "reviewer": "Reviewer",
+        "revision": "Revision",
+        "re_review": "Re-review",
+        "unresolved": "Unresolved",
+        "recommended_value": "Recommended value",
+        "proposed_value": "Proposed value",
+        "note_append": "Note append",
+        "verdicts": "Reviewer verdicts",
+        "actions": "Revision actions",
+        "re_reviews": "Re-review verdicts",
+        "unresolved_items": "Unresolved items",
+        "status_proposed": "Proposed",
+        "status_not_found": "Not found",
+        "status_ambiguous": "Ambiguous",
+        "status_conflict": "Conflict · human review",
+        "confidence_low": "Low",
+        "confidence_medium": "Medium",
+        "confidence_high": "High",
         "finding_unreadable_source": "Unreadable source",
         "finding_ambiguity": "Ambiguity",
         "finding_source_conflict": "Source conflict",
@@ -60,6 +85,31 @@ STRINGS = {
         "stat_fields": "列",
         "stat_cells": "已填单元格",
         "findings_heading": "待审阅发现",
+        "final_cycle_heading": "最终审查周期",
+        "proposal_status": "提案状态",
+        "confidence": "置信度",
+        "applied_rules": "已应用规则",
+        "review_note": "审查方向",
+        "proposal_evidence": "提案证据",
+        "current_provenance": "当前工作簿溯源",
+        "reviewer": "Reviewer 审查",
+        "revision": "Revision 修订",
+        "re_review": "复审",
+        "unresolved": "未决",
+        "recommended_value": "建议值",
+        "proposed_value": "提议值",
+        "note_append": "追加备注",
+        "verdicts": "Reviewer 结论",
+        "actions": "Revision 操作",
+        "re_reviews": "复审结论",
+        "unresolved_items": "未决事项",
+        "status_proposed": "已提议",
+        "status_not_found": "未找到",
+        "status_ambiguous": "存在歧义",
+        "status_conflict": "来源冲突 · 人工审查",
+        "confidence_low": "低",
+        "confidence_medium": "中",
+        "confidence_high": "高",
         "finding_unreadable_source": "无法读取的来源",
         "finding_ambiguity": "歧义",
         "finding_source_conflict": "来源冲突",
@@ -192,6 +242,31 @@ cursor:help;overflow:hidden}
 border:1px solid var(--border);border-radius:6px;padding:1px 7px;max-width:340px;
 overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;cursor:default}
 .srcreason{color:var(--muted);min-width:0}
+.etype{font-family:var(--mono);font-size:9.5px;color:var(--accent);background:var(--accent-soft);
+border:1px solid var(--accent-border);border-radius:7px;padding:0 5px;white-space:nowrap}
+.proposal-meta{margin-top:8px;padding:8px 10px;background:#fbfcfd;border:1px solid var(--border);
+border-radius:8px;font-size:12px}
+.meta-line{display:flex;gap:7px;align-items:baseline;margin:3px 0;flex-wrap:wrap}
+.meta-label{font-size:10.5px;color:var(--muted);min-width:105px}
+.status-badge,.audit-badge{display:inline-block;border-radius:8px;padding:1px 7px;
+font-size:10.5px;font-weight:650;background:var(--accent-soft);color:var(--accent);
+border:1px solid var(--accent-border)}
+.status-conflict,.status-ambiguous,.audit-unresolved{background:var(--amber-bg);
+color:var(--amber-ink);border-color:var(--amber-border)}
+.rule-chip{display:inline-block;font-family:var(--mono);font-size:10px;background:var(--bg);
+border:1px solid var(--border);border-radius:7px;padding:1px 6px;margin-right:3px}
+.audit-stack{margin-top:8px;display:grid;gap:6px}
+.audit-card{padding:8px 10px;border:1px solid var(--accent-border);border-radius:8px;
+background:var(--accent-soft);font-size:12px}
+.audit-card.unresolved{border-color:var(--amber-border);background:var(--amber-bg)}
+.audit-title{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:650;margin-bottom:3px}
+.quality-summary{margin:0 0 18px;padding:12px 14px;border:1px solid var(--accent-border);
+background:var(--surface);border-radius:9px}
+.quality-summary h2{font-size:13px;margin:0 0 8px}
+.summary-group{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px}
+.summary-label{font-size:10.5px;color:var(--muted);min-width:120px}
+.summary-chip{font-size:10.5px;border:1px solid var(--border);background:var(--bg);
+border-radius:8px;padding:1px 7px}
 .hiddenrows{display:none}
 .fieldcard.show-empty .hiddenrows{display:block}
 .togglebar{padding:8px 12px;font-size:12px;color:var(--accent);cursor:pointer;
@@ -255,19 +330,33 @@ const contains = (text, needle) =>
   String(text).toLowerCase().includes(needle);
 
 const sourceMatches = (s, needle) =>
-  contains(s.text, needle) || contains(s.file, needle) || contains(s.location, needle);
+  contains(s.text, needle) || contains(s.file, needle) || contains(s.location, needle) ||
+  contains(s.type, needle);
+const evidenceMatches = (items, needle) =>
+  (items || []).some(item => sourceMatches(item, needle));
+const auditMatches = (item, needle) => item && (
+  Object.values(item).some(value => !Array.isArray(value) && contains(value, needle)) ||
+  evidenceMatches(item.evidence, needle));
 function rowMatches(r, q) {
   if (!q) return true;
   const needle = q.toLowerCase();
   if (contains(r.title, needle)) return true;
   if (r.folders.some(f => contains(f, needle))) return true;
-  return r.fields.some(f => contains(f.value, needle) ||
-    f.sources.some(s => sourceMatches(s, needle)));
+  return r.fields.some(f => fieldMatches(f, q));
 }
 const fieldMatches = (f, q) => {
   if (!q) return false;
   const needle = q.toLowerCase();
-  return contains(f.value, needle) || f.sources.some(s => sourceMatches(s, needle));
+  const proposal = f.proposal;
+  return contains(f.name, needle) || contains(f.value, needle) ||
+    evidenceMatches(f.sources, needle) ||
+    (proposal && (contains(proposal.status, needle) ||
+      contains(proposal.confidence, needle) ||
+      contains(proposal.review_note, needle) ||
+      proposal.rules_applied.some(rule => contains(rule, needle)) ||
+      evidenceMatches(proposal.evidence, needle))) ||
+    auditMatches(f.review, needle) || auditMatches(f.revision, needle) ||
+    auditMatches(f.re_review, needle) || contains(f.unresolved_reason, needle);
 };
 
 function groupHtml(name, label, badge, items) {
@@ -336,30 +425,96 @@ function valueHtml(f) {
   if (f.pill_values) return '<div class="fvalue">' + pillsHtml(f.pill_values) + '</div>';
   return '<div class="fvalue">' + hl(f.value) + '</div>';
 }
-function sourcesHtml(f) {
-  if (!f.sources.length) return '';
-  const label = STRINGS.source_note
+function evidenceHtml(items, heading) {
+  if (!items || !items.length) return '';
+  const sourceNote = STRINGS.source_note
     ? '<div class="srclabel">' + esc(STRINGS.source_note) + '</div>' : '';
-  return '<div class="srcs">' + label + f.sources.map(s => {
+  const label = heading
+    ? '<div class="srclabel">' + esc(heading) + '</div>' : sourceNote;
+  return '<div class="srcs">' + label + items.map(s => {
     const chip = s.file
       ? '<span class="srcfile" title="' + esc(s.file) + '">' + hl(s.file) + '</span>' : '';
+    const type = s.type ? '<span class="etype">' + hl(s.type) + '</span>' : '';
     const location = s.location ? hl(s.location) + ' — ' : '';
-    return '<div class="srcitem">' + chip + '<span class="srcreason">' + location +
+    return '<div class="srcitem">' + chip + type + '<span class="srcreason">' + location +
       hl(s.text) + '</span></div>';
   }).join('') + '</div>';
+}
+function sourcesHtml(f) {
+  if (f.proposal && f.role === 'filler') return '';
+  return evidenceHtml(f.sources, STRINGS.current_provenance);
+}
+const enumLabel = (prefix, value) => {
+  if (value === null || value === undefined) return '—';
+  return STRINGS[prefix + '_' + String(value).toLowerCase()] || String(value);
+};
+function proposalMetaHtml(f) {
+  const p = f.proposal;
+  if (!p) return '';
+  const rules = p.rules_applied.length
+    ? p.rules_applied.map(rule => '<span class="rule-chip">' + hl(rule) + '</span>').join('')
+    : '—';
+  return '<div class="proposal-meta">' +
+    '<div class="meta-line"><span class="meta-label">' + esc(STRINGS.proposal_status) +
+    '</span><span class="status-badge status-' + esc(p.status) + '">' +
+    esc(enumLabel('status', p.status)) + '</span></div>' +
+    '<div class="meta-line"><span class="meta-label">' + esc(STRINGS.confidence) +
+    '</span><span>' + esc(enumLabel('confidence', p.confidence)) + '</span></div>' +
+    '<div class="meta-line"><span class="meta-label">' + esc(STRINGS.applied_rules) +
+    '</span><span>' + rules + '</span></div>' +
+    '<div class="meta-line"><span class="meta-label">' + esc(STRINGS.review_note) +
+    '</span><span>' + hl(p.review_note || '—') + '</span></div>' +
+    evidenceHtml(p.evidence, STRINGS.proposal_evidence) + '</div>';
+}
+const auditBadge = value => '<span class="audit-badge">' + esc(value) + '</span>';
+function auditHtml(f) {
+  const cards = [];
+  if (f.review) {
+    const recommended = f.review.recommended_value === null ? '' :
+      '<div><b>' + esc(STRINGS.recommended_value) + ':</b> ' +
+      hl(f.review.recommended_value) + '</div>';
+    cards.push('<div class="audit-card"><div class="audit-title">' +
+      esc(STRINGS.reviewer) + auditBadge(f.review.verdict) + '</div>' +
+      '<div>' + hl(f.review.comment) + '</div>' + recommended +
+      evidenceHtml(f.review.evidence, '') + '</div>');
+  }
+  if (f.revision) {
+    const proposed = f.revision.proposed_value === null ? '' :
+      '<div><b>' + esc(STRINGS.proposed_value) + ':</b> ' +
+      hl(f.revision.proposed_value) + '</div>';
+    const note = f.revision.note_append === null ? '' :
+      '<div><b>' + esc(STRINGS.note_append) + ':</b> ' + hl(f.revision.note_append) + '</div>';
+    cards.push('<div class="audit-card"><div class="audit-title">' +
+      esc(STRINGS.revision) + auditBadge(f.revision.action) + '</div>' +
+      '<div>' + hl(f.revision.justification) + '</div>' + proposed + note +
+      evidenceHtml(f.revision.evidence, '') + '</div>');
+  }
+  if (f.re_review) {
+    cards.push('<div class="audit-card"><div class="audit-title">' +
+      esc(STRINGS.re_review) + auditBadge(f.re_review.verdict) + '</div><div>' +
+      hl(f.re_review.comment) + '</div></div>');
+  }
+  if (f.unresolved_reason) {
+    cards.push('<div class="audit-card unresolved"><div class="audit-title">' +
+      esc(STRINGS.unresolved) + '<span class="audit-badge audit-unresolved">!</span></div>' +
+      '<div>' + hl(f.unresolved_reason) + '</div></div>');
+  }
+  return cards.length ? '<div class="audit-stack">' + cards.join('') + '</div>' : '';
 }
 const fieldRowHtml = f =>
   '<div class="fieldrow' + (fieldMatches(f, state.query.trim()) ? ' hit' : '') + '">' +
   '<div class="fname2" title="' + esc(f.name) + '"><span class="colno">' +
   (f.column ? 'col ' + esc(f.column) : '—') + '</span>' + esc(f.name) +
   (f.gloss_zh && ZH ? '<span class="gloss">' + esc(f.gloss_zh) + '</span>' : '') +
-  '</div><div class="fbody">' + valueHtml(f) + sourcesHtml(f) + '</div></div>';
+  '</div><div class="fbody">' + valueHtml(f) + proposalMetaHtml(f) + sourcesHtml(f) +
+  auditHtml(f) + '</div></div>';
 
 function renderRow(r) {
   const index = DATA.rows.indexOf(r);
   const prev = DATA.rows[index - 1], next = DATA.rows[index + 1];
-  const filled = r.fields.filter(f => f.value !== null);
-  const empty = r.fields.filter(f => f.value === null);
+  const visible = r.fields.filter(f => f.value !== null || f.proposal || f.review ||
+    f.revision || f.re_review || f.unresolved_reason);
+  const empty = r.fields.filter(f => !visible.includes(f));
 
   let html = '<div class="crumb"><span class="home" id="homelink">' + esc(STRINGS.home) +
     '</span><span>/</span><span>' + esc(r.folders[0] || STRINGS.ungrouped) +
@@ -385,7 +540,7 @@ function renderRow(r) {
   // A search hit inside a collapsed empty field must be visible.
   const revealEmpty = empty.some(f => fieldMatches(f, state.query.trim()));
   html += '<div class="fieldcard' + (revealEmpty ? ' show-empty' : '') + '" id="fcard">' +
-    filled.map(fieldRowHtml).join('') +
+    visible.map(fieldRowHtml).join('') +
     (empty.length
       ? '<div class="hiddenrows">' + empty.map(fieldRowHtml).join('') + '</div>' +
         '<div class="togglebar" id="tgl">' +
@@ -405,6 +560,24 @@ function renderRow(r) {
   });
 }
 
+function summaryGroupHtml(label, counts) {
+  const chips = Object.entries(counts).map(([name, count]) =>
+    '<span class="summary-chip">' + esc(name) + ' · ' + count + '</span>').join('');
+  return '<div class="summary-group"><span class="summary-label">' + esc(label) +
+    '</span>' + (chips || '<span class="summary-chip">0</span>') + '</div>';
+}
+function qualitySummaryHtml() {
+  const cycle = DATA.review_cycle;
+  if (!cycle) return '';
+  return '<section class="quality-summary"><h2>' + esc(STRINGS.final_cycle_heading) +
+    '</h2>' + summaryGroupHtml(STRINGS.verdicts, cycle.verdict_counts) +
+    summaryGroupHtml(STRINGS.actions, cycle.action_counts) +
+    summaryGroupHtml(STRINGS.re_reviews, cycle.re_review_counts) +
+    '<div class="summary-group"><span class="summary-label">' +
+    esc(STRINGS.unresolved_items) + '</span><span class="summary-chip">' +
+    cycle.unresolved_count + '</span></div></section>';
+}
+
 function renderOverview() {
   let html = '<div class="stats">' + [
     [DATA.folders.length, STRINGS.stat_folders],
@@ -413,6 +586,8 @@ function renderOverview() {
     [DATA.populated_cells, STRINGS.stat_cells],
   ].map(([v, l]) => '<div class="stat"><div class="v">' + v + '</div><div class="l">' +
     esc(l) + '</div></div>').join('') + '</div>';
+
+  html += qualitySummaryHtml();
 
   if (DATA.findings.length) {
     html += '<h2 class="sec">' + esc(STRINGS.findings_heading) + '</h2>';

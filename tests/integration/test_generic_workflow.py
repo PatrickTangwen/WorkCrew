@@ -1,6 +1,7 @@
 """Cross-domain contracts for the schema- and rule-driven workflow."""
 
 import json
+import re
 import sqlite3
 from pathlib import Path
 
@@ -50,6 +51,12 @@ def stage_names(workspace, run_id):
             "SELECT stage FROM stages WHERE run_id = ? ORDER BY id", (run_id,)
         ).fetchall()
     return [row[0] for row in rows]
+
+
+def explorer_data(path):
+    match = re.search(r"const DATA = (.*);$", path.read_text(), re.MULTILINE)
+    assert match is not None
+    return json.loads(match.group(1))
 
 
 @pytest.mark.parametrize("case", CASES, ids=[item["id"] for item in CASES])
@@ -212,3 +219,23 @@ def test_workflow_invariants_survive_domain_and_layout_changes(tmp_path, case):
     assert identity_record["review_note"] == (
         "Constructed from the source identifier under the local canonical rule."
     )
+
+    v1 = explorer_data(workspace / "artifacts/review_explorer.html")
+    v2 = explorer_data(workspace / "artifacts/review_explorer_v2.html")
+    (v1_row,) = v1["rows"]
+    (v2_row,) = v2["rows"]
+    v1_fields = {item["name"]: item for item in v1_row["fields"]}
+    v2_fields = {item["name"]: item for item in v2_row["fields"]}
+
+    assert v1_fields[identity_name]["proposal"]["rules_applied"] == [
+        "field_rules.md#canonical-identifier"
+    ]
+    assert [
+        item["type"] for item in v1_fields[identity_name]["proposal"]["evidence"]
+    ] == ["direct", "rule"]
+    assert v1_fields[conflict_name]["proposal"]["status"] == "conflict"
+    assert v2_fields[conflict_name]["review"]["verdict"] == "PASS"
+    assert v2_fields[conflict_name]["unresolved_reason"] == (
+        "protected source conflict requires human review"
+    )
+    assert v2["review_cycle"]["unresolved_count"] == 1
