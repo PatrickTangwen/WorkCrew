@@ -32,6 +32,35 @@ export type RunRecord = {
   workbook_name: string
 }
 
+type EventBase = {
+  timestamp: string
+}
+
+export type WorkflowEvent =
+  | (EventBase & {
+      type: "progress"
+      phase: string
+      message: string
+    })
+  | (EventBase & {
+      type: "phase_change"
+      phase: string
+      status: "active" | "completed" | "failed"
+    })
+  | (EventBase & {
+      type: "paused"
+      reason: string
+      questions_artifact: string
+    })
+  | (EventBase & {
+      type: "completed"
+      final_xlsx: string
+    })
+  | (EventBase & {
+      type: "failed"
+      error: string
+    })
+
 export type ArtifactType = "html" | "md" | "xlsx" | "json"
 
 export type ArtifactSummary = {

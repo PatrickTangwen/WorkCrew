@@ -34,7 +34,6 @@ from workflow_app.models import (
     RevisionResult,
     ScopingQuestions,
 )
-from workflow_app.progress import emit
 from workflow_app.provenance.explorer import render_explorer_html
 from workflow_app.provenance.render import build_explorer_data
 from workflow_app.provenance.store import build_provenance, resync_provenance
@@ -77,10 +76,16 @@ class AgentStageFailure(Exception):
         self.classification = classification
 
 
-def build_graph(workspace, inputs, runtimes, audit, checkpointer):
+def build_graph(execution, audit, checkpointer):
+    workspace = execution.workspace
+    inputs = execution.inputs
+    runtimes = execution.runtimes
+    progress = execution.progress
+
     def stage(name, body):
         def node(state):
             audit.record_stage_started(state["run_id"], name)
+            progress.phase_change(name, "active")
             try:
                 update = body(state) or {}
             except GraphBubbleUp:
@@ -89,11 +94,13 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
                 raise
             except AgentStageFailure as failure:
                 audit.record_stage_failed(state["run_id"], name, failure.classification)
+                progress.phase_change(name, "failed")
                 raise
             except (ValueError, MutationConflictError):
                 # Never blindly retried (plan section 37): contradictory
                 # evidence, invalid workbook structure, rule failures.
                 audit.record_stage_failed(state["run_id"], name, "deterministic")
+                progress.phase_change(name, "failed")
                 raise
             except Exception:
                 # Environment problems (a deleted answers file, a full
@@ -101,8 +108,10 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
                 # BaseException and pass through, leaving the dangling
                 # 'started' row that marks an interrupted entry.
                 audit.record_stage_failed(state["run_id"], name, "unclassified")
+                progress.phase_change(name, "failed")
                 raise
             audit.record_stage_finished(state["run_id"], name)
+            progress.phase_change(name, "completed")
             return {"phase": name, **update}
 
         return node
@@ -112,14 +121,16 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         # stage's output degrades, and the run continues into the
         # UNRESOLVED / human-review pipeline.
         audit.record_stage_degraded(state["run_id"], stage_name, failure.classification)
-        emit(f"{stage_name} did not complete after retries; continuing degraded.")
+        progress.emit(
+            f"{stage_name} did not complete after retries; continuing degraded."
+        )
 
     def init(state):
-        emit(f"Registering run {state['run_id']} in the audit store...")
+        progress.emit(f"Registering run {state['run_id']} in the audit store...")
         audit.record_run_started(state["run_id"], inputs)
 
     def prepare_workspace(state):
-        emit("Copying inputs into the workspace...")
+        progress.emit("Copying inputs into the workspace...")
         workspace.copy_inputs(inputs)
         if inputs.scoping_answers is not None:
             return {"scoping_answers_path": str(workspace.scoping_answers_md)}
@@ -127,7 +138,7 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
     def build_manifest_node(state):
         manifest = build_manifest(workspace.input_sources)
         workspace.manifest_json.write_text(manifest.model_dump_json(indent=2))
-        emit(f"Building file manifest... {len(manifest.files)} files found")
+        progress.emit(f"Building file manifest... {len(manifest.files)} files found")
         return {"manifest_path": str(workspace.manifest_json)}
 
     def load_schema(state):
@@ -135,7 +146,7 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         # this node loads them again and stores the canonical forms. The
         # review policy is read from the workspace copy so a resumed run
         # never depends on the original path (ADR 0014).
-        emit("Loading workbook schema and review policy...")
+        progress.emit("Loading workbook schema and review policy...")
         schema = load_workbook_schema(inputs.workbook_schema)
         workspace.workbook_schema_json.write_text(schema.model_dump_json(indent=2))
         policy_yaml = (
@@ -148,7 +159,7 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         return {"schema_path": str(workspace.workbook_schema_json)}
 
     def claude_scope(state):
-        emit("Starting scoping pass...")
+        progress.emit("Starting scoping pass...")
         questions = run_agent(
             state,
             "CLAUDE_SCOPE",
@@ -164,7 +175,7 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         workspace.scoping_answers_md.write_text(
             render_scoping_answers_template(questions)
         )
-        emit(f"Scoping complete: {len(questions.questions)} questions")
+        progress.emit(f"Scoping complete: {len(questions.questions)} questions")
         return {"scoping_questions_path": str(workspace.scoping_questions_json)}
 
     def await_scoping_answers(state):
@@ -185,11 +196,11 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
                 "sha256": hashlib.sha256(text.encode()).hexdigest(),
             },
         )
-        emit("Scoping answers received.")
+        progress.emit("Scoping answers received.")
         return {"scoping_answers_path": str(workspace.scoping_answers_md)}
 
     def claude_fill(state):
-        emit("Starting Filler...")
+        progress.emit("Starting Filler...")
         # The scoping answers are an explicit Filler input (plan
         # section 20), recorded relative to the workspace root.
         answers_path = Path(state["scoping_answers_path"])
@@ -204,7 +215,7 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         # 49.11 as amended by ADR 0016).
         raw_path = workspace.filler_outputs / "extraction.json"
         run_agent(state, "CLAUDE_FILL", "filler", raw_path, ExtractionResult)
-        emit("Filler complete.")
+        progress.emit("Filler complete.")
         return {"extraction_path": str(raw_path)}
 
     def schema_from(state):
@@ -218,7 +229,7 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         )
 
     def validate(state):
-        emit("Validating proposals...")
+        progress.emit("Validating proposals...")
         extraction = load_extraction(state)
         schema = schema_from(state)
 
@@ -238,14 +249,14 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         workspace.validation_json.write_text(
             json.dumps({"rejections": rejections}, indent=2)
         )
-        emit(
+        progress.emit(
             f"Validation complete: {len(extraction.proposals)} proposals,"
             f" {len(rejections)} rejected"
         )
         return {"extraction_path": str(workspace.extraction_json)}
 
     def write_draft(state):
-        emit("Writing draft workbook...")
+        progress.emit("Writing draft workbook...")
         extraction = load_extraction(state)
         rejections = json.loads(workspace.validation_json.read_text())["rejections"]
         rejected_indexes = {rejection["index"] for rejection in rejections}
@@ -299,11 +310,11 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
 
         write_explorers(state)
 
-        emit(f"Draft written: {len(applied)} cells populated")
+        progress.emit(f"Draft written: {len(applied)} cells populated")
         return {"draft_xlsx_path": str(workspace.draft_xlsx)}
 
     def write_explorers(state, version_suffix=""):
-        emit(f"Rendering review explorer (EN/ZH){version_suffix and ' v2'}...")
+        progress.emit(f"Rendering review explorer (EN/ZH){version_suffix and ' v2'}...")
         schema = schema_from(state)
         provenance = json.loads(workspace.provenance_json.read_text())
         handoff = json.loads(workspace.handoff_json.read_text())
@@ -345,7 +356,7 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
                         "detail": failure[1],
                     },
                 )
-                emit(f"Retrying {role} (attempt {attempt + 1})...")
+                progress.emit(f"Retrying {role} (attempt {attempt + 1})...")
             try:
                 result = runtimes[role].run(
                     AgentRequest(role=role, workspace_path=str(workspace.root))
@@ -389,7 +400,7 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         return result.verdicts
 
     def codex_review(state):
-        emit("Starting Reviewer...")
+        progress.emit("Starting Reviewer...")
         # The Reviewer's explicit inputs (plan section 23): the review
         # policy plus workspace-relative paths of everything to verify.
         policy = ReviewPolicy.model_validate_json(
@@ -431,11 +442,11 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         workspace.review_md.write_text(render_review_md(review))
         counts = verdict_counts(review.findings)
         summary = ", ".join(f"{count} {verdict}" for verdict, count in counts)
-        emit(f"Review complete: {summary or '0 findings'}")
+        progress.emit(f"Review complete: {summary or '0 findings'}")
         return {"review_path": str(workspace.review_json)}
 
     def claude_revise(state):
-        emit("Starting Revision...")
+        progress.emit("Starting Revision...")
         review = load_review(state)
         schema = schema_from(state)
         extraction = load_extraction(state)
@@ -485,14 +496,14 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
             raise ValueError(reason)
         workspace.revision_json.write_text(revision.model_dump_json(indent=2))
         actions = action_counts(revision.decisions)
-        emit(
+        progress.emit(
             "Revision complete: "
             + ", ".join(f"{count} {action}" for action, count in actions)
         )
         return {"revision_path": str(workspace.revision_json)}
 
     def apply_allowed_revisions(state):
-        emit("Applying authorized revisions...")
+        progress.emit("Applying authorized revisions...")
         review = load_review(state)
         revision = load_revision(state)
         schema = schema_from(state)
@@ -539,12 +550,12 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         # and updated provenance exactly (plan section 22).
         write_explorers(state, version_suffix="_v2")
         applied = sum(1 for outcome in outcomes if outcome.status == "applied")
-        emit(f"Applied {applied} authorized revisions")
+        progress.emit(f"Applied {applied} authorized revisions")
 
     def codex_rereview(state):
         revision = load_revision(state)
         rebutted = routing.rebutted_cells(revision.decisions)
-        emit(f"Starting targeted re-review: {len(rebutted)} rebutted cells...")
+        progress.emit(f"Starting targeted re-review: {len(rebutted)} rebutted cells...")
         review = load_review(state)
         findings_by_cell = {finding.cell: finding for finding in review.findings}
         restricted_inputs = {
@@ -584,7 +595,7 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         return {"re_review_path": str(workspace.re_review_json)}
 
     def human_review(state):
-        emit("Generating human review artifacts...")
+        progress.emit("Generating human review artifacts...")
         if state.get("review_path") is None:
             return unreviewed_human_review(state)
         review = load_review(state)
@@ -673,7 +684,7 @@ def build_graph(workspace, inputs, runtimes, audit, checkpointer):
         workspace.human_review_md.write_text(render_human_review_md(items))
 
     def finalize(state):
-        emit("Finalizing run...")
+        progress.emit("Finalizing run...")
         shutil.copy2(workspace.draft_xlsx, workspace.final_xlsx)
         audit.record_run_finished(state["run_id"], "completed")
         _write_run_summary(workspace, audit, state["run_id"])
