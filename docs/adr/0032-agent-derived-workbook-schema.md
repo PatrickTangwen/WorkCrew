@@ -60,6 +60,19 @@ always runs; only the interrupt is skipped. `CLAUDE_SCOPE` correspondingly does
 not write the answers template when answers were pre-provided — that write
 would destroy them.
 
+### Whether to pause is the scoping agent's call
+
+A pass that returns no questions does not stop the run: the operator would
+otherwise face an empty form to submit. `CLAUDE_SCOPE` writes a short
+no-questions note in place of the answers template and sets
+`scoping_answers_path` itself, which is what routes the run past the interrupt.
+`CLAUDE_FILL` reads the answers document unconditionally, so skipping the pause
+must never mean skipping the document.
+
+The router therefore branches on `state["scoping_answers_path"]` rather than on
+`inputs.scoping_answers`: both ways of already having answers converge on one
+condition.
+
 ### Column letters are read deterministically, not inferred
 
 `workbook/outline.py` (through the `writer.py` openpyxl isolation layer) emits

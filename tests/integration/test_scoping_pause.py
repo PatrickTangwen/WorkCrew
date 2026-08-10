@@ -77,6 +77,21 @@ def start_paused_run(inputs):
     )
 
 
+def start_run_without_questions(inputs):
+    runtime = FakeAgentRuntime(
+        {
+            "scoping": {"workbook_schema": WORKBOOK_SCHEMA_CONFIG, "questions": []},
+            "filler": filler_fixture(),
+            "reviewer": PASS_REVIEW,
+        }
+    )
+    return run_workflow(
+        inputs=run_inputs(inputs),
+        runs_root=inputs["runs_root"],
+        runtimes={role: runtime for role in ("scoping", "filler", "reviewer")},
+    )
+
+
 def workspace_of(inputs, state):
     return inputs["runs_root"] / state["run_id"]
 
@@ -339,3 +354,36 @@ def test_failed_resume_no_longer_reports_the_run_as_paused(inputs):
 
     # The answers were ingested, so 'paused' would be a false fact.
     assert run_status(workspace, paused["run_id"]) == "failed"
+
+
+def test_a_scoping_pass_with_no_questions_does_not_pause(inputs):
+    # Whether the run stops to ask is the scoping agent's call: nothing
+    # to ask means no pause and no empty form for the operator.
+    state = start_run_without_questions(inputs)
+    workspace = workspace_of(inputs, state)
+
+    assert "__interrupt__" not in state
+    assert (workspace / "output/final.xlsx").is_file()
+
+    stage_names = {stage for stage, _ in stage_history(workspace, state["run_id"])}
+    assert "CLAUDE_SCOPE" in stage_names
+    assert "AWAIT_SCOPING_ANSWERS" not in stage_names
+
+
+def test_the_filler_still_gets_an_answers_document_when_nothing_was_asked(inputs):
+    # CLAUDE_FILL reads the answers file unconditionally, so skipping the
+    # pause must not skip writing one.
+    state = start_run_without_questions(inputs)
+    workspace = workspace_of(inputs, state)
+
+    assert Path(state["scoping_answers_path"]) == (
+        workspace / "artifacts/scoping_answers.md"
+    )
+    answers = (workspace / "artifacts/scoping_answers.md").read_text()
+    assert "had no questions" in answers
+    assert "(your answer here)" not in answers
+
+    filler_inputs = json.loads(
+        (workspace / "agent_outputs/filler/inputs.json").read_text()
+    )
+    assert filler_inputs["scoping_answers_path"] == "artifacts/scoping_answers.md"

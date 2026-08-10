@@ -2,8 +2,9 @@
 
 INIT -> PREPARE_WORKSPACE -> BUILD_MANIFEST -> OUTLINE_WORKBOOK ->
 CLAUDE_SCOPE -> LOAD_SCHEMA -> AWAIT_SCOPING_ANSWERS (LangGraph
-interrupt; skipped when answers are pre-provided, though CLAUDE_SCOPE
-always runs because it produces the schema) -> CLAUDE_FILL -> VALIDATE ->
+interrupt; skipped when answers are pre-provided or when the scoping
+pass asked nothing, though CLAUDE_SCOPE always runs because it produces
+the schema) -> CLAUDE_FILL -> VALIDATE ->
 WRITE_DRAFT -> CODEX_REVIEW, then the conditional second half: no
 actionable findings finalizes directly; otherwise CLAUDE_REVISE ->
 APPLY_ALLOWED_REVISIONS, one CODEX_REREVIEW round when rebuttals
@@ -43,6 +44,7 @@ from workflow_app.provenance.store import build_provenance, resync_provenance
 from workflow_app.reports import (
     action_counts,
     render_human_review_md,
+    render_no_scoping_questions,
     render_review_md,
     render_revision_log_md,
     render_scoping_answers_template,
@@ -180,19 +182,29 @@ def build_graph(execution, audit, checkpointer):
         workspace.scoping_questions_md.write_text(
             render_scoping_questions_md(questions)
         )
-        # Pre-created template the user edits before resuming. Skipped
-        # when answers were pre-provided: PREPARE_WORKSPACE already put
-        # them at this path and the run will not pause, so writing the
-        # template here would destroy them.
-        if inputs.scoping_answers is None:
-            workspace.scoping_answers_md.write_text(
-                render_scoping_answers_template(questions)
-            )
         progress.emit(
             f"Scoping complete: {len(result.workbook_schema.sheets)} sheets,"
             f" {len(questions.questions)} questions"
         )
-        return {"scoping_questions_path": str(workspace.scoping_questions_json)}
+        update = {"scoping_questions_path": str(workspace.scoping_questions_json)}
+        if inputs.scoping_answers is not None:
+            # PREPARE_WORKSPACE already put the operator's answers at this
+            # path, so writing anything here would destroy them.
+            return update
+        if not questions.questions:
+            # The pass had nothing to ask, so the run should not stop to
+            # ask it. Answering the question of whether to pause is the
+            # scoping agent's call (ADR 0032); setting the answers path
+            # here is what routes the run straight to the filler.
+            progress.emit("No scoping questions; continuing without a pause.")
+            workspace.scoping_answers_md.write_text(render_no_scoping_questions())
+            update["scoping_answers_path"] = str(workspace.scoping_answers_md)
+            return update
+        # Pre-created template the user edits before resuming.
+        workspace.scoping_answers_md.write_text(
+            render_scoping_answers_template(questions)
+        )
+        return update
 
     def load_schema(state):
         # The schema comes from the scoping pass, so the contract check
@@ -844,10 +856,13 @@ def build_graph(execution, audit, checkpointer):
         return "FINALIZE"
 
     def route_after_load_schema(state):
-        # Pre-provided answers skip the pause only. The scoping pass
-        # itself always runs — it is where the schema comes from
-        # (ADR 0032, narrowing plan section 20).
-        if inputs.scoping_answers is not None:
+        # The answers are already in hand in two cases: the operator
+        # pre-provided them, or the scoping pass asked nothing and wrote
+        # the no-questions note itself. Either way there is nothing to
+        # pause for. The scoping pass always runs regardless — it is
+        # where the schema comes from (ADR 0032, narrowing plan
+        # section 20).
+        if state["scoping_answers_path"] is not None:
             return "CLAUDE_FILL"
         return "AWAIT_SCOPING_ANSWERS"
 

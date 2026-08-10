@@ -65,6 +65,16 @@ def render_scoping_answers_template(questions):
     return "\n".join(lines)
 
 
+def render_no_scoping_questions():
+    # The filler always reads an answers document; this is what it gets
+    # when the scoping pass decided it had nothing to ask.
+    return (
+        "# Scoping answers\n\n"
+        "The scoping pass had no questions: the task, sources, and\n"
+        "workbook answered everything it needed.\n"
+    )
+
+
 def render_scoping_answers(questions, answers):
     lines = ["# Scoping answers", ""]
     for question in questions.questions:
