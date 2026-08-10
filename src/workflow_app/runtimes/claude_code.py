@@ -16,7 +16,7 @@ from pathlib import Path
 from workflow_app.cancellation import run_process
 from workflow_app.models.extraction import ExtractionResult
 from workflow_app.models.revision import RevisionResult
-from workflow_app.models.scoping import ScopingQuestions
+from workflow_app.models.scoping import ScopingResult
 from workflow_app.progress import emit
 from workflow_app.runtimes.base import AgentResult
 
@@ -30,7 +30,7 @@ PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 # Role key -> (prompt file, structured-output contract). Role keys name
 # invocation kinds (ADR 0014); every Claude role maps to this one runtime.
 ROLES = {
-    "scoping": ("scoping.md", ScopingQuestions),
+    "scoping": ("scoping.md", ScopingResult),
     "filler": ("filler_independent.md", ExtractionResult),
     "revision": ("revision_independent.md", RevisionResult),
 }

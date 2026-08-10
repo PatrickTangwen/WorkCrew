@@ -77,13 +77,14 @@ export type ArtifactSummary = {
   path: string
 }
 
+export type RulesMode = "none" | "text" | "file"
+
 export type CreateRunInput = {
   source: string
   workbook: string
-  rules: string
-  workbook_schema: string
-  scoping_answers: string | null
-  review_policy: string | null
+  task: string
+  rules_text: string | null
+  rules_file: string | null
 }
 
 async function responseError(response: Response) {

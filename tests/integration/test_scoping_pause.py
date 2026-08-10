@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.integration.conftest import WORKBOOK_SCHEMA_CONFIG
 from workflow_app.models import ScopingQuestions
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.workflow.engine import resume_workflow, run_workflow
@@ -20,10 +21,11 @@ from workflow_app.workspace import RunInputs
 CONTRACT_FIXTURES = Path(__file__).parent.parent / "fixtures" / "contracts"
 
 SCOPING_OUTPUT = {
+    "workbook_schema": WORKBOOK_SCHEMA_CONFIG,
     "questions": [
         {"id": "Q1", "question": "Is each source folder one project row?"},
         {"id": "Q2", "question": "Are these folders the full authoritative set?"},
-    ]
+    ],
 }
 
 ANSWERS_TEXT = "Q1: One row per source folder.\nQ2: Yes, the set is complete.\n"
@@ -46,10 +48,12 @@ PASS_REVIEW = {
 }
 
 
-def make_runtimes(*, with_scoping=True):
-    outputs = {"filler": filler_fixture(), "reviewer": PASS_REVIEW}
-    if with_scoping:
-        outputs["scoping"] = SCOPING_OUTPUT
+def make_runtimes():
+    outputs = {
+        "scoping": SCOPING_OUTPUT,
+        "filler": filler_fixture(),
+        "reviewer": PASS_REVIEW,
+    }
     fake = FakeAgentRuntime(outputs)
     return {role: fake for role in outputs}
 
@@ -58,8 +62,8 @@ def run_inputs(inputs, **overrides):
     values = {
         "source": inputs["source"],
         "workbook": inputs["workbook"],
-        "rules": inputs["rules"],
-        "workbook_schema": inputs["workbook_schema"],
+        "task": inputs["task"],
+        "rules_file": inputs["rules_file"],
         **overrides,
     }
     return RunInputs(**values)
@@ -103,7 +107,9 @@ def test_run_pauses_after_scoping_with_question_artifacts(inputs):
     assert "__interrupt__" in state
 
     stored = json.loads((workspace / "artifacts/scoping_questions.json").read_text())
-    assert stored == ScopingQuestions.model_validate(SCOPING_OUTPUT).model_dump()
+    assert (
+        stored == ScopingQuestions(questions=SCOPING_OUTPUT["questions"]).model_dump()
+    )
     assert Path(state["scoping_questions_path"]) == (
         workspace / "artifacts/scoping_questions.json"
     )
@@ -206,12 +212,13 @@ def test_resume_passes_answers_to_filler_and_audits_them(inputs):
     assert received["sha256"] == hashlib.sha256(ANSWERS_TEXT.encode()).hexdigest()
 
 
-def test_preprovided_answers_skip_the_scoping_pass(inputs):
+def test_preprovided_answers_skip_the_pause_but_not_the_scoping_pass(inputs):
+    # The scoping pass produces the schema (ADR 0032), so it always runs;
+    # pre-provided answers only spare the operator the interrupt.
     state = run_workflow(
         inputs=run_inputs(inputs, scoping_answers=inputs["scoping_answers"]),
         runs_root=inputs["runs_root"],
-        # No scoping fixture: an unexpected scoping invocation would raise.
-        runtimes=make_runtimes(with_scoping=False),
+        runtimes=make_runtimes(),
     )
     workspace = workspace_of(inputs, state)
 
@@ -225,7 +232,7 @@ def test_preprovided_answers_skip_the_scoping_pass(inputs):
     )
 
     stage_names = {stage for stage, _ in stage_history(workspace, state["run_id"])}
-    assert "CLAUDE_SCOPE" not in stage_names
+    assert "CLAUDE_SCOPE" in stage_names
     assert "AWAIT_SCOPING_ANSWERS" not in stage_names
 
     filler_inputs = json.loads(

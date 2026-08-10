@@ -25,6 +25,7 @@ from workflow_app.runtimes.claude_code import ClaudeCodeRuntime
 from workflow_app.runtimes.codex import CodexRuntime
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.server import DEFAULT_UI_PORT, run_ui
+from workflow_app.workbook.outline import build_outline
 from workflow_app.workflow.engine import resume_workflow, run_workflow
 from workflow_app.workspace import RunInputs
 
@@ -36,6 +37,10 @@ from workflow_app.workspace import RunInputs
 # every open finding into the UNRESOLVED / human-review pipeline.
 FAKE_OUTPUTS = {
     "scoping": {
+        # workbook_schema is filled in per invocation by
+        # fake_scoping_schema(): the target sheet must name a sheet the
+        # operator's workbook actually has, and the fake fill proposes
+        # nothing, so no column ever needs declaring.
         "questions": [
             {
                 "id": "Q1",
@@ -83,16 +88,27 @@ def ui_port(value):
     return port
 
 
+def fake_scoping_schema(workbook):
+    # A degenerate schema is still checked against the real workbook
+    # (the target sheet must exist), so read the first sheet's name.
+    outline = build_outline(workbook)
+    return {"sheets": [{"name": outline.sheets[0].name, "target": True}]}
+
+
 def build_runtimes(
     choice,
     claude_model=DEFAULT_CLAUDE_MODEL,
     codex_model=DEFAULT_CODEX_MODEL,
     codex_effort=DEFAULT_CODEX_EFFORT,
+    workbook=None,
 ):
     if choice == "fake":
         emit("Using fake agent runtimes (walking-skeleton fixtures).")
-        fake = FakeAgentRuntime(FAKE_OUTPUTS)
-        return {role: fake for role in FAKE_OUTPUTS}
+        outputs = {role: dict(output) for role, output in FAKE_OUTPUTS.items()}
+        if workbook is not None:
+            outputs["scoping"]["workbook_schema"] = fake_scoping_schema(workbook)
+        fake = FakeAgentRuntime(outputs)
+        return {role: fake for role in outputs}
     emit(f"Claude model: {claude_model}")
     emit(f"Codex model: {codex_model} (reasoning effort: {codex_effort})")
     claude = ClaudeCodeRuntime(model=claude_model)
@@ -124,12 +140,15 @@ def build_parser():
     run = subparsers.add_parser("run", help="start a new workflow run")
     run.add_argument("--source", required=True, help="source documents folder")
     run.add_argument("--workbook", required=True, help="target workbook file")
-    run.add_argument("--rules", required=True, help="rule/reference files folder")
     run.add_argument(
-        "--workbook-schema",
+        "--task",
         required=True,
-        help="hand-authored workbook schema config (JSON)",
+        help="what the run should accomplish, in your own words;"
+        " the scoping pass derives the workbook schema from it",
     )
+    rules = run.add_mutually_exclusive_group()
+    rules.add_argument("--rules-text", help="extraction rules as prose")
+    rules.add_argument("--rules-file", help="extraction rules as one text file")
     run.add_argument(
         "--scoping-answers",
         help="pre-provided scoping answers file (skips the scoping pause)",
@@ -272,13 +291,15 @@ def main(argv=None):
             claude_model=args.claude_model,
             codex_model=args.codex_model,
             codex_effort=args.codex_effort,
+            workbook=getattr(args, "workbook", None),
         )
         if args.command == "run":
             inputs = RunInputs(
                 source=Path(args.source),
                 workbook=Path(args.workbook),
-                rules=Path(args.rules),
-                workbook_schema=Path(args.workbook_schema),
+                task=args.task,
+                rules_text=args.rules_text,
+                rules_file=None if args.rules_file is None else Path(args.rules_file),
                 scoping_answers=None
                 if args.scoping_answers is None
                 else Path(args.scoping_answers),

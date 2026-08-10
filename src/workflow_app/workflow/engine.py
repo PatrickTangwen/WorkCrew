@@ -18,8 +18,7 @@ from langgraph.types import Command
 from workflow_app.audit.db import AuditStore
 from workflow_app.cancellation import CancellationToken, WorkflowCancelled
 from workflow_app.progress import ProgressReporter
-from workflow_app.review_policy import check_strict_fields, load_review_policy
-from workflow_app.workbook.schema import load_workbook_schema
+from workflow_app.review_policy import load_review_policy
 from workflow_app.workflow.graph import build_graph
 from workflow_app.workspace import RunInputs, Workspace
 
@@ -52,10 +51,11 @@ def run_workflow(
     cancellation = cancellation or CancellationToken()
     try:
         inputs.validate()
-        # Fail fast on malformed configs — before the workspace exists and
-        # long before any agent could be invoked (tickets #3, #11).
-        schema = load_workbook_schema(inputs.workbook_schema)
-        check_strict_fields(load_review_policy(inputs.review_policy), schema)
+        # Fail fast on a malformed review policy — before the workspace
+        # exists (tickets #3, #11). The schema is no longer checkable here:
+        # the scoping pass derives it (ADR 0032), so its own validation and
+        # the strict-fields cross-check moved into the LOAD_SCHEMA node.
+        load_review_policy(inputs.review_policy)
 
         run_id = run_id or new_run_id()
         # Resolved so the paths persisted into checkpointed state stay valid
@@ -76,6 +76,7 @@ def run_workflow(
             "run_id": run_id,
             "workspace_path": str(workspace.root),
             "manifest_path": None,
+            "workbook_outline_path": None,
             "schema_path": None,
             "scoping_questions_path": None,
             "scoping_answers_path": None,
@@ -134,8 +135,8 @@ def resume_workflow(
         inputs = RunInputs(
             source=Path(run["source_path"]),
             workbook=Path(run["workbook_path"]),
-            rules=Path(run["rules_path"]),
-            workbook_schema=Path(run["workbook_schema_path"]),
+            task=run["task"] or "",
+            rules_file=None if run["rules_path"] is None else Path(run["rules_path"]),
             scoping_answers=None
             if run["scoping_answers_path"] is None
             else Path(run["scoping_answers_path"]),

@@ -30,35 +30,43 @@ const createdRun: RunRecord = {
   workbook_name: "template.xlsx",
 }
 
-function chooseButtonFor(fieldLabel: string) {
-  const inputGroup = screen.getByRole("group", { name: `${fieldLabel} input` })
-  return within(inputGroup).getByRole("button", { name: /^Choos/ })
+function chooseButtonIn(groupLabel: string) {
+  const group = screen.getByRole("group", { name: groupLabel })
+  return within(group).getByRole("button", { name: /^Choos/ })
 }
 
-async function selectInput(fieldLabel: string, path: string) {
+async function selectPath(groupLabel: string, path: string) {
   vi.mocked(pickPath).mockResolvedValueOnce(path)
-  fireEvent.click(chooseButtonFor(fieldLabel))
+  fireEvent.click(chooseButtonIn(groupLabel))
   await screen.findByTitle(path)
+}
+
+function typeTask(text: string) {
+  fireEvent.change(screen.getByLabelText("Task"), { target: { value: text } })
+}
+
+async function fillRequiredInputs() {
+  await selectPath("Source folder input", "/home/operator/source")
+  await selectPath("Workbook input", "/home/operator/template.xlsx")
+  typeTask("One row per charity folder")
 }
 
 describe("RunCreationForm", () => {
   afterEach(cleanup)
 
   beforeEach(() => {
-    vi.mocked(createRun).mockResolvedValue(createdRun)
     vi.mocked(pickPath).mockReset()
+    vi.mocked(createRun).mockReset()
+    vi.mocked(createRun).mockResolvedValue(createdRun)
   })
 
-  it("requires every engine input before creating a run", async () => {
+  it("starts a run from two paths and a task, with no rules", async () => {
     const onCreated = vi.fn()
     render(<RunCreationForm onCreated={onCreated} />)
     const startButton = screen.getByRole("button", { name: "Start run" })
 
     expect(startButton).toBeDisabled()
-    await selectInput("Source folder", "/home/operator/source")
-    await selectInput("Workbook", "/home/operator/template.xlsx")
-    await selectInput("Rules folder", "/home/operator/rules")
-    await selectInput("Workbook schema", "/home/operator/workbook-schema.json")
+    await fillRequiredInputs()
 
     expect(startButton).toBeEnabled()
     fireEvent.click(startButton)
@@ -67,18 +75,30 @@ describe("RunCreationForm", () => {
     expect(createRun).toHaveBeenCalledWith({
       source: "/home/operator/source",
       workbook: "/home/operator/template.xlsx",
-      rules: "/home/operator/rules",
-      workbook_schema: "/home/operator/workbook-schema.json",
-      scoping_answers: null,
-      review_policy: null,
+      task: "One row per charity folder",
+      rules_text: null,
+      rules_file: null,
     })
   })
 
-  it("asks the chooser for the mode each input needs", async () => {
+  it("keeps the start button disabled until the task is described", async () => {
     render(<RunCreationForm onCreated={vi.fn()} />)
 
-    await selectInput("Source folder", "/home/operator/source")
-    await selectInput("Workbook", "/home/operator/template.xlsx")
+    await selectPath("Source folder input", "/home/operator/source")
+    await selectPath("Workbook input", "/home/operator/template.xlsx")
+
+    expect(screen.getByRole("button", { name: "Start run" })).toBeDisabled()
+    typeTask("   ")
+    expect(screen.getByRole("button", { name: "Start run" })).toBeDisabled()
+    typeTask("Fill the register")
+    expect(screen.getByRole("button", { name: "Start run" })).toBeEnabled()
+  })
+
+  it("asks the chooser for the mode each path needs", async () => {
+    render(<RunCreationForm onCreated={vi.fn()} />)
+
+    await selectPath("Source folder input", "/home/operator/source")
+    await selectPath("Workbook input", "/home/operator/template.xlsx")
 
     expect(vi.mocked(pickPath).mock.calls).toEqual([
       ["directory", "Choose source folder"],
@@ -86,14 +106,63 @@ describe("RunCreationForm", () => {
     ])
   })
 
+  it("sends prose rules when the operator describes them", async () => {
+    render(<RunCreationForm onCreated={vi.fn()} />)
+    await fillRequiredInputs()
+
+    fireEvent.click(screen.getByRole("radio", { name: "Describe them" }))
+    fireEvent.change(screen.getByLabelText("Rules"), {
+      target: { value: "IDs are CHA- plus the registration number" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Start run" }))
+
+    await waitFor(() => expect(createRun).toHaveBeenCalled())
+    expect(vi.mocked(createRun).mock.calls[0][0]).toMatchObject({
+      rules_text: "IDs are CHA- plus the registration number",
+      rules_file: null,
+    })
+  })
+
+  it("sends a rules file when the operator picks one", async () => {
+    render(<RunCreationForm onCreated={vi.fn()} />)
+    await fillRequiredInputs()
+
+    fireEvent.click(screen.getByRole("radio", { name: "Use a text file" }))
+    await selectPath("Rules input", "/home/operator/rules.txt")
+    fireEvent.click(screen.getByRole("button", { name: "Start run" }))
+
+    await waitFor(() => expect(createRun).toHaveBeenCalled())
+    expect(vi.mocked(createRun).mock.calls[0][0]).toMatchObject({
+      rules_text: null,
+      rules_file: "/home/operator/rules.txt",
+    })
+  })
+
+  it("blocks the run while a chosen rules mode is still empty", async () => {
+    render(<RunCreationForm onCreated={vi.fn()} />)
+    await fillRequiredInputs()
+    const startButton = screen.getByRole("button", { name: "Start run" })
+
+    fireEvent.click(screen.getByRole("radio", { name: "Describe them" }))
+    expect(startButton).toBeDisabled()
+
+    fireEvent.click(screen.getByRole("radio", { name: "Use a text file" }))
+    expect(startButton).toBeDisabled()
+
+    fireEvent.click(screen.getByRole("radio", { name: "No rules" }))
+    expect(startButton).toBeEnabled()
+  })
+
   it("keeps the current value when the operator cancels the chooser", async () => {
     render(<RunCreationForm onCreated={vi.fn()} />)
-    await selectInput("Source folder", "/home/operator/source")
+    await selectPath("Source folder input", "/home/operator/source")
 
     vi.mocked(pickPath).mockResolvedValueOnce(null)
-    fireEvent.click(chooseButtonFor("Source folder"))
+    fireEvent.click(chooseButtonIn("Source folder input"))
 
-    await waitFor(() => expect(chooseButtonFor("Source folder")).toBeEnabled())
+    await waitFor(() =>
+      expect(chooseButtonIn("Source folder input")).toBeEnabled()
+    )
     expect(screen.getByTitle("/home/operator/source")).toBeVisible()
   })
 
@@ -101,7 +170,7 @@ describe("RunCreationForm", () => {
     render(<RunCreationForm onCreated={vi.fn()} />)
 
     vi.mocked(pickPath).mockRejectedValueOnce(new Error("no display available"))
-    fireEvent.click(chooseButtonFor("Source folder"))
+    fireEvent.click(chooseButtonIn("Source folder input"))
 
     expect(await screen.findByText("no display available")).toBeVisible()
   })

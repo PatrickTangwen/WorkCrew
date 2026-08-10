@@ -17,8 +17,7 @@ def artifact_app(tmp_path):
     inputs = RunInputs(
         source=Path("/inputs/source"),
         workbook=Path("/inputs/template.xlsx"),
-        rules=Path("/inputs/rules"),
-        workbook_schema=Path("/inputs/workbook-schema.json"),
+        task="Fill the register from the briefs.",
     )
     audit = AuditStore(workspace.audit_db)
     audit.record_run_started(RUN_ID, inputs)

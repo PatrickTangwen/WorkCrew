@@ -12,6 +12,7 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
+from tests.integration.conftest import scoping_fixture
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.workflow.engine import run_workflow
 from workflow_app.workspace import RunInputs
@@ -126,17 +127,23 @@ REVIEW_OUTPUT = {
 
 
 def start_run(inputs):
-    fake = FakeAgentRuntime({"filler": FILLER_OUTPUT, "reviewer": REVIEW_OUTPUT})
+    fake = FakeAgentRuntime(
+        {
+            "scoping": scoping_fixture(),
+            "filler": FILLER_OUTPUT,
+            "reviewer": REVIEW_OUTPUT,
+        }
+    )
     return run_workflow(
         inputs=RunInputs(
             source=inputs["source"],
             workbook=inputs["workbook"],
-            rules=inputs["rules"],
-            workbook_schema=inputs["workbook_schema"],
+            task=inputs["task"],
+            rules_file=inputs["rules_file"],
             scoping_answers=inputs["scoping_answers"],
         ),
         runs_root=inputs["runs_root"],
-        runtimes={"filler": fake, "reviewer": fake},
+        runtimes={"scoping": fake, "filler": fake, "reviewer": fake},
     )
 
 
@@ -155,17 +162,23 @@ def test_declared_merges_flow_into_the_handoff(inputs):
             }
         ],
     }
-    fake = FakeAgentRuntime({"filler": output, "reviewer": REVIEW_OUTPUT})
+    fake = FakeAgentRuntime(
+        {
+            "scoping": scoping_fixture(),
+            "filler": output,
+            "reviewer": REVIEW_OUTPUT,
+        }
+    )
     state = run_workflow(
         inputs=RunInputs(
             source=inputs["source"],
             workbook=inputs["workbook"],
-            rules=inputs["rules"],
-            workbook_schema=inputs["workbook_schema"],
+            task=inputs["task"],
+            rules_file=inputs["rules_file"],
             scoping_answers=inputs["scoping_answers"],
         ),
         runs_root=inputs["runs_root"],
-        runtimes={"filler": fake, "reviewer": fake},
+        runtimes={"scoping": fake, "filler": fake, "reviewer": fake},
     )
 
     handoff = json.loads((artifacts(inputs, state) / "handoff.json").read_text())

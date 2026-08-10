@@ -18,8 +18,8 @@ CREATE TABLE IF NOT EXISTS runs (
     finished_at TEXT,
     source_path TEXT NOT NULL,
     workbook_path TEXT NOT NULL,
-    rules_path TEXT NOT NULL,
-    workbook_schema_path TEXT NOT NULL,
+    task TEXT NOT NULL,
+    rules_path TEXT,
     scoping_answers_path TEXT,
     review_policy_path TEXT
 );
@@ -87,6 +87,13 @@ class AuditStore:
                 self._conn.execute(
                     "ALTER TABLE runs ADD COLUMN review_policy_path TEXT"
                 )
+        if "task" not in columns:
+            # Runs recorded before the task became an input (ADR 0032)
+            # keep a NULL task. They stay listable and readable; they are
+            # not resumable, because their schema came from a file the
+            # new graph no longer consults.
+            with self._conn:
+                self._conn.execute("ALTER TABLE runs ADD COLUMN task TEXT")
 
     def close(self):
         if self._conn is not None:
@@ -98,7 +105,7 @@ class AuditStore:
         with conn:
             conn.execute(
                 "INSERT INTO runs (run_id, status, started_at, source_path,"
-                " workbook_path, rules_path, workbook_schema_path,"
+                " workbook_path, task, rules_path,"
                 " scoping_answers_path, review_policy_path)"
                 " VALUES (?, 'running', ?, ?, ?, ?, ?, ?, ?)",
                 (
@@ -106,8 +113,8 @@ class AuditStore:
                     _now(),
                     str(inputs.source),
                     str(inputs.workbook),
-                    str(inputs.rules),
-                    str(inputs.workbook_schema),
+                    inputs.task,
+                    None if inputs.rules_file is None else str(inputs.rules_file),
                     None
                     if inputs.scoping_answers is None
                     else str(inputs.scoping_answers),
@@ -267,7 +274,7 @@ class AuditStore:
             self._connect()
             .execute(
                 "SELECT run_id, status, started_at, finished_at, source_path,"
-                " workbook_path, rules_path, workbook_schema_path,"
+                " workbook_path, task, rules_path,"
                 " scoping_answers_path, review_policy_path"
                 " FROM runs WHERE run_id = ?",
                 (run_id,),
@@ -283,8 +290,8 @@ class AuditStore:
             "finished_at",
             "source_path",
             "workbook_path",
+            "task",
             "rules_path",
-            "workbook_schema_path",
             "scoping_answers_path",
             "review_policy_path",
         )

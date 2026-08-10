@@ -8,13 +8,14 @@ layer validates and applies accepted proposals.
 
 ## Briefing
 
-Read `agent_outputs/filler/inputs.json`, `artifacts/scoping_answers.md`,
-`artifacts/manifest.json`, and `artifacts/workbook_schema.json` first. They
-define the source inventory, row assignment, target fields, and valid output
-shapes.
+Read `input/task.md`, `agent_outputs/filler/inputs.json`,
+`artifacts/scoping_answers.md`, `artifacts/manifest.json`, and
+`artifacts/workbook_schema.json` first. They define the operator's goal, the
+source inventory, row assignment, target fields, and valid output shapes.
 
 Use files under `input/sources/` as the source of truth. Open a file under
-`input/rules/` when its rule is relevant to the field you are filling.
+`input/rules/` when its rule is relevant to the field you are filling; that
+directory is empty when the operator supplied no rules, which is normal.
 
 ## Method
 

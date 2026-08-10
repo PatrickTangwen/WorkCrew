@@ -1,12 +1,17 @@
-"""Scoping question contracts (plan section 20).
+"""Scoping contracts (plan section 20, ADR 0032).
 
-The scoping pass returns only a question list; answers stay free-form
-markdown edited by the user, so no answer contract exists.
+The scoping pass returns the derived workbook schema plus a question
+list; answers stay free-form markdown edited by the user, so no answer
+contract exists. Emitting the schema through the same structured-output
+contract is what makes a malformed schema a retryable agent failure
+rather than a crash three stages later.
 """
 
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
+
+from workflow_app.workbook.schema import WorkbookSchema
 
 
 class ScopingOption(BaseModel):
@@ -28,4 +33,13 @@ class ScopingQuestion(BaseModel):
 class ScopingQuestions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    questions: list[ScopingQuestion]
+
+
+class ScopingResult(BaseModel):
+    """What the scoping invocation must return: the schema and the questions."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workbook_schema: WorkbookSchema
     questions: list[ScopingQuestion]

@@ -10,6 +10,7 @@ import re
 from datetime import date
 from pathlib import Path
 
+from tests.integration.conftest import scoping_fixture
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.workflow.engine import run_workflow
 from workflow_app.workspace import RunInputs
@@ -149,6 +150,7 @@ def default_review():
 
 def start_run(inputs, filler=None, review=None, revision=None, re_review=None):
     outputs = {
+        "scoping": scoping_fixture(),
         "filler": filler or filler_fixture(),
         "reviewer": review or default_review(),
     }
@@ -161,8 +163,8 @@ def start_run(inputs, filler=None, review=None, revision=None, re_review=None):
         inputs=RunInputs(
             source=inputs["source"],
             workbook=inputs["workbook"],
-            rules=inputs["rules"],
-            workbook_schema=inputs["workbook_schema"],
+            task=inputs["task"],
+            rules_file=inputs["rules_file"],
             scoping_answers=inputs["scoping_answers"],
         ),
         runs_root=inputs["runs_root"],

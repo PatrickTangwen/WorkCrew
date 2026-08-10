@@ -5,8 +5,6 @@ supports a date, a maturity judgment, an issue area, and a constructed
 Project ID, so a live fill has concrete material to cite.
 """
 
-import json
-
 import pytest
 from openpyxl import Workbook
 
@@ -90,12 +88,8 @@ def inputs(tmp_path):
         sheet[cell] = header
     book.save(workbook)
 
-    rules = tmp_path / "rules"
-    rules.mkdir()
-    (rules / "extraction_rules.md").write_text(RULES)
-
-    workbook_schema = tmp_path / "workbook_schema.json"
-    workbook_schema.write_text(json.dumps(WORKBOOK_SCHEMA_CONFIG))
+    rules_file = tmp_path / "rules.md"
+    rules_file.write_text(RULES)
 
     scoping_answers = tmp_path / "scoping_answers.md"
     scoping_answers.write_text(
@@ -107,8 +101,22 @@ def inputs(tmp_path):
     return {
         "source": source,
         "workbook": workbook,
-        "rules": rules,
-        "workbook_schema": workbook_schema,
+        "task": (
+            "Fill one row per project folder: the constructed Project ID, "
+            "start date, maturity judgment, and issue area."
+        ),
+        "rules_file": rules_file,
         "scoping_answers": scoping_answers,
         "runs_root": tmp_path / "runs",
+    }
+
+
+def scoping_fixture():
+    """Schema the live scoping pass would derive, for tests exercising a
+    later stage."""
+    return {
+        "workbook_schema": WORKBOOK_SCHEMA_CONFIG,
+        "questions": [
+            {"id": "Q1", "question": "One row per folder?", "type": "confirm"}
+        ],
     }

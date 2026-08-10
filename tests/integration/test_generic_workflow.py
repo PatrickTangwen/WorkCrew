@@ -77,34 +77,28 @@ def test_workflow_invariants_survive_domain_and_layout_changes(tmp_path, case):
     sheet[f"{conflict_column}1"] = conflict_name
     book.save(workbook)
 
-    schema = tmp_path / "workbook_schema.json"
-    schema.write_text(
-        json.dumps(
+    schema = {
+        "sheets": [
             {
-                "sheets": [
-                    {
-                        "name": case["sheet"],
-                        "target": True,
-                        "fields": {
-                            identity_name: {
-                                "column": identity_column,
-                                "value_kind": "constructed",
-                                "writable": True,
-                            },
-                            conflict_name: {
-                                "column": conflict_column,
-                                "type": "number",
-                                "writable": True,
-                            },
-                        },
-                    }
-                ]
+                "name": case["sheet"],
+                "target": True,
+                "fields": {
+                    identity_name: {
+                        "column": identity_column,
+                        "value_kind": "constructed",
+                        "writable": True,
+                    },
+                    conflict_name: {
+                        "column": conflict_column,
+                        "type": "number",
+                        "writable": True,
+                    },
+                },
             }
-        )
-    )
-    rules = tmp_path / "rules"
-    rules.mkdir()
-    (rules / "field_rules.md").write_text(
+        ]
+    }
+    rules_file = tmp_path / "rules.txt"
+    rules_file.write_text(
         "# Canonical identifier\n\n"
         + case["identity_rule"]
         + "\n\nPreserve unresolved conflicts.\n"
@@ -168,19 +162,25 @@ def test_workflow_invariants_survive_domain_and_layout_changes(tmp_path, case):
             for cell in (identity_cell, conflict_cell)
         ]
     }
-    fake = FakeAgentRuntime({"filler": fill, "reviewer": review})
+    scoping = {
+        "workbook_schema": schema,
+        "questions": [
+            {"id": "Q1", "question": "One row per folder?", "type": "confirm"}
+        ],
+    }
+    fake = FakeAgentRuntime({"scoping": scoping, "filler": fill, "reviewer": review})
 
     state = run_workflow(
         inputs=RunInputs(
             source=source,
             workbook=workbook,
-            rules=rules,
-            workbook_schema=schema,
+            task=f"Fill the {case['sheet']} sheet from the source records.",
+            rules_file=rules_file,
             scoping_answers=answers,
             review_policy=policy,
         ),
         runs_root=tmp_path / "runs",
-        runtimes={"filler": fake, "reviewer": fake},
+        runtimes={"scoping": fake, "filler": fake, "reviewer": fake},
     )
 
     workspace = Path(state["workspace_path"])

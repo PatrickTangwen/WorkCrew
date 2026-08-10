@@ -1,8 +1,9 @@
-import json
-
 import pytest
 from openpyxl import Workbook
 
+# The schema the fake scoping agent returns (ADR 0032). It used to be a
+# hand-authored run input; tests now hand it to the agent fixture so the
+# rest of the pipeline still sees the same fields.
 WORKBOOK_SCHEMA_CONFIG = {
     "sheets": [
         {
@@ -61,23 +62,36 @@ def inputs(tmp_path):
     sheet["H2"] = "=SUM(1,2)"
     book.save(workbook)
 
-    rules = tmp_path / "rules"
-    rules.mkdir()
-    (rules / "naming.md").write_text("Naming conventions.")
-
-    workbook_schema = tmp_path / "workbook_schema.json"
-    workbook_schema.write_text(json.dumps(WORKBOOK_SCHEMA_CONFIG))
+    rules_file = tmp_path / "rules.txt"
+    rules_file.write_text("Naming conventions.")
 
     # Pre-provided scoping answers keep straight-through runs (most
     # tests) from pausing; scoping-pause tests simply omit this input.
+    # The scoping pass itself still runs — it produces the schema.
     scoping_answers = tmp_path / "scoping_answers.md"
     scoping_answers.write_text("Q1: One row per source folder.\n")
 
     return {
         "source": source,
         "workbook": workbook,
-        "rules": rules,
-        "workbook_schema": workbook_schema,
+        "task": "Fill one row per source folder from the project briefs.",
+        "rules_file": rules_file,
         "scoping_answers": scoping_answers,
         "runs_root": tmp_path / "runs",
+    }
+
+
+def scoping_fixture(questions=None):
+    """Structured output for the fake scoping agent: schema plus questions."""
+    return {
+        "workbook_schema": WORKBOOK_SCHEMA_CONFIG,
+        "questions": questions
+        if questions is not None
+        else [
+            {
+                "id": "Q1",
+                "question": "Does one row correspond to one source folder?",
+                "type": "confirm",
+            }
+        ],
     }

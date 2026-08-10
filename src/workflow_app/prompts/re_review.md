@@ -16,7 +16,8 @@ decision with its evidence and justification. Then verify against:
 
 - `input/sources/` — re-open the original source documents yourself;
   do not take either side's account at face value.
-- `input/rules/` — the extraction rules.
+- `input/rules/` — the extraction rules; empty when the operator
+  supplied none.
 - `working/draft.xlsx` — the draft workbook (the disputed cells still
   hold their original values).
 - `artifacts/workbook_schema.json` — field types, vocabularies,

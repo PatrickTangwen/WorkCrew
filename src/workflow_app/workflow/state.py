@@ -13,6 +13,7 @@ class WorkflowState(TypedDict):
     run_id: str
     workspace_path: str
     manifest_path: str | None
+    workbook_outline_path: str | None
     schema_path: str | None
     scoping_questions_path: str | None
     scoping_answers_path: str | None

@@ -18,10 +18,10 @@ def run_args(inputs):
         str(inputs["source"]),
         "--workbook",
         str(inputs["workbook"]),
-        "--rules",
-        str(inputs["rules"]),
-        "--workbook-schema",
-        str(inputs["workbook_schema"]),
+        "--task",
+        inputs["task"],
+        "--rules-file",
+        str(inputs["rules_file"]),
         "--runs-root",
         str(inputs["runs_root"]),
         "--runtimes",
@@ -98,11 +98,19 @@ def test_missing_source_reports_error_and_nonzero_exit(inputs, capsys):
     assert "not found" in capsys.readouterr().err
 
 
-def test_malformed_schema_config_reports_error_and_nonzero_exit(inputs, capsys):
-    inputs["workbook_schema"].write_text("{not json")
-    exit_code = main(run_args(inputs))
+def test_an_empty_task_reports_error_and_nonzero_exit(inputs, capsys):
+    # The schema is derived from the task now (ADR 0032), so the task is
+    # what the CLI can still reject before the run starts.
+    args = [arg if arg != inputs["task"] else "   " for arg in run_args(inputs)]
+    exit_code = main(args)
     assert exit_code == 2
-    assert "not valid JSON" in capsys.readouterr().err
+    assert "task description must not be empty" in capsys.readouterr().err
+
+
+def test_rules_text_and_rules_file_are_mutually_exclusive(inputs, capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(run_args(inputs) + ["--rules-text", "Prose rules."])
+    assert excinfo.value.code != 0
 
 
 def test_missing_required_arguments_exit_nonzero(inputs, capsys):

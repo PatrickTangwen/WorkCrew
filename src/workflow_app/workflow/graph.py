@@ -1,8 +1,9 @@
 """Thin workflow graph (plan section 30).
 
-INIT -> PREPARE_WORKSPACE -> BUILD_MANIFEST -> LOAD_SCHEMA ->
-CLAUDE_SCOPE -> AWAIT_SCOPING_ANSWERS (LangGraph interrupt; both
-skipped when answers are pre-provided) -> CLAUDE_FILL -> VALIDATE ->
+INIT -> PREPARE_WORKSPACE -> BUILD_MANIFEST -> OUTLINE_WORKBOOK ->
+CLAUDE_SCOPE -> LOAD_SCHEMA -> AWAIT_SCOPING_ANSWERS (LangGraph
+interrupt; skipped when answers are pre-provided, though CLAUDE_SCOPE
+always runs because it produces the schema) -> CLAUDE_FILL -> VALIDATE ->
 WRITE_DRAFT -> CODEX_REVIEW, then the conditional second half: no
 actionable findings finalizes directly; otherwise CLAUDE_REVISE ->
 APPLY_ALLOWED_REVISIONS, one CODEX_REREVIEW round when rebuttals
@@ -34,6 +35,7 @@ from workflow_app.models import (
     ReviewResult,
     RevisionResult,
     ScopingQuestions,
+    ScopingResult,
 )
 from workflow_app.provenance.explorer import render_explorer_html
 from workflow_app.provenance.render import build_explorer_data
@@ -47,7 +49,11 @@ from workflow_app.reports import (
     render_scoping_questions_md,
     verdict_counts,
 )
-from workflow_app.review_policy import ReviewPolicy, load_review_policy
+from workflow_app.review_policy import (
+    ReviewPolicy,
+    check_strict_fields,
+    load_review_policy,
+)
 from workflow_app.runtimes.base import AgentRequest
 from workflow_app.validation.rules import check_proposal
 from workflow_app.workbook import writer
@@ -56,8 +62,9 @@ from workflow_app.workbook.mutations import (
     MutationConflictError,
     apply_mutations,
 )
+from workflow_app.workbook.outline import WorkbookOutline, build_outline
 from workflow_app.workbook.safety import Allowlist, cell_key
-from workflow_app.workbook.schema import WorkbookSchema, load_workbook_schema
+from workflow_app.workbook.schema import WorkbookSchema
 from workflow_app.workflow import routing
 from workflow_app.workflow.state import WorkflowState
 
@@ -150,42 +157,85 @@ def build_graph(execution, audit, checkpointer):
         progress.emit(f"Building file manifest... {len(manifest.files)} files found")
         return {"manifest_path": str(workspace.manifest_json)}
 
+    def outline_workbook(state):
+        # Sheet names, column letters, and the template's top rows are
+        # facts about the file, read deterministically so the scoping
+        # agent never guesses a column letter (ADR 0032).
+        outline = build_outline(workspace.input_workbook / inputs.workbook.name)
+        workspace.workbook_outline_json.write_text(outline.model_dump_json(indent=2))
+        progress.emit(f"Outlining workbook... {len(outline.sheets)} sheets found")
+        return {"workbook_outline_path": str(workspace.workbook_outline_json)}
+
+    def claude_scope(state):
+        progress.emit("Starting scoping pass...")
+        result = run_agent(
+            state,
+            "CLAUDE_SCOPE",
+            "scoping",
+            workspace.filler_outputs / "scoping.json",
+            ScopingResult,
+        )
+        questions = ScopingQuestions(questions=result.questions)
+        workspace.scoping_questions_json.write_text(questions.model_dump_json(indent=2))
+        workspace.scoping_questions_md.write_text(
+            render_scoping_questions_md(questions)
+        )
+        # Pre-created template the user edits before resuming. Skipped
+        # when answers were pre-provided: PREPARE_WORKSPACE already put
+        # them at this path and the run will not pause, so writing the
+        # template here would destroy them.
+        if inputs.scoping_answers is None:
+            workspace.scoping_answers_md.write_text(
+                render_scoping_answers_template(questions)
+            )
+        progress.emit(
+            f"Scoping complete: {len(result.workbook_schema.sheets)} sheets,"
+            f" {len(questions.questions)} questions"
+        )
+        return {"scoping_questions_path": str(workspace.scoping_questions_json)}
+
     def load_schema(state):
-        # The engine already validated the configs as a fail-fast gate;
-        # this node loads them again and stores the canonical forms. The
-        # review policy is read from the workspace copy so a resumed run
-        # never depends on the original path (ADR 0014).
+        # The schema comes from the scoping pass, so the contract check
+        # that gated its retry has already validated it; this node stores
+        # the canonical form every later stage reads. The review policy is
+        # read from the workspace copy so a resumed run never depends on
+        # the original path (ADR 0014).
         progress.emit("Loading workbook schema and review policy...")
-        schema = load_workbook_schema(inputs.workbook_schema)
-        workspace.workbook_schema_json.write_text(schema.model_dump_json(indent=2))
+        scoping = ScopingResult.model_validate_json(
+            (workspace.filler_outputs / "scoping.json").read_text()
+        )
+        # The schema's own validators cannot see the workbook, so a sheet
+        # the agent invented would only surface as an openpyxl KeyError
+        # deep inside WRITE_DRAFT. Check it against the outline instead.
+        outline = WorkbookOutline.model_validate_json(
+            workspace.workbook_outline_json.read_text()
+        )
+        present = {sheet.name for sheet in outline.sheets}
+        missing = [
+            sheet.name
+            for sheet in scoping.workbook_schema.sheets
+            if sheet.name not in present
+        ]
+        if missing:
+            raise ValueError(
+                f"workbook schema names sheets the workbook does not have: {missing};"
+                f" the workbook has {sorted(present)}"
+            )
+        workspace.workbook_schema_json.write_text(
+            scoping.workbook_schema.model_dump_json(indent=2)
+        )
         policy_yaml = (
             workspace.review_policy_yaml
             if workspace.review_policy_yaml.is_file()
             else None
         )
         policy = load_review_policy(policy_yaml)
+        # Moved here from the engine's pre-run gate: the schema only
+        # exists now, so this is the first moment the operator's strict
+        # fields can be checked against it.
+        check_strict_fields(policy, scoping.workbook_schema)
         workspace.review_policy_json.write_text(policy.model_dump_json(indent=2))
         return {"schema_path": str(workspace.workbook_schema_json)}
-
-    def claude_scope(state):
-        progress.emit("Starting scoping pass...")
-        questions = run_agent(
-            state,
-            "CLAUDE_SCOPE",
-            "scoping",
-            workspace.filler_outputs / "scoping_questions.json",
-            ScopingQuestions,
-        )
-        workspace.scoping_questions_json.write_text(questions.model_dump_json(indent=2))
-        workspace.scoping_questions_md.write_text(
-            render_scoping_questions_md(questions)
-        )
-        # Pre-created template the user edits before resuming.
-        workspace.scoping_answers_md.write_text(
-            render_scoping_answers_template(questions)
-        )
-        progress.emit(f"Scoping complete: {len(questions.questions)} questions")
-        return {"scoping_questions_path": str(workspace.scoping_questions_json)}
 
     def await_scoping_answers(state):
         # First execution pauses here; on resume the node re-runs from
@@ -794,11 +844,12 @@ def build_graph(execution, audit, checkpointer):
         return "FINALIZE"
 
     def route_after_load_schema(state):
-        # Plan section 20: pre-provided answers skip the scoping pass
-        # and its pause entirely.
+        # Pre-provided answers skip the pause only. The scoping pass
+        # itself always runs — it is where the schema comes from
+        # (ADR 0032, narrowing plan section 20).
         if inputs.scoping_answers is not None:
             return "CLAUDE_FILL"
-        return "CLAUDE_SCOPE"
+        return "AWAIT_SCOPING_ANSWERS"
 
     def route_after_apply(state):
         if routing.rebutted_cells(load_revision(state).decisions):
@@ -809,8 +860,9 @@ def build_graph(execution, audit, checkpointer):
     graph.add_node("INIT", stage("INIT", init))
     graph.add_node("PREPARE_WORKSPACE", stage("PREPARE_WORKSPACE", prepare_workspace))
     graph.add_node("BUILD_MANIFEST", stage("BUILD_MANIFEST", build_manifest_node))
-    graph.add_node("LOAD_SCHEMA", stage("LOAD_SCHEMA", load_schema))
+    graph.add_node("OUTLINE_WORKBOOK", stage("OUTLINE_WORKBOOK", outline_workbook))
     graph.add_node("CLAUDE_SCOPE", stage("CLAUDE_SCOPE", claude_scope))
+    graph.add_node("LOAD_SCHEMA", stage("LOAD_SCHEMA", load_schema))
     graph.add_node(
         "AWAIT_SCOPING_ANSWERS",
         stage("AWAIT_SCOPING_ANSWERS", await_scoping_answers),
@@ -831,13 +883,17 @@ def build_graph(execution, audit, checkpointer):
     graph.add_edge(START, "INIT")
     graph.add_edge("INIT", "PREPARE_WORKSPACE")
     graph.add_edge("PREPARE_WORKSPACE", "BUILD_MANIFEST")
-    graph.add_edge("BUILD_MANIFEST", "LOAD_SCHEMA")
+    graph.add_edge("BUILD_MANIFEST", "OUTLINE_WORKBOOK")
+    graph.add_edge("OUTLINE_WORKBOOK", "CLAUDE_SCOPE")
+    graph.add_edge("CLAUDE_SCOPE", "LOAD_SCHEMA")
     graph.add_conditional_edges(
         "LOAD_SCHEMA",
         route_after_load_schema,
-        {"CLAUDE_SCOPE": "CLAUDE_SCOPE", "CLAUDE_FILL": "CLAUDE_FILL"},
+        {
+            "AWAIT_SCOPING_ANSWERS": "AWAIT_SCOPING_ANSWERS",
+            "CLAUDE_FILL": "CLAUDE_FILL",
+        },
     )
-    graph.add_edge("CLAUDE_SCOPE", "AWAIT_SCOPING_ANSWERS")
     graph.add_edge("AWAIT_SCOPING_ANSWERS", "CLAUDE_FILL")
     graph.add_edge("CLAUDE_FILL", "VALIDATE")
     graph.add_edge("VALIDATE", "WRITE_DRAFT")
@@ -893,8 +949,8 @@ def _write_run_summary(workspace, audit, run_id):
             "",
             f"- Source: {run['source_path']}",
             f"- Workbook: {run['workbook_path']}",
-            f"- Rules: {run['rules_path']}",
-            f"- Workbook schema: {run['workbook_schema_path']}",
+            f"- Task: {run['task']}",
+            f"- Rules: {run['rules_path'] or 'none'}",
             "",
             "## Stages",
             "",

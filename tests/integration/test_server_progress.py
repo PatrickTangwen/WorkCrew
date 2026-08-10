@@ -1,15 +1,21 @@
 from fastapi.testclient import TestClient
 
+from tests.integration.conftest import WORKBOOK_SCHEMA_CONFIG
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.server import ServerOptions, create_app
+
+SCOPING_OUTPUT = {
+    "workbook_schema": WORKBOOK_SCHEMA_CONFIG,
+    "questions": [{"id": "Q1", "question": "Is each folder one project?"}],
+}
 
 
 def run_payload(inputs, scoping_answers):
     return {
         "source": str(inputs["source"]),
         "workbook": str(inputs["workbook"]),
-        "rules": str(inputs["rules"]),
-        "workbook_schema": str(inputs["workbook_schema"]),
+        "task": inputs["task"],
+        "rules_file": str(inputs["rules_file"]),
         "scoping_answers": scoping_answers,
         "review_policy": None,
     }
@@ -82,18 +88,18 @@ def test_websocket_streams_all_five_engine_event_types_in_lifecycle_order(inputs
     completed, completed_record = stream_run(
         inputs,
         "completed",
-        {"filler": {"proposals": []}, "reviewer": {"findings": []}},
-        {"filler", "reviewer"},
+        {
+            "scoping": SCOPING_OUTPUT,
+            "filler": {"proposals": []},
+            "reviewer": {"findings": []},
+        },
+        {"scoping", "filler", "reviewer"},
         str(inputs["scoping_answers"]),
     )
     paused, paused_record = stream_run(
         inputs,
         "paused",
-        {
-            "scoping": {
-                "questions": [{"id": "Q1", "question": "Is each folder one project?"}]
-            }
-        },
+        {"scoping": SCOPING_OUTPUT},
         {"scoping"},
         None,
     )
@@ -101,7 +107,7 @@ def test_websocket_streams_all_five_engine_event_types_in_lifecycle_order(inputs
         inputs,
         "failed",
         {},
-        {"filler"},
+        {"scoping"},
         str(inputs["scoping_answers"]),
     )
 
@@ -111,12 +117,16 @@ def test_websocket_streams_all_five_engine_event_types_in_lifecycle_order(inputs
     assert paused_record["status"] == "paused"
     assert failed[-1]["type"] == "failed"
     assert failed_record["status"] == "failed"
-    assert failed_record["phase"] == "CLAUDE_FILL"
+    # With no scoping fixture the run now dies at the first agent stage,
+    # which is CLAUDE_SCOPE since it precedes the fill (ADR 0032).
+    assert failed_record["phase"] == "CLAUDE_SCOPE"
     assert phase_changes(completed) == completed_phases(
         [
             "INIT",
             "PREPARE_WORKSPACE",
             "BUILD_MANIFEST",
+            "OUTLINE_WORKBOOK",
+            "CLAUDE_SCOPE",
             "LOAD_SCHEMA",
             "CLAUDE_FILL",
             "VALIDATE",
@@ -131,18 +141,19 @@ def test_websocket_streams_all_five_engine_event_types_in_lifecycle_order(inputs
                 "INIT",
                 "PREPARE_WORKSPACE",
                 "BUILD_MANIFEST",
-                "LOAD_SCHEMA",
+                "OUTLINE_WORKBOOK",
                 "CLAUDE_SCOPE",
+                "LOAD_SCHEMA",
             ]
         ),
         ("AWAIT_SCOPING_ANSWERS", "active"),
     ]
     assert phase_changes(failed) == [
         *completed_phases(
-            ["INIT", "PREPARE_WORKSPACE", "BUILD_MANIFEST", "LOAD_SCHEMA"]
+            ["INIT", "PREPARE_WORKSPACE", "BUILD_MANIFEST", "OUTLINE_WORKBOOK"]
         ),
-        ("CLAUDE_FILL", "active"),
-        ("CLAUDE_FILL", "failed"),
+        ("CLAUDE_SCOPE", "active"),
+        ("CLAUDE_SCOPE", "failed"),
     ]
     assert_progress_follows_phase_start(completed)
     assert_progress_follows_phase_start(paused)
@@ -150,7 +161,7 @@ def test_websocket_streams_all_five_engine_event_types_in_lifecycle_order(inputs
     assert failed[-2] == {
         "type": "phase_change",
         "timestamp": failed[-2]["timestamp"],
-        "phase": "CLAUDE_FILL",
+        "phase": "CLAUDE_SCOPE",
         "status": "failed",
     }
 

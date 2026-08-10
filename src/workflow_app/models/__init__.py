@@ -10,7 +10,11 @@ from workflow_app.models.review import (
     ReviewResult,
 )
 from workflow_app.models.revision import RevisionDecision, RevisionResult
-from workflow_app.models.scoping import ScopingQuestion, ScopingQuestions
+from workflow_app.models.scoping import (
+    ScopingQuestion,
+    ScopingQuestions,
+    ScopingResult,
+)
 from workflow_app.models.values import CellValue
 
 __all__ = [
@@ -28,4 +32,5 @@ __all__ = [
     "RevisionResult",
     "ScopingQuestion",
     "ScopingQuestions",
+    "ScopingResult",
 ]

@@ -1,9 +1,11 @@
 from fastapi.testclient import TestClient
 
+from tests.integration.conftest import WORKBOOK_SCHEMA_CONFIG, scoping_fixture
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.server import ServerOptions, create_app
 
 SCOPING_OUTPUT = {
+    "workbook_schema": WORKBOOK_SCHEMA_CONFIG,
     "questions": [
         {"id": "Q1", "question": "What is one row?", "type": "text"},
         {
@@ -25,27 +27,31 @@ SCOPING_OUTPUT = {
             ],
         },
         {"id": "Q4", "question": "Is this set complete?", "type": "confirm"},
-    ]
+    ],
 }
 
 
 def test_run_api_executes_the_real_engine_with_fake_runtimes(inputs):
     runtime = FakeAgentRuntime(
-        {"filler": {"proposals": []}, "reviewer": {"findings": []}}
+        {
+            "scoping": scoping_fixture(),
+            "filler": {"proposals": []},
+            "reviewer": {"findings": []},
+        }
     )
     app = create_app(
         inputs["runs_root"] / "missing-static",
         options=ServerOptions(
             home_dir=inputs["source"].parent,
             runs_root=inputs["runs_root"],
-            runtimes={"filler": runtime, "reviewer": runtime},
+            runtimes={"scoping": runtime, "filler": runtime, "reviewer": runtime},
         ),
     )
     payload = {
         "source": str(inputs["source"]),
         "workbook": str(inputs["workbook"]),
-        "rules": str(inputs["rules"]),
-        "workbook_schema": str(inputs["workbook_schema"]),
+        "task": inputs["task"],
+        "rules_file": str(inputs["rules_file"]),
         "scoping_answers": str(inputs["scoping_answers"]),
         "review_policy": None,
     }
@@ -74,6 +80,8 @@ def test_run_api_executes_the_real_engine_with_fake_runtimes(inputs):
         "INIT",
         "PREPARE_WORKSPACE",
         "BUILD_MANIFEST",
+        "OUTLINE_WORKBOOK",
+        "CLAUDE_SCOPE",
         "LOAD_SCHEMA",
         "CLAUDE_FILL",
         "VALIDATE",
@@ -107,8 +115,8 @@ def test_resume_api_writes_answers_and_restarts_the_real_engine(inputs):
     payload = {
         "source": str(inputs["source"]),
         "workbook": str(inputs["workbook"]),
-        "rules": str(inputs["rules"]),
-        "workbook_schema": str(inputs["workbook_schema"]),
+        "task": inputs["task"],
+        "rules_file": str(inputs["rules_file"]),
         "scoping_answers": None,
         "review_policy": None,
     }

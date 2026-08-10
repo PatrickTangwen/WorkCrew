@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
+from tests.integration.conftest import scoping_fixture
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.workflow.engine import run_workflow
 from workflow_app.workspace import RunInputs
@@ -160,6 +161,7 @@ RE_REVIEW_OUTPUT = {
 
 def start_run(inputs, review=None, runtimes=None):
     outputs = {
+        "scoping": scoping_fixture(),
         "filler": FILLER_OUTPUT,
         "reviewer": review or REVIEW_OUTPUT,
         "revision": REVISION_OUTPUT,
@@ -171,8 +173,8 @@ def start_run(inputs, review=None, runtimes=None):
         inputs=RunInputs(
             source=inputs["source"],
             workbook=inputs["workbook"],
-            rules=inputs["rules"],
-            workbook_schema=inputs["workbook_schema"],
+            task=inputs["task"],
+            rules_file=inputs["rules_file"],
             scoping_answers=inputs["scoping_answers"],
         ),
         runs_root=inputs["runs_root"],
@@ -341,6 +343,7 @@ def test_all_pass_review_short_circuits_to_finalize(inputs):
     # Only filler and reviewer runtimes exist: reaching revision or
     # re-review would raise KeyError inside the fake.
     runtimes = {
+        "scoping": FakeAgentRuntime({"scoping": scoping_fixture()}),
         "filler": FakeAgentRuntime({"filler": FILLER_OUTPUT}),
         "reviewer": FakeAgentRuntime({"reviewer": all_pass}),
     }
@@ -363,6 +366,7 @@ def test_source_conflict_bypasses_revision_and_reaches_human_review(inputs):
     extraction = {"proposals": [conflict_proposal(4, "Start Date", "D4")]}
     review = {"findings": [finding("D4", "UNRESOLVED")]}
     runtimes = {
+        "scoping": FakeAgentRuntime({"scoping": scoping_fixture()}),
         "filler": FakeAgentRuntime({"filler": extraction}),
         "reviewer": FakeAgentRuntime({"reviewer": review}),
     }
@@ -393,6 +397,7 @@ def test_pass_finding_cannot_close_a_source_conflict(inputs):
     extraction = {"proposals": [conflict_proposal(4, "Start Date", "D4")]}
     review = {"findings": [finding("D4", "PASS")]}
     runtimes = {
+        "scoping": FakeAgentRuntime({"scoping": scoping_fixture()}),
         "filler": FakeAgentRuntime({"filler": extraction}),
         "reviewer": FakeAgentRuntime({"reviewer": review}),
     }
@@ -438,7 +443,12 @@ def test_revision_inputs_and_allowlist_exclude_source_conflicts(inputs):
             )
         ]
     }
-    outputs = {"filler": extraction, "reviewer": review, "revision": revision}
+    outputs = {
+        "scoping": scoping_fixture(),
+        "filler": extraction,
+        "reviewer": review,
+        "revision": revision,
+    }
     runtimes = {role: FakeAgentRuntime(outputs) for role in outputs}
 
     state = start_run(inputs, runtimes=runtimes)
@@ -476,6 +486,7 @@ def test_revision_decision_for_a_protected_source_conflict_is_illegal(inputs):
         "decisions": [decision("D4", "CLEAR", note_append="Tried to clear a conflict.")]
     }
     outputs = {
+        "scoping": scoping_fixture(),
         "filler": extraction,
         "reviewer": review,
         "revision": illegal_revision,
@@ -512,7 +523,12 @@ def test_same_batch_note_appends_share_one_notes_cell(inputs):
             ),
         ]
     }
-    outputs = {"filler": FILLER_OUTPUT, "reviewer": review, "revision": revision}
+    outputs = {
+        "scoping": scoping_fixture(),
+        "filler": FILLER_OUTPUT,
+        "reviewer": review,
+        "revision": revision,
+    }
     runtimes = {role: FakeAgentRuntime(outputs) for role in outputs}
     state = start_run(inputs, runtimes=runtimes)
 
@@ -549,7 +565,12 @@ def test_clear_on_the_notes_cell_itself_completes_the_run(inputs):
             )
         ]
     }
-    outputs = {"filler": FILLER_OUTPUT, "reviewer": review, "revision": revision}
+    outputs = {
+        "scoping": scoping_fixture(),
+        "filler": FILLER_OUTPUT,
+        "reviewer": review,
+        "revision": revision,
+    }
     runtimes = {role: FakeAgentRuntime(outputs) for role in outputs}
     state = start_run(inputs, runtimes=runtimes)
 
@@ -571,6 +592,7 @@ def test_illegal_decision_fails_the_run(inputs):
         ]  # WARN needs ACCEPT/REBUT
     }
     outputs = {
+        "scoping": scoping_fixture(),
         "filler": FILLER_OUTPUT,
         "reviewer": REVIEW_OUTPUT,
         "revision": bad_revision,

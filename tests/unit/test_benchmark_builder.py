@@ -231,14 +231,10 @@ def test_build_writes_folders_labels_schema_and_rules(dev_dir, tmp_path):
     assert all(field.gloss_zh for field in sheet.fields.values())
     assert sheet.notes_field == "Notes"
 
-    rules = {path.name for path in (output / "rules").iterdir()}
-    assert rules == {
-        "extraction_conventions.md",
-        "charity_id.md",
-        "income_bands.md",
-    }
-    assert "CHA-" in (output / "rules" / "charity_id.md").read_text()
-    assert "250,000" in (output / "rules" / "income_bands.md").read_text()
+    # All three rule documents land in the single rules file (ADR 0032).
+    rules_text = (output / "rules.md").read_text()
+    assert "CHA-" in rules_text
+    assert "250,000" in rules_text
 
     # License note is recorded with the benchmark (issue #13 comment).
     readme = (output / "README.md").read_text()

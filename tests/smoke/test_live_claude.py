@@ -59,8 +59,8 @@ def run_inputs(inputs, scoping_answers=None):
     return RunInputs(
         source=inputs["source"],
         workbook=inputs["workbook"],
-        rules=inputs["rules"],
-        workbook_schema=inputs["workbook_schema"],
+        task=inputs["task"],
+        rules_file=inputs["rules_file"],
         scoping_answers=scoping_answers,
     )
 

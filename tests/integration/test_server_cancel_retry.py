@@ -2,10 +2,16 @@ import threading
 
 from fastapi.testclient import TestClient
 
+from tests.integration.conftest import WORKBOOK_SCHEMA_CONFIG
 from workflow_app.audit.db import AuditStore
 from workflow_app.runtimes.base import AgentResult
 from workflow_app.server import ServerOptions, create_app
 from workflow_app.workspace import Workspace
+
+SCOPING_OUTPUT = {
+    "workbook_schema": WORKBOOK_SCHEMA_CONFIG,
+    "questions": [{"id": "Q1", "question": "Is each folder one project?"}],
+}
 
 
 class BlockingThenSuccessfulRuntime:
@@ -18,6 +24,8 @@ class BlockingThenSuccessfulRuntime:
         self.release_without_cancellation = threading.Event()
 
     def run(self, request):
+        if request.role == "scoping":
+            return AgentResult(status="ok", output=SCOPING_OUTPUT)
         if request.role == "filler":
             self.filler_calls += 1
             if self.filler_calls == 1:
@@ -41,6 +49,8 @@ class AlwaysFailRuntime:
     name = "failing-fake"
 
     def run(self, request):
+        if request.role == "scoping":
+            return AgentResult(status="ok", output=SCOPING_OUTPUT)
         if request.role == "filler":
             return AgentResult(status="error", error="temporary agent failure")
         raise AssertionError(f"Unexpected role: {request.role}")
@@ -51,6 +61,7 @@ class SuccessfulRuntime:
 
     def run(self, request):
         outputs = {
+            "scoping": SCOPING_OUTPUT,
             "filler": {"proposals": []},
             "reviewer": {"findings": []},
         }
@@ -61,8 +72,8 @@ def run_payload(inputs):
     return {
         "source": str(inputs["source"]),
         "workbook": str(inputs["workbook"]),
-        "rules": str(inputs["rules"]),
-        "workbook_schema": str(inputs["workbook_schema"]),
+        "task": inputs["task"],
+        "rules_file": str(inputs["rules_file"]),
         "scoping_answers": str(inputs["scoping_answers"]),
         "review_policy": None,
     }
@@ -90,7 +101,7 @@ def test_cancel_stops_the_engine_records_audit_and_clears_the_single_run_guard(i
         options=ServerOptions(
             home_dir=inputs["source"].parent,
             runs_root=inputs["runs_root"],
-            runtimes={"filler": runtime, "reviewer": runtime},
+            runtimes={"scoping": runtime, "filler": runtime, "reviewer": runtime},
         ),
     )
 
@@ -124,7 +135,7 @@ def test_retry_resumes_a_cancelled_run_from_its_checkpoint(inputs):
         options=ServerOptions(
             home_dir=inputs["source"].parent,
             runs_root=inputs["runs_root"],
-            runtimes={"filler": runtime, "reviewer": runtime},
+            runtimes={"scoping": runtime, "filler": runtime, "reviewer": runtime},
         ),
     )
 
@@ -157,7 +168,10 @@ def test_retry_loads_a_failed_historical_run_and_resumes_its_checkpoint(inputs):
         options=ServerOptions(
             home_dir=inputs["source"].parent,
             runs_root=inputs["runs_root"],
-            runtimes={"filler": AlwaysFailRuntime()},
+            runtimes={
+                "scoping": AlwaysFailRuntime(),
+                "filler": AlwaysFailRuntime(),
+            },
         ),
     )
     with TestClient(first_app) as client:
@@ -172,7 +186,7 @@ def test_retry_loads_a_failed_historical_run_and_resumes_its_checkpoint(inputs):
         options=ServerOptions(
             home_dir=inputs["source"].parent,
             runs_root=inputs["runs_root"],
-            runtimes={"filler": runtime, "reviewer": runtime},
+            runtimes={"scoping": runtime, "filler": runtime, "reviewer": runtime},
         ),
     )
     with TestClient(restarted_app) as client:

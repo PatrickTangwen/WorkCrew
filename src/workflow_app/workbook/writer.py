@@ -44,8 +44,29 @@ def save_draft(workbook, path):
     workbook.save(path)
 
 
+def open_template(path):
+    # Read side of open_draft: the template is never saved back.
+    return load_workbook(path)
+
+
 def has_sheet(workbook, name):
     return name in workbook.sheetnames
+
+
+def sheet_names(workbook):
+    return list(workbook.sheetnames)
+
+
+def preview_rows(workbook, sheet, limit):
+    """Column letter and text of every non-empty cell in the first rows."""
+    return [
+        [
+            (cell.column_letter, str(cell.value).strip())
+            for cell in cells
+            if cell.value is not None and str(cell.value).strip()
+        ]
+        for cells in workbook[sheet].iter_rows(min_row=1, max_row=limit)
+    ]
 
 
 def read_cell(workbook, sheet, cell_ref):

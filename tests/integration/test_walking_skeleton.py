@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.integration.conftest import scoping_fixture
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.workflow.engine import run_workflow
 from workflow_app.workspace import RunInputs
@@ -34,6 +35,8 @@ EXPECTED_STAGES = [
     "INIT",
     "PREPARE_WORKSPACE",
     "BUILD_MANIFEST",
+    "OUTLINE_WORKBOOK",
+    "CLAUDE_SCOPE",
     "LOAD_SCHEMA",
     "CLAUDE_FILL",
     "VALIDATE",
@@ -65,22 +68,26 @@ def run_inputs(inputs, **overrides):
     values = {
         "source": inputs["source"],
         "workbook": inputs["workbook"],
-        "rules": inputs["rules"],
-        "workbook_schema": inputs["workbook_schema"],
+        "task": inputs["task"],
+        "rules_file": inputs["rules_file"],
         "scoping_answers": inputs["scoping_answers"],
         **overrides,
     }
     return RunInputs(**values)
 
 
-def start_run(inputs, fixture=None):
+def start_run(inputs, fixture=None, scoping=None, run_inputs_kwargs=None):
     runtime = FakeAgentRuntime(
-        {"filler": fixture or filler_fixture(), "reviewer": pass_review()}
+        {
+            "scoping": scoping or scoping_fixture(),
+            "filler": fixture or filler_fixture(),
+            "reviewer": pass_review(),
+        }
     )
     return run_workflow(
-        inputs=run_inputs(inputs),
+        inputs=run_inputs(inputs, **(run_inputs_kwargs or {})),
         runs_root=inputs["runs_root"],
-        runtimes={"filler": runtime, "reviewer": runtime},
+        runtimes={"scoping": runtime, "filler": runtime, "reviewer": runtime},
     )
 
 
@@ -115,18 +122,36 @@ def test_copies_inputs_into_workspace(inputs):
     assert (workspace / "input/workbook/template.xlsx").read_bytes() == (
         inputs["workbook"].read_bytes()
     )
-    assert (workspace / "input/rules/naming.md").read_text() == "Naming conventions."
+    assert (workspace / "input/rules/rules.md").read_text() == "Naming conventions."
+    assert (workspace / "input/task.md").read_text() == inputs["task"]
+
+
+def test_prose_rules_land_where_a_rules_file_would(inputs):
+    state = start_run(
+        inputs, run_inputs_kwargs={"rules_file": None, "rules_text": "Prose."}
+    )
+    workspace = workspace_of(inputs, state)
+
+    assert (workspace / "input/rules/rules.md").read_text() == "Prose."
+
+
+def test_a_run_without_rules_leaves_the_rules_directory_empty(inputs):
+    state = start_run(inputs, run_inputs_kwargs={"rules_file": None})
+    workspace = workspace_of(inputs, state)
+
+    assert (workspace / "input/rules").is_dir()
+    assert list((workspace / "input/rules").iterdir()) == []
 
 
 def test_never_modifies_original_inputs(inputs):
     before_sources = snapshot_tree(inputs["source"])
-    before_rules = snapshot_tree(inputs["rules"])
+    before_rules = inputs["rules_file"].read_text()
     before_workbook = inputs["workbook"].read_bytes()
 
     start_run(inputs)
 
     assert snapshot_tree(inputs["source"]) == before_sources
-    assert snapshot_tree(inputs["rules"]) == before_rules
+    assert inputs["rules_file"].read_text() == before_rules
     assert inputs["workbook"].read_bytes() == before_workbook
 
 
@@ -218,22 +243,27 @@ def test_validated_schema_is_stored_as_artifact(inputs):
     assert Path(state["schema_path"]) == workspace / "artifacts/workbook_schema.json"
 
 
-def test_malformed_schema_config_fails_before_any_agent_runs(inputs):
-    inputs["workbook_schema"].write_text('{"sheets": []}')
-    with pytest.raises(ValueError, match="failed validation"):
-        start_run(inputs)
-    assert not inputs["runs_root"].exists()
+def test_a_malformed_agent_schema_is_retried_then_fails_the_run(inputs):
+    # The schema arrives through the scoping contract (ADR 0032), so a
+    # schema with no target sheet is a retryable agent failure rather
+    # than the pre-run gate it used to be.
+    with pytest.raises(Exception, match="scoping failed after 3 attempts"):
+        start_run(inputs, scoping={"workbook_schema": {"sheets": []}, "questions": []})
 
 
 def test_missing_source_folder_fails_before_creating_a_run(inputs):
     runtime = FakeAgentRuntime(
-        {"filler": filler_fixture(), "reviewer": {"findings": []}}
+        {
+            "scoping": scoping_fixture(),
+            "filler": filler_fixture(),
+            "reviewer": {"findings": []},
+        }
     )
     with pytest.raises(FileNotFoundError):
         run_workflow(
             inputs=run_inputs(inputs, source=inputs["source"] / "does-not-exist"),
             runs_root=inputs["runs_root"],
-            runtimes={"filler": runtime, "reviewer": runtime},
+            runtimes={"scoping": runtime, "filler": runtime, "reviewer": runtime},
         )
     assert not inputs["runs_root"].exists()
 
@@ -248,11 +278,17 @@ def test_review_policy_reaches_reviewer_inputs(inputs, tmp_path):
         "  strict_fields: ['Project ID*']\n"
         "  high_confidence_sampling_per_record: 3\n"
     )
-    runtime = FakeAgentRuntime({"filler": filler_fixture(), "reviewer": pass_review()})
+    runtime = FakeAgentRuntime(
+        {
+            "scoping": scoping_fixture(),
+            "filler": filler_fixture(),
+            "reviewer": pass_review(),
+        }
+    )
     state = run_workflow(
         inputs=run_inputs(inputs, review_policy=policy_yaml),
         runs_root=inputs["runs_root"],
-        runtimes={"filler": runtime, "reviewer": runtime},
+        runtimes={"scoping": runtime, "filler": runtime, "reviewer": runtime},
     )
     workspace = workspace_of(inputs, state)
 
@@ -275,14 +311,18 @@ def test_review_policy_reaches_reviewer_inputs(inputs, tmp_path):
 
 def test_missing_planned_review_target_fails_deterministically(inputs):
     runtime = FakeAgentRuntime(
-        {"filler": filler_fixture(), "reviewer": {"findings": []}}
+        {
+            "scoping": scoping_fixture(),
+            "filler": filler_fixture(),
+            "reviewer": {"findings": []},
+        }
     )
 
     with pytest.raises(ValueError, match="planned targets.*G12"):
         run_workflow(
             inputs=run_inputs(inputs),
             runs_root=inputs["runs_root"],
-            runtimes={"filler": runtime, "reviewer": runtime},
+            runtimes={"scoping": runtime, "filler": runtime, "reviewer": runtime},
         )
 
 
@@ -297,13 +337,11 @@ def test_default_review_policy_applies_when_none_is_provided(inputs):
     }
 
 
-def test_unknown_strict_field_fails_before_any_agent_runs(inputs, tmp_path):
+def test_unknown_strict_field_fails_once_the_schema_exists(inputs, tmp_path):
+    # The cross-check moved from the engine's pre-run gate into
+    # LOAD_SCHEMA: the schema it checks against only exists after the
+    # scoping pass has produced it (ADR 0032).
     policy_yaml = tmp_path / "review_policy.yaml"
     policy_yaml.write_text("review:\n  strict_fields: ['No Such Field']\n")
     with pytest.raises(ValueError, match="No Such Field"):
-        run_workflow(
-            inputs=run_inputs(inputs, review_policy=policy_yaml),
-            runs_root=inputs["runs_root"],
-            runtimes={},
-        )
-    assert not (inputs["runs_root"]).exists() or not any(inputs["runs_root"].iterdir())
+        start_run(inputs, run_inputs_kwargs={"review_policy": policy_yaml})

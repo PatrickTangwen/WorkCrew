@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
+from tests.smoke.conftest import scoping_fixture
 from workflow_app.cli import build_runtimes
 from workflow_app.models.review import ReReviewResult
 from workflow_app.models.revision import RevisionResult
@@ -155,8 +156,8 @@ def run_inputs(inputs, scoping_answers=None):
     return RunInputs(
         source=inputs["source"],
         workbook=inputs["workbook"],
-        rules=inputs["rules"],
-        workbook_schema=inputs["workbook_schema"],
+        task=inputs["task"],
+        rules_file=inputs["rules_file"],
         scoping_answers=scoping_answers,
     )
 
@@ -188,6 +189,7 @@ def test_live_revision_and_bounded_rereview(inputs, monkeypatch):
         inputs=run_inputs(inputs, scoping_answers=inputs["scoping_answers"]),
         runs_root=inputs["runs_root"],
         runtimes={
+            "scoping": FakeAgentRuntime({"scoping": scoping_fixture()}),
             "filler": fakes,
             "reviewer": fakes,
             "revision": claude,

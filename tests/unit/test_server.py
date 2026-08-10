@@ -57,10 +57,9 @@ def run_payload(home):
     return {
         "source": str(home / "source"),
         "workbook": str(home / "template.xlsx"),
-        "rules": str(home / "rules"),
-        "workbook_schema": str(home / "workbook-schema.json"),
-        "scoping_answers": None,
-        "review_policy": None,
+        "task": "Fill the register from the briefs.",
+        "rules_text": None,
+        "rules_file": None,
     }
 
 
@@ -80,8 +79,7 @@ def record_historical_run(runs_root, run):
     inputs = RunInputs(
         source=Path("/inputs") / run.source_name,
         workbook=Path("/inputs") / run.workbook_name,
-        rules=Path("/inputs/rules"),
-        workbook_schema=Path("/inputs/workbook-schema.json"),
+        task="Fill the register from the briefs.",
     )
     audit = AuditStore(workspace.audit_db)
     audit.record_run_started(run.run_id, inputs)

@@ -304,8 +304,10 @@ Benchmark inputs for the WorkCrew engine (ticket #13, plan section
   conflict -> UNRESOLVED -> human-fallback path with known truth.
 - `labels.json` - expected value, evidence folder, and
   expected / blank / unresolved status per field per row.
-- `workbook_schema.json`, `template.xlsx`, `rules/`,
-  `scoping_answers.md` - the run inputs.
+- `template.xlsx`, `rules.md`, `scoping_answers.md` - the run inputs.
+- `workbook_schema.json` - the schema a live run's scoping pass is
+  expected to derive; no longer a run input (ADR 0032), kept as the
+  reference the labels' column mapping assumes.
 
 The original PDFs (12 GB, git-annex) are deliberately not used: the
 dataset's official challenge input is the OCR text, and the engine's
@@ -327,11 +329,13 @@ from the dataset repository.
 """
 
 
-def _write_rules(rules_dir):
-    rules_dir.mkdir(parents=True, exist_ok=True)
-    (rules_dir / "extraction_conventions.md").write_text(EXTRACTION_CONVENTIONS)
-    (rules_dir / "charity_id.md").write_text(CHARITY_ID_RULE)
-    (rules_dir / "income_bands.md").write_text(INCOME_BANDS_RULE)
+def _write_rules(rules_file):
+    # Rules are one text file now (ADR 0032), so the three rule
+    # documents are concatenated in a stable order.
+    rules_file.parent.mkdir(parents=True, exist_ok=True)
+    rules_file.write_text(
+        f"{EXTRACTION_CONVENTIONS}\n\n{CHARITY_ID_RULE}\n\n{INCOME_BANDS_RULE}"
+    )
 
 
 def _save_reproducible_xlsx(workbook, path):
@@ -462,7 +466,7 @@ def build_benchmark(
         sheet.cell(row=1, column=offset, value=field)
     _save_reproducible_xlsx(workbook, output_dir / "template.xlsx")
 
-    _write_rules(output_dir / "rules")
+    _write_rules(output_dir / "rules.md")
     (output_dir / "scoping_answers.md").write_text(SCOPING_ANSWERS)
     (output_dir / "README.md").write_text(README)
 

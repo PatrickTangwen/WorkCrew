@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
+from tests.integration.conftest import WORKBOOK_SCHEMA_CONFIG
 from workflow_app.runtimes.base import AgentResult
 from workflow_app.workflow.engine import resume_workflow, run_workflow
 from workflow_app.workspace import RunInputs
@@ -56,7 +57,10 @@ def evidence(text):
     }
 
 
-SCOPING_OUTPUT = {"questions": [{"id": "Q1", "question": "One row per folder?"}]}
+SCOPING_OUTPUT = {
+    "workbook_schema": WORKBOOK_SCHEMA_CONFIG,
+    "questions": [{"id": "Q1", "question": "One row per folder?"}],
+}
 
 FILLER_OUTPUT = {
     "proposals": [
@@ -183,8 +187,8 @@ def run_inputs(inputs, **overrides):
     values = {
         "source": inputs["source"],
         "workbook": inputs["workbook"],
-        "rules": inputs["rules"],
-        "workbook_schema": inputs["workbook_schema"],
+        "task": inputs["task"],
+        "rules_file": inputs["rules_file"],
         "scoping_answers": inputs["scoping_answers"],
         **overrides,
     }

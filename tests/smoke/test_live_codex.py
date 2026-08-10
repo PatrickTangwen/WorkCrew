@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.smoke.conftest import scoping_fixture
 from workflow_app.models.review import ReReviewResult, ReviewResult
 from workflow_app.runtimes.base import AgentResult
 from workflow_app.runtimes.codex import CodexRuntime
@@ -174,13 +175,17 @@ def start_run(inputs, tmp_path, runtimes, filler):
         inputs=RunInputs(
             source=inputs["source"],
             workbook=inputs["workbook"],
-            rules=inputs["rules"],
-            workbook_schema=inputs["workbook_schema"],
+            task=inputs["task"],
+            rules_file=inputs["rules_file"],
             scoping_answers=inputs["scoping_answers"],
             review_policy=policy,
         ),
         runs_root=inputs["runs_root"],
-        runtimes={"filler": FakeAgentRuntime({"filler": filler}), **runtimes},
+        runtimes={
+            "scoping": FakeAgentRuntime({"scoping": scoping_fixture()}),
+            "filler": FakeAgentRuntime({"filler": filler}),
+            **runtimes,
+        },
     )
 
 

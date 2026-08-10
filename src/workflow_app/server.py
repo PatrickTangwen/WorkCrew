@@ -14,7 +14,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from workflow_app.artifacts import (
     ArtifactCatalog,
@@ -39,10 +39,21 @@ RunStatus = Literal["running", "paused", "completed", "failed", "cancelled"]
 class CreateRunRequest(BaseModel):
     source: str
     workbook: str
-    rules: str
-    workbook_schema: str
+    task: str
+    rules_text: str | None = None
+    rules_file: str | None = None
     scoping_answers: str | None = None
     review_policy: str | None = None
+
+    @model_validator(mode="after")
+    def _usable_run_request(self):
+        # RunInputs enforces these too, but only once the run is under
+        # way; rejecting here turns a failed run into a 422.
+        if not self.task.strip():
+            raise ValueError("task must not be empty")
+        if self.rules_text is not None and self.rules_file is not None:
+            raise ValueError("rules may be given as text or as a file, not both")
+        return self
 
 
 class ResumeRunRequest(BaseModel):
@@ -156,8 +167,9 @@ class RunCoordinator:
         inputs = RunInputs(
             source=Path(request.source),
             workbook=Path(request.workbook),
-            rules=Path(request.rules),
-            workbook_schema=Path(request.workbook_schema),
+            task=request.task,
+            rules_text=request.rules_text,
+            rules_file=None if request.rules_file is None else Path(request.rules_file),
             scoping_answers=None
             if request.scoping_answers is None
             else Path(request.scoping_answers),

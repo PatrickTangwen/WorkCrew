@@ -258,13 +258,22 @@ def run_benchmark(tmp_path):
     )
     labels = load_labels(bench / "labels.json")
     outputs = build_outputs(labels)
+    # The benchmark's schema is no longer a run input (ADR 0032): it is
+    # what a live scoping pass is expected to derive, so the fake
+    # scoping agent returns it and the labels' column mapping holds.
+    outputs["scoping"] = {
+        "workbook_schema": json.loads((bench / "workbook_schema.json").read_text()),
+        "questions": [
+            {"id": "Q1", "question": "One row per folder?", "type": "confirm"}
+        ],
+    }
     runtimes = {role: FakeAgentRuntime(outputs) for role in outputs}
     state = run_workflow(
         inputs=RunInputs(
             source=bench / "source",
             workbook=bench / "template.xlsx",
-            rules=bench / "rules",
-            workbook_schema=bench / "workbook_schema.json",
+            task="Fill one row per charity folder from the annual reports.",
+            rules_file=bench / "rules.md",
             scoping_answers=bench / "scoping_answers.md",
         ),
         runs_root=tmp_path / "runs",
