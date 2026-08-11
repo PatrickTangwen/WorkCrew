@@ -106,14 +106,14 @@ function WorkbookPreview({ artifact, runId }: { artifact: ArtifactSummary; runId
 
   return (
     <div className="grid min-h-70 place-items-center rounded-xl border border-dashed border-line-strong bg-paper p-6 text-center">
-      <div>
+      <div className="min-w-0 max-w-full">
         <span className="inline-grid size-11 place-items-center rounded-[11px] bg-ok-surface font-mono text-[10px] font-medium text-ok-ink">
           XLSX
         </span>
         <p className="mt-3.5 text-[13.5px] font-medium text-ink">Final workbook</p>
         <p
           title={artifact.path}
-          className="mt-1.5 max-w-lg truncate font-mono text-[11px] text-faint"
+          className="mt-1.5 w-full max-w-lg truncate font-mono text-[11px] text-faint"
         >
           {artifact.path}
         </p>
@@ -250,15 +250,15 @@ function ArtifactViewer({ runId }: { runId: string }) {
       )}
 
       {artifacts && artifacts.length > 0 && (
-        <div className="grid min-h-90 grid-cols-[238px_minmax(0,1fr)]">
+        <div className="grid min-h-90 md:grid-cols-[238px_minmax(0,1fr)]">
           <ul
             aria-label="Artifacts"
-            className="flex flex-col gap-[3px] border-r border-line-soft bg-shell p-2"
+            className="flex gap-[3px] overflow-x-auto border-b border-line-soft bg-shell p-2 md:flex-col md:overflow-x-hidden md:border-r md:border-b-0"
           >
             {artifacts.map((artifact) => {
               const chosen = artifact.name === selectedName
               return (
-                <li key={artifact.name}>
+                <li key={artifact.name} className="w-[220px] shrink-0 md:w-auto">
                   <button
                     type="button"
                     onClick={() => setSelectedName(artifact.name)}
@@ -304,14 +304,14 @@ function ArtifactViewer({ runId }: { runId: string }) {
           <div className="flex min-w-0 flex-col" aria-live="polite">
             {selected && (
               <>
-                <div className="flex items-center justify-between gap-3 border-b border-line-soft px-[18px] py-3">
+                <div className="flex flex-col items-start justify-between gap-3 border-b border-line-soft px-[18px] py-3 sm:flex-row sm:items-center">
                   <span className="flex min-w-0 items-center gap-2">
                     <File className="size-3.5 shrink-0 text-faint" aria-hidden="true" />
                     <span className="truncate font-mono text-[11.5px] font-medium text-body">
                       {selected.name}
                     </span>
                   </span>
-                  <span className="flex shrink-0 gap-4 text-[11.5px] font-medium">
+                  <span className="flex shrink-0 flex-wrap gap-x-4 gap-y-2 text-[11.5px] font-medium">
                     <a
                       href={artifactUrl(runId, selected.name)}
                       target="_blank"

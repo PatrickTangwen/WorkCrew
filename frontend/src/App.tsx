@@ -20,7 +20,8 @@ function EmptyState({ onNewRun }: { onNewRun: () => void }) {
           </h1>
           <p className="mt-3 text-sm leading-[1.65] text-pretty text-subtle">
             Select source documents, a workbook, and the rules that turn them into a
-            traceable run. Nothing leaves this machine.
+            traceable run. Agent runtimes may send task content to their configured
+            services.
           </p>
           <button
             type="button"
@@ -77,7 +78,7 @@ function App() {
   }
 
   return (
-    <main className="grid min-h-svh grid-cols-[288px_minmax(0,1fr)] bg-paper">
+    <main className="min-h-svh bg-paper lg:grid lg:grid-cols-[288px_minmax(0,1fr)]">
       <RunSidebar
         runs={runs}
         selectedRunId={view === "run" ? (currentRun?.run_id ?? null) : null}

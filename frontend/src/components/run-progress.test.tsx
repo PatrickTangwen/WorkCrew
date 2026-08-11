@@ -232,6 +232,106 @@ describe("run progress", () => {
     expect(within(log).getByText("Resolved 142 cells")).toBeVisible()
   })
 
+  it("reopens a paused run from disk without requiring a live socket", async () => {
+    const questions: ScopingQuestions = {
+      round: 1,
+      placeholder_token: "round-1-placeholder",
+      questions: [
+        {
+          id: "Q1",
+          question: "What is one row?",
+          type: "text",
+          options: null,
+        },
+      ],
+    }
+    const recorded = [
+      event({ type: "phase_change", phase: "AWAIT_SCOPING_ANSWERS", status: "active" }),
+      event({
+        type: "paused",
+        reason: "Scoping questions need answers",
+        questions_artifact: "/runs/run-streaming/artifacts/scoping_questions.json",
+      }),
+    ]
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      const body = url.endsWith("/events") ? recorded : questions
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(
+      <RunDetail
+        run={{ ...run, status: "paused", phase: "AWAIT_SCOPING_ANSWERS" }}
+      />
+    )
+
+    expect(MockWebSocket.instances).toHaveLength(0)
+    expect(
+      await screen.findByRole("heading", { name: "Scoping questions" })
+    ).toBeVisible()
+    expect(fetchMock).toHaveBeenCalledWith("/api/runs/run-streaming/events")
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/runs/run-streaming/artifacts/scoping_questions.json"
+    )
+  })
+
+  it("trusts a terminal run record when its event log ends mid-stage", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        new Response(
+          JSON.stringify(
+            String(input).endsWith("/events")
+              ? [event({ type: "progress", phase: "FINALIZE", message: "Publishing" })]
+              : []
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    )
+
+    render(
+      <RunDetail
+        run={{
+          ...run,
+          status: "completed",
+          phase: "FINALIZE",
+          finished_at: "2026-08-09T12:30:00Z",
+        }}
+      />
+    )
+
+    expect(await screen.findByText("5 of 5 complete")).toBeVisible()
+    expect(screen.queryByRole("button", { name: "Cancel run" })).not.toBeInTheDocument()
+  })
+
+  it("does not surface a superseded failure after a successful retry", async () => {
+    const recorded = [
+      event({ type: "phase_change", phase: "CODEX_REVIEW", status: "failed" }),
+      event({ type: "failed", error: "Reviewer timed out" }),
+      event({ type: "phase_change", phase: "FINALIZE", status: "active" }),
+      event({ type: "completed", final_xlsx: "/runs/run-streaming/output/final.xlsx" }),
+    ]
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        new Response(
+          JSON.stringify(String(input).endsWith("/events") ? recorded : []),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    )
+
+    render(<RunDetail run={{ ...run, status: "completed", phase: "FINALIZE" }} />)
+
+    expect(await screen.findByText("5 of 5 complete")).toBeVisible()
+    expect(screen.queryByText("Reviewer timed out")).not.toBeInTheDocument()
+  })
+
   it("says so when a run's recorded log cannot be read", async () => {
     vi.stubGlobal(
       "fetch",
@@ -250,16 +350,11 @@ describe("run progress", () => {
     expect(await screen.findByText("run log unreadable")).toBeVisible()
   })
 
-  it("leaves a pause behind once the engine reports work after it", async () => {
-    // The app feeds the detail from the store, which is what the replayed
-    // events update; a fixed prop would never show the pause sticking.
+  it("leaves the live stream and switches to durable state when paused", async () => {
     act(() => useAppStore.getState().showRun(run))
     render(<StoredRunDetail />)
     const socket = MockWebSocket.instances[0]
 
-    // Replaying a run's history walks back through a pause the operator
-    // answered minutes ago. The engine narrates in order, so the work that
-    // followed it says the run is going again.
     socket.receive(
       event({
         type: "paused",
@@ -267,20 +362,13 @@ describe("run progress", () => {
         questions_artifact: "/runs/run-streaming/artifacts/scoping_questions.json",
       })
     )
-    socket.receive(
-      event({ type: "phase_change", phase: "CLAUDE_FILL", status: "active" })
-    )
 
     expect(
-      screen.queryByRole("heading", { name: "Scoping questions" })
-    ).not.toBeInTheDocument()
-    const pipeline = screen.getByRole("list", { name: "Workflow stages" })
-    expect(within(pipeline).getByText("Filler").closest("li")).toHaveAttribute(
-      "data-status",
-      "active"
-    )
+      await screen.findByRole("heading", { name: "Scoping questions" })
+    ).toBeVisible()
+    expect(socket.close).toHaveBeenCalledOnce()
     await waitFor(() =>
-      expect(useAppStore.getState().currentRun?.status).not.toBe("paused")
+      expect(useAppStore.getState().currentRun?.status).toBe("paused")
     )
   })
 
@@ -527,9 +615,6 @@ describe("run progress", () => {
         })
       )
     )
-    MockWebSocket.instances[0].receive(
-      event({ type: "completed", final_xlsx: "/runs/run-streaming/output/final.xlsx" })
-    )
     finishResume?.(
       new Response(
         JSON.stringify({ ...run, status: "running", phase: "AWAIT_SCOPING_ANSWERS" }),
@@ -537,9 +622,13 @@ describe("run progress", () => {
       )
     )
     await waitFor(() => expect(useAppStore.getState().scoping.status).toBe("ready"))
+    await waitFor(() => expect(MockWebSocket.instances).toHaveLength(2))
+    MockWebSocket.instances[1].receive(
+      event({ type: "completed", final_xlsx: "/runs/run-streaming/output/final.xlsx" })
+    )
 
     expect(screen.getByRole("list", { name: "Workflow stages" })).toBeVisible()
     expect(useAppStore.getState().currentRun?.status).toBe("completed")
-    expect(MockWebSocket.instances).toHaveLength(1)
+    expect(MockWebSocket.instances).toHaveLength(2)
   })
 })

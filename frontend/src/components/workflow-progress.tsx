@@ -157,7 +157,7 @@ function StageDetail({ stage, headline }: { stage: StageView; headline: string }
               </time>
               <span
                 className={cn(
-                  "min-w-0 text-[11.5px] leading-[1.5] text-pretty",
+                  "min-w-0 text-[11.5px] leading-[1.5] text-pretty [overflow-wrap:anywhere]",
                   entry.failed ? "text-bad-ink" : "text-body"
                 )}
               >

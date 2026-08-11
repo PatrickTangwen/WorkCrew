@@ -1,5 +1,12 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import App from "@/App"
 import { useAppStore } from "@/store/use-app-store"
@@ -48,6 +55,18 @@ describe("run history", () => {
     useAppStore.setState(useAppStore.getInitialState())
     apiMocks.listRuns.mockReset().mockResolvedValue(summaries)
     apiMocks.getRun.mockReset().mockResolvedValue(olderRun)
+  })
+
+  afterEach(cleanup)
+
+  it("states the local workspace boundary without claiming agents are offline", async () => {
+    render(<App />)
+
+    expect(
+      screen.getByText(/agent runtimes may send task content/i)
+    ).toBeVisible()
+    expect(screen.queryByText(/nothing leaves this machine/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/no network/i)).not.toBeInTheDocument()
   })
 
   it("lists rich run cards and opens the selected historical run", async () => {

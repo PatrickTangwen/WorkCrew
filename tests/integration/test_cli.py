@@ -8,7 +8,8 @@ default (asserted below) and is exercised by the smoke tests.
 import pytest
 
 from workflow_app import cli
-from workflow_app.cli import build_parser, main
+from workflow_app.agent_config import AgentChoice
+from workflow_app.cli import build_parser, build_runtimes, main
 
 
 def run_args(inputs):
@@ -89,6 +90,18 @@ def test_run_accepts_a_jpeg_task_image(inputs):
     workspace = next(inputs["runs_root"].iterdir())
     copied = workspace / "input/task_images/task-image-1.jpeg"
     assert copied.read_bytes() == b"jpeg fixture"
+
+
+def test_live_runtime_rejects_an_unknown_runtime_name():
+    with pytest.raises(ValueError, match="unsupported agent runtime 'other'"):
+        build_runtimes(
+            "live",
+            agents={
+                "reviewer": AgentChoice(
+                    runtime="other", model="some-model", effort=None
+                )
+            },
+        )
 
 
 def test_resume_unknown_run_id_reports_error_and_nonzero_exit(inputs, capsys):

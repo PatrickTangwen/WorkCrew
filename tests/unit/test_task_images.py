@@ -48,6 +48,31 @@ def test_images_land_in_the_workspace_in_paste_order(prepared):
     assert paths[1].read_bytes() == JPG.data
 
 
+def test_more_than_nine_images_keep_their_numeric_paste_order(tmp_path):
+    source = tmp_path / "inbox"
+    source.mkdir()
+    workbook = tmp_path / "template.xlsx"
+    workbook.write_bytes(b"x")
+    images = tuple(
+        TaskImage(suffix=".png", data=f"image-{index}".encode())
+        for index in range(1, 12)
+    )
+    workspace = Workspace(tmp_path / "run")
+    workspace.create_layout()
+    workspace.copy_inputs(
+        RunInputs(
+            source=source,
+            workbook=workbook,
+            task="Read every pasted image in order.",
+            task_images=images,
+        )
+    )
+
+    assert [path.name for path in workspace.task_image_paths()] == [
+        f"task-image-{index}.png" for index in range(1, 12)
+    ]
+
+
 def test_task_md_names_the_images_it_was_written_with(prepared):
     task = prepared.task_md.read_text()
 

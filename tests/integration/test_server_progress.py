@@ -199,9 +199,7 @@ def test_a_reopened_run_replays_its_recorded_events_and_finish_time(inputs):
             options=ServerOptions(
                 home_dir=inputs["source"].parent,
                 runs_root=runs_root,
-                runtimes={
-                    role: runtime for role in ("scoping", "filler", "reviewer")
-                },
+                runtimes={role: runtime for role in ("scoping", "filler", "reviewer")},
             ),
         )
 

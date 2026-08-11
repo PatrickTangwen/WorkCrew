@@ -98,7 +98,7 @@ function EventLogDialog({
                   </span>
                   <span
                     className={cn(
-                      "min-w-0 text-xs leading-[1.5] text-pretty",
+                      "min-w-0 text-xs leading-[1.5] text-pretty [overflow-wrap:anywhere]",
                       failed ? "text-bad-ink" : "text-body"
                     )}
                   >

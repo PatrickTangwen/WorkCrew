@@ -192,6 +192,11 @@ class RunEventChannel:
     def unsubscribe(self, queue):
         self.subscribers.discard(queue)
 
+    def restart(self):
+        """Start a new attempt without dropping a paused run's subscribers."""
+        self.history.clear()
+        self.terminal = False
+
 
 @dataclass(frozen=True)
 class ServerOptions:
@@ -315,7 +320,9 @@ class RunCoordinator:
                 render_scoping_answers(questions, request.answers, questions.round),
             )
 
-        if status in {"failed", "cancelled"}:
+        if status == "paused":
+            tracked.events.restart()
+        else:
             tracked.events = RunEventChannel()
         tracked.cancellation = CancellationToken()
         tracked.record.status = "running"
@@ -517,9 +524,7 @@ class RunEventLog:
             emit(f"Run {run_id} progress log stopped ({exc}); the run continues")
 
     def read(self, run_id):
-        path = Workspace(
-            resolve_run_workspace(self.runs_root, run_id)
-        ).events_jsonl
+        path = Workspace(resolve_run_workspace(self.runs_root, run_id)).events_jsonl
         if not path.is_file():
             return []
         events = []

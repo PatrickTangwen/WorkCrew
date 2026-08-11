@@ -215,7 +215,9 @@ def build_runtimes(choice, agents=None, workbook=None, resuming=False):
 def _live_runtime(choice):
     if choice.runtime == CLAUDE:
         return ClaudeCodeRuntime(model=choice.model, effort=choice.effort)
-    return CodexRuntime(model=choice.model, effort=choice.effort)
+    if choice.runtime == CODEX:
+        return CodexRuntime(model=choice.model, effort=choice.effort)
+    raise ValueError(f"unsupported agent runtime {choice.runtime!r}")
 
 
 def build_parser():

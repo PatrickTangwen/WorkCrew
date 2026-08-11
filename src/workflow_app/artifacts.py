@@ -32,9 +32,10 @@ def resolve_run_workspace(runs_root, run_id):
     """
     root = Path(runs_root).resolve()
     workspace = (root / run_id).resolve()
-    if not workspace.is_relative_to(root) or not (
-        workspace / "state" / "audit.sqlite"
-    ).is_file():
+    if (
+        not workspace.is_relative_to(root)
+        or not (workspace / "state" / "audit.sqlite").is_file()
+    ):
         raise RunNotFoundError(run_id)
     return workspace
 
@@ -57,9 +58,9 @@ class ArtifactEntry:
 def deliverable_entries(workspace):
     """The public artifacts of one run workspace, keyed by file name.
 
-    One definition serves both the app's artifact list and the export
-    into the operator's source folder, so the two can never describe
-    different sets of files.
+    One definition serves both the complete API catalog and the export
+    into the operator's source folder. The normal UI applies the curated
+    projection recorded in ADR 0039.
     """
     workspace = Path(workspace).resolve()
     entries = {}

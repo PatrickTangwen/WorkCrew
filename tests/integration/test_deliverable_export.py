@@ -141,3 +141,41 @@ def test_a_source_directory_named_like_the_export_is_still_ingested(inputs):
     assert (
         copied_sources / "India 2008" / OUTPUT_DIR_NAME / "operator_notes.md"
     ).is_file()
+
+
+def test_an_owned_partial_export_is_rebuilt_on_retry(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    workspace = Workspace(tmp_path / "run")
+    workspace.create_layout()
+    artifact = workspace.artifacts / "run_summary.md"
+    artifact.write_text("complete")
+    workspace.reserve_export(source, "run-1")
+    destination = source / OUTPUT_DIR_NAME / "run-1"
+    destination.mkdir()
+    (destination / "partial.txt").write_text("interrupted copy")
+
+    exported = workspace.export_deliverables(source, "run-1", [artifact])
+
+    assert exported == destination
+    assert {path.name for path in destination.iterdir()} == {"run_summary.md"}
+    assert (destination / "run_summary.md").read_text() == "complete"
+
+
+def test_an_owned_complete_export_is_idempotent_after_interruption(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    workspace = Workspace(tmp_path / "run")
+    workspace.create_layout()
+    artifact = workspace.artifacts / "run_summary.md"
+    artifact.write_text("complete")
+    marker = workspace.reserve_export(source, "run-1")
+    destination = source / OUTPUT_DIR_NAME / "run-1"
+    destination.mkdir()
+    (destination / artifact.name).write_bytes(artifact.read_bytes())
+
+    exported = workspace.export_deliverables(source, "run-1", [artifact])
+
+    assert exported == destination
+    assert not marker.exists()
+    assert (destination / artifact.name).read_text() == "complete"

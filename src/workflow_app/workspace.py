@@ -6,6 +6,7 @@ run's deliverables are additionally exported into the operator's source
 folder, under OUTPUT_DIR_NAME (ADR 0035).
 """
 
+import filecmp
 import shutil
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -142,7 +143,14 @@ class Workspace:
 
     def task_image_paths(self):
         """The task's images, in the order the operator pasted them."""
-        return sorted(path for path in self.task_images_dir.glob("*") if path.is_file())
+        return sorted(
+            (
+                path
+                for path in self.task_images_dir.glob("task-image-*")
+                if path.is_file()
+            ),
+            key=lambda path: int(path.stem.removeprefix("task-image-")),
+        )
 
     @property
     def agents_json(self):
@@ -370,7 +378,9 @@ class Workspace:
             created = True
 
         destination = output_root / run_id
-        if destination.exists() or destination.is_symlink():
+        if (destination.exists() or destination.is_symlink()) and (
+            not allow_existing or created or destination.is_symlink()
+        ):
             if created:
                 marker.unlink()
             raise FileExistsError(f"deliverable export already exists: {destination}")
@@ -379,26 +389,50 @@ class Workspace:
     def export_deliverables(self, source, run_id, artifacts):
         """Copy this run's public artifacts into the source folder.
 
-        `artifacts` are the same entries the run's artifact catalog
-        publishes, so the exported folder and the app's artifact list
-        can never describe different sets of files. The export is
-        run-scoped: a later run on the same source folder cannot
-        silently overwrite an earlier run's deliverables.
+        The reservation proves that an existing partial directory belongs
+        to this workspace. Files are assembled beside the reservation and
+        renamed into place, so a copy failure never exposes a half-built
+        final directory. A retry also recognizes the crash window after
+        the rename but before the reservation marker was removed.
         """
         marker = self.reserve_export(source, run_id, allow_existing=True)
         output_root = self._export_root(source)
         destination = output_root / run_id
-        try:
-            destination.mkdir()
-        except FileExistsError as exc:
-            raise FileExistsError(
-                f"deliverable export already exists: {destination}"
-            ) from exc
+        artifacts = list(artifacts)
+
+        if destination.exists():
+            if not destination.is_dir() or destination.is_symlink():
+                raise FileExistsError(
+                    f"deliverable export already exists: {destination}"
+                )
+            existing = {path.name: path for path in destination.iterdir()}
+            expected = {artifact.name: artifact for artifact in artifacts}
+            complete = existing.keys() == expected.keys() and all(
+                path.is_file()
+                and not path.is_symlink()
+                and filecmp.cmp(path, expected[name], shallow=False)
+                for name, path in existing.items()
+            )
+            if complete:
+                marker.unlink()
+                return destination
+            shutil.rmtree(destination)
+
+        staging = marker.parent / f"{run_id}.partial"
+        if staging.is_symlink():
+            raise ValueError(
+                f"deliverable export staging must not be a symlink: {staging}"
+            )
+        if staging.exists():
+            shutil.rmtree(staging)
+        staging.mkdir()
         try:
             for artifact in artifacts:
-                shutil.copy2(artifact, destination / artifact.name)
+                shutil.copy2(artifact, staging / artifact.name)
+            staging.rename(destination)
         except BaseException:
-            shutil.rmtree(destination)
+            if staging.exists():
+                shutil.rmtree(staging)
             raise
         marker.unlink()
         return destination

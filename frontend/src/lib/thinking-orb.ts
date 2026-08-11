@@ -7,19 +7,74 @@
 
 export type OrbState = "working" | "breathing" | "solving" | "shaping"
 
-type OrbMode = "orbits" | "ring" | "rubik" | "morph"
+type OrbitsTuning = {
+  speed: number
+  orbitN: number
+  ghostN: number
+  ghostR: number
+  ghostA: number
+  particles: number
+  partR: number
+  partRDepth: number
+  rsPow: number
+  rMin: number
+}
 
-/** A preset's constants. Each mode reads its own subset; all read `speed`. */
-type OrbTuning = Record<string, number>
+type RingTuning = {
+  speed: number
+  lanes: number
+  segs: number
+  ghostN: number
+  faceOn: number
+  rBase: number
+  rDepth: number
+  spin: number
+  bandMul: number
+  wobMul: number
+  rsPow: number
+  rMin: number
+}
 
-/** A resolved preset: which renderer to run, and the numbers it runs on. */
-export type OrbOptions = { mode: OrbMode; tuning: OrbTuning }
+type RubikTuning = {
+  speed: number
+  latRings: number
+  lonDensity: number
+  moveCount: number
+  rBase: number
+  rDepth: number
+  rActive: number
+  inkFar: number
+  inkSpan: number
+  rsPow: number
+  rMin: number
+}
+
+type MorphTuning = {
+  speed: number
+  rDot: number
+  iconD: number
+  spread: number
+  rMin: number
+}
+
+/** A resolved preset keeps each renderer paired with exactly its own constants. */
+export type OrbOptions =
+  | { mode: "orbits"; tuning: OrbitsTuning }
+  | { mode: "ring"; tuning: RingTuning }
+  | { mode: "rubik"; tuning: RubikTuning }
+  | { mode: "morph"; tuning: MorphTuning }
+
+type OrbPreset =
+  | { mode: "orbits"; small: OrbitsTuning; large: OrbitsTuning }
+  | { mode: "ring"; small: RingTuning; large: RingTuning }
+  | { mode: "rubik"; small: RubikTuning; large: RubikTuning }
+  | { mode: "morph"; small: MorphTuning; large: MorphTuning }
 
 type Dot = { x: number; y: number; z: number; r: number; white: number; a?: number }
 
 // Shipped presets with the count/radius multipliers pre-applied. Each state has
 // a small (under 40px) and a large variant rather than one scaled geometry.
-const PRESETS: Record<OrbState, { mode: OrbMode; small: OrbTuning; large: OrbTuning }> = {
+const PRESETS = {
   working: {
     mode: "orbits",
     small: { speed: 3.9, orbitN: 3, ghostN: 10, ghostR: 2.16, ghostA: 0.5, particles: 3, partR: 2.88, partRDepth: 3.84, rsPow: 0.6, rMin: 0.3 },
@@ -40,7 +95,7 @@ const PRESETS: Record<OrbState, { mode: OrbMode; small: OrbTuning; large: OrbTun
     small: { speed: 2.08, rDot: 0.021231, iconD: 0.53, spread: 1.45, rMin: 0.25 },
     large: { speed: 2.405, rDot: 0.008295, iconD: 0.702, spread: 1.45, rMin: 0.25 },
   },
-}
+} satisfies Record<OrbState, OrbPreset>
 
 function fibDir(i: number, n: number) {
   const golden = Math.PI * (3 - Math.sqrt(5))
@@ -105,7 +160,7 @@ function paint(ctx: CanvasRenderingContext2D, dots: Dot[], ink: number[], rMin: 
 }
 
 // orbits: particles running tilted great circles — the "working" state.
-function drawOrbits(ctx: CanvasRenderingContext2D, size: number, t: number, ink: number[], o: OrbTuning) {
+function drawOrbits(ctx: CanvasRenderingContext2D, size: number, t: number, ink: number[], o: OrbitsTuning) {
   const cx = size / 2
   const cy = size / 2
   const R = (size / 2) * 0.82
@@ -157,7 +212,7 @@ function drawOrbits(ctx: CanvasRenderingContext2D, size: number, t: number, ink:
 }
 
 // ring: a face-on dotted circle whose radius undulates — the "breathing" state.
-function drawRing(ctx: CanvasRenderingContext2D, size: number, t: number, ink: number[], o: OrbTuning) {
+function drawRing(ctx: CanvasRenderingContext2D, size: number, t: number, ink: number[], o: RingTuning) {
   const cx = size / 2
   const cy = size / 2
   const R = (size / 2) * 0.78
@@ -279,7 +334,7 @@ function applyMoves(p3: number[], moves: ReturnType<typeof makeMoves>, sc: Retur
   return { x, y, z, inActive }
 }
 
-function drawRubik(ctx: CanvasRenderingContext2D, size: number, t: number, ink: number[], o: OrbTuning) {
+function drawRubik(ctx: CanvasRenderingContext2D, size: number, t: number, ink: number[], o: RubikTuning) {
   const cx = size / 2
   const cy = size / 2
   const R = (size / 2) * 0.82
@@ -349,7 +404,7 @@ const HOLD = 1.4
 const MORPH = 0.9
 const SEG = HOLD + MORPH
 
-function drawMorph(ctx: CanvasRenderingContext2D, size: number, t: number, ink: number[], o: OrbTuning) {
+function drawMorph(ctx: CanvasRenderingContext2D, size: number, t: number, ink: number[], o: MorphTuning) {
   const K = CYCLE.length
   const tc = t % (SEG * K)
   const k = Math.floor(tc / SEG)
@@ -398,22 +453,37 @@ function drawMorph(ctx: CanvasRenderingContext2D, size: number, t: number, ink: 
   paint(ctx, dots, ink, o.rMin)
 }
 
-const DRAWS: Record<OrbMode, typeof drawOrbits> = {
-  orbits: drawOrbits,
-  ring: drawRing,
-  rubik: drawRubik,
-  morph: drawMorph,
-}
-
 /** The preset for a state at a given pixel size. Under 40px uses the small one. */
 export function orbOptions(state: OrbState, size: number): OrbOptions {
   const set = PRESETS[state] ?? PRESETS.working
-  return { mode: set.mode, tuning: size < 40 ? set.small : set.large }
+  switch (set.mode) {
+    case "orbits":
+      return { mode: set.mode, tuning: size < 40 ? set.small : set.large }
+    case "ring":
+      return { mode: set.mode, tuning: size < 40 ? set.small : set.large }
+    case "rubik":
+      return { mode: set.mode, tuning: size < 40 ? set.small : set.large }
+    case "morph":
+      return { mode: set.mode, tuning: size < 40 ? set.small : set.large }
+  }
 }
 
 /** Paint one frame. `time` is seconds already multiplied by the effective speed. */
 export function drawOrb(ctx: CanvasRenderingContext2D, size: number, time: number, ink: number[], options: OrbOptions) {
-  DRAWS[options.mode](ctx, size, time, ink, options.tuning)
+  switch (options.mode) {
+    case "orbits":
+      drawOrbits(ctx, size, time, ink, options.tuning)
+      break
+    case "ring":
+      drawRing(ctx, size, time, ink, options.tuning)
+      break
+    case "rubik":
+      drawRubik(ctx, size, time, ink, options.tuning)
+      break
+    case "morph":
+      drawMorph(ctx, size, time, ink, options.tuning)
+      break
+  }
 }
 
 export const ORB_LABELS: Record<OrbState, string> = {

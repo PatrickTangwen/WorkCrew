@@ -50,6 +50,7 @@ function RunDetail({ run }: { run: RunRecord }) {
   const loadRunEvents = useAppStore((state) => state.loadRunEvents)
   const connectRunStream = useAppStore((state) => state.connectRunStream)
   const disconnectRunStream = useAppStore((state) => state.disconnectRunStream)
+  const loadScopingQuestions = useAppStore((state) => state.loadScopingQuestions)
   const scoping = useAppStore((state) => state.scoping)
   const resumeRun = useAppStore((state) => state.resumeRun)
   const cancelRun = useAppStore((state) => state.cancelRun)
@@ -61,14 +62,15 @@ function RunDetail({ run }: { run: RunRecord }) {
     () => (eventsRunId === run.run_id ? runEvents : []),
     [eventsRunId, run.run_id, runEvents]
   )
-  // Only a run the engine still holds has a socket to listen on. Every
-  // other run — reopened, reloaded, or finished before this page existed —
-  // reads the log the run wrote as it went.
-  const streamable = run.status === "running" || run.status === "paused"
+  // Only a running engine has new events to stream. A paused run may have
+  // been reopened after a server restart, so its durable log and questions
+  // are the source of truth until the operator resumes it.
+  const streamable = run.status === "running"
 
   useEffect(() => {
     if (!streamable) {
       void loadRunEvents(run.run_id)
+      if (run.status === "paused") void loadScopingQuestions(run.run_id)
       return
     }
     connectRunStream(run.run_id)
@@ -77,7 +79,9 @@ function RunDetail({ run }: { run: RunRecord }) {
     connectRunStream,
     disconnectRunStream,
     loadRunEvents,
+    loadScopingQuestions,
     run.run_id,
+    run.status,
     streamable,
   ])
 
@@ -132,9 +136,9 @@ function RunDetail({ run }: { run: RunRecord }) {
         </TopBarButton>
       </TopBar>
 
-      <div className="mx-auto flex w-full max-w-[1000px] flex-1 flex-col gap-[18px] px-8 pt-[30px] pb-12">
-        <div className="flex items-start justify-between gap-6">
-          <div className="min-w-0">
+      <div className="mx-auto flex w-full max-w-[1000px] flex-1 flex-col gap-[18px] px-4 pt-6 pb-10 sm:px-6 lg:px-8 lg:pt-[30px] lg:pb-12">
+        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:gap-6">
+          <div className="w-full min-w-0">
             <h1 className="truncate text-[28px] leading-[1.2] font-semibold tracking-[-0.02em] text-ink">
               {run.source_name} → {run.workbook_name}
             </h1>
@@ -145,7 +149,7 @@ function RunDetail({ run }: { run: RunRecord }) {
               {run.workspace_path}
             </p>
           </div>
-          <div className="flex shrink-0 flex-col gap-[5px] text-right">
+          <div className="flex shrink-0 flex-col gap-[5px] text-left sm:text-right">
             <span className="text-[11.5px] text-faint">
               Started{" "}
               <time dateTime={run.start_time}>{formatStartTime(run.start_time)}</time>

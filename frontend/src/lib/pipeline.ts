@@ -73,6 +73,15 @@ const terminalStatuses: RunStatus[] = ["completed", "failed", "cancelled"]
  * for a run that has nothing recorded.
  */
 function endingOf(run: RunRecord, events: WorkflowEvent[]) {
+  if (terminalStatuses.includes(run.status)) {
+    const matchingEnding = [...events]
+      .reverse()
+      .find((event) => workflowEventDetails(event).runStatus === run.status)
+    return {
+      status: run.status,
+      at: run.finished_at ?? matchingEnding?.timestamp ?? null,
+    }
+  }
   const last = events[events.length - 1]
   if (last === undefined) return { status: run.status, at: run.finished_at }
   const status = workflowEventDetails(last).runStatus
@@ -139,7 +148,10 @@ function pipelineView(run: RunRecord, events: WorkflowEvent[]): PipelineView {
 
   const states = stageStates(current, outcome, lastPhaseChange?.phaseStatus ?? null)
   const failure =
-    [...details].reverse().find((detail) => detail.error !== null)?.error ?? null
+    outcome === "failed"
+      ? ([...details].reverse().find((detail) => detail.error !== null)?.error ??
+        null)
+      : null
 
   return {
     stages: STAGES.map((name, index) => ({

@@ -521,9 +521,7 @@ def test_pick_rejects_an_unknown_mode(tmp_path):
     assert response.status_code == 422
 
 
-def test_a_progress_log_that_cannot_be_written_never_reaches_the_run(
-    tmp_path, capsys
-):
+def test_a_progress_log_that_cannot_be_written_never_reaches_the_run(tmp_path, capsys):
     runs_root = tmp_path / "runs"
     runs_root.mkdir()
     # A file where the run's workspace belongs: nothing can be written under it.

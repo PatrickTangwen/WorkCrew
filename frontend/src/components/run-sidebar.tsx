@@ -27,28 +27,28 @@ function RunSidebar({
   return (
     <aside
       aria-label="Run history"
-      className="sticky top-0 flex h-svh min-w-0 flex-col border-r border-line bg-shell"
+      className="grid min-w-0 grid-cols-[1fr_auto] border-b border-line bg-shell lg:sticky lg:top-0 lg:flex lg:h-svh lg:flex-col lg:border-r lg:border-b-0"
     >
       <button
         type="button"
         onClick={onBrand}
-        className="flex cursor-pointer items-baseline gap-px border-b border-line px-[18px] pt-[17px] pb-4 text-left text-xl font-semibold tracking-[-0.035em] focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+        className="flex cursor-pointer items-baseline gap-px px-[18px] py-4 text-left text-xl font-semibold tracking-[-0.035em] focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none lg:border-b lg:border-line lg:pt-[17px] lg:pb-4"
       >
         <span className="text-ink">Work</span>
         <span className="font-normal text-faint">Crew</span>
       </button>
 
-      <div className="px-3.5 pt-3.5 pb-2.5">
+      <div className="px-3 py-2.5 lg:px-3.5 lg:pt-3.5 lg:pb-2.5">
         <button
           type="button"
           onClick={onNewRun}
-          className="flex h-[38px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-[9px] bg-brand text-[13.5px] font-medium text-white shadow-sm transition-colors hover:bg-brand/90 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="flex h-[38px] w-[118px] cursor-pointer items-center justify-center gap-1.5 rounded-[9px] bg-brand text-[13.5px] font-medium text-white shadow-sm transition-colors hover:bg-brand/90 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none lg:w-full"
         >
           <Plus className="size-3" strokeWidth={2.5} aria-hidden="true" /> New run
         </button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col px-2.5 pb-2.5">
+      <div className="col-span-2 flex min-w-0 flex-col px-2.5 pb-2.5 lg:col-span-1 lg:min-h-0 lg:flex-1">
         <div className="flex items-center justify-between px-1.5 py-2">
           <span className="font-mono text-[10px] font-semibold tracking-[0.16em] text-faint uppercase">
             Runs
@@ -80,12 +80,12 @@ function RunSidebar({
         {runs.length > 0 && (
           <ul
             aria-label="Runs"
-            className="flex min-h-0 flex-1 flex-col gap-[5px] overflow-y-auto pr-1"
+            className="flex min-w-0 gap-[5px] overflow-x-auto pr-1 pb-1 lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto lg:pb-0"
           >
             {runs.map((run) => {
               const selected = run.run_id === selectedRunId
               return (
-                <li key={run.run_id}>
+                <li key={run.run_id} className="w-64 shrink-0 lg:w-auto">
                   <button
                     type="button"
                     aria-label={`Open run ${run.run_id}`}
@@ -118,10 +118,10 @@ function RunSidebar({
         )}
       </div>
 
-      <div className="border-t border-line px-4 py-3.5">
+      <div className="hidden border-t border-line px-4 py-3.5 lg:block">
         <span className="inline-flex h-[23px] items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 text-[11px] font-medium text-subtle">
           <span className="size-1.5 rounded-full bg-ok" aria-hidden="true" />
-          Local only · no network
+          Local workspace
         </span>
       </div>
     </aside>

@@ -235,6 +235,58 @@ Yes
     )
 
 
+def test_a_new_socket_after_resume_does_not_replay_the_stale_pause(inputs):
+    runtime = FakeAgentRuntime(
+        {
+            "scoping": [SCOPING_OUTPUT, SCOPING_DONE],
+            "filler": {"proposals": []},
+            "reviewer": {"findings": []},
+        }
+    )
+    app = create_app(
+        inputs["runs_root"] / "missing-static",
+        options=ServerOptions(
+            home_dir=inputs["source"].parent,
+            runs_root=inputs["runs_root"],
+            runtimes={role: runtime for role in ("scoping", "filler", "reviewer")},
+        ),
+    )
+    payload = {
+        "source": str(inputs["source"]),
+        "workbook": str(inputs["workbook"]),
+        "task": inputs["task"],
+        "rules_file": str(inputs["rules_file"]),
+        "scoping_answers": None,
+        "review_policy": None,
+    }
+
+    with TestClient(app) as client:
+        run_id = client.post("/api/runs", json=payload).json()["run_id"]
+        with client.websocket_connect(f"/ws/runs/{run_id}") as websocket:
+            first_attempt = []
+            while not first_attempt or first_attempt[-1]["type"] != "paused":
+                first_attempt.append(websocket.receive_json())
+
+        resumed = client.post(
+            f"/api/runs/{run_id}/resume",
+            json={
+                "answers": {
+                    "Q1": {"value": "One source folder."},
+                    "Q2": {"value": "fall"},
+                    "Q3": {"value": ["alpha", "beta"]},
+                    "Q4": {"value": True},
+                }
+            },
+        )
+        assert resumed.status_code == 202
+        with client.websocket_connect(f"/ws/runs/{run_id}") as websocket:
+            resumed_events = []
+            while not resumed_events or resumed_events[-1]["type"] != "completed":
+                resumed_events.append(websocket.receive_json())
+
+    assert all(event["type"] != "paused" for event in resumed_events)
+
+
 def test_a_note_that_looks_like_the_next_heading_does_not_block_resume(inputs):
     runtime = FakeAgentRuntime(
         {

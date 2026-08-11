@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
  */
 function TopBar({ title, children }: { title: ReactNode; children?: ReactNode }) {
   return (
-    <header className="sticky top-0 z-20 flex h-[58px] shrink-0 items-center gap-3.5 border-b border-line bg-paper/92 px-8 backdrop-blur-md">
+    <header className="sticky top-0 z-20 flex h-[58px] shrink-0 items-center gap-2.5 border-b border-line bg-paper/92 px-4 backdrop-blur-md sm:gap-3.5 sm:px-6 lg:px-8">
       <div className="flex min-w-0 flex-1 items-baseline gap-2.5">{title}</div>
       {children}
     </header>
