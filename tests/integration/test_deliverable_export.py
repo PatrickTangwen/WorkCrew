@@ -12,14 +12,15 @@ import pytest
 
 from tests.integration.conftest import scoping_fixture
 from workflow_app.artifacts import deliverable_entries
+from workflow_app.cancellation import CancellationToken, WorkflowCancelled
 from workflow_app.runtimes.fake import FakeAgentRuntime
-from workflow_app.workflow.engine import run_workflow
+from workflow_app.workflow.engine import resume_workflow, run_workflow
 from workflow_app.workspace import OUTPUT_DIR_NAME, RunInputs, Workspace
 
 CONTRACT_FIXTURES = Path(__file__).parent.parent / "fixtures" / "contracts"
 
 
-def start_run(inputs, *, runs_root=None, run_id=None):
+def start_run(inputs, *, runs_root=None, run_id=None, cancellation=None):
     proposal = json.loads((CONTRACT_FIXTURES / "cell_proposal.json").read_text())
     outputs = {
         "scoping": scoping_fixture(),
@@ -47,6 +48,7 @@ def start_run(inputs, *, runs_root=None, run_id=None):
         runs_root=runs_root or inputs["runs_root"],
         runtimes={role: fake for role in outputs},
         run_id=run_id,
+        cancellation=cancellation,
     )
 
 
@@ -179,3 +181,34 @@ def test_an_owned_complete_export_is_idempotent_after_interruption(tmp_path):
     assert exported == destination
     assert not marker.exists()
     assert (destination / artifact.name).read_text() == "complete"
+
+
+def test_cancellation_after_publication_can_resume_the_same_export(inputs, monkeypatch):
+    cancellation = CancellationToken()
+    original_export = Workspace.export_deliverables
+    cancelled_once = False
+
+    def cancel_after_export(workspace, *args, **kwargs):
+        nonlocal cancelled_once
+        destination = original_export(workspace, *args, **kwargs)
+        if not cancelled_once:
+            cancelled_once = True
+            cancellation.cancel()
+        return destination
+
+    monkeypatch.setattr(Workspace, "export_deliverables", cancel_after_export)
+
+    with pytest.raises(WorkflowCancelled):
+        start_run(inputs, cancellation=cancellation)
+
+    run_id = next(inputs["runs_root"].iterdir()).name
+    destination = inputs["source"] / OUTPUT_DIR_NAME / run_id
+    assert (destination / "final.xlsx").is_file()
+
+    resumed = resume_workflow(run_id, inputs["runs_root"], runtimes={})
+
+    assert resumed["phase"] == "FINALIZE"
+    assert (
+        "Status: completed"
+        in (inputs["runs_root"] / run_id / "artifacts/run_summary.md").read_text()
+    )

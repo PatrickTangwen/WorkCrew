@@ -187,6 +187,10 @@ class Workspace:
         return self.root / "state" / "checkpoints.sqlite"
 
     @property
+    def export_destination_claim(self):
+        return self.root / ".export-destination"
+
+    @property
     def events_jsonl(self):
         # The run's progress stream, one JSON event per line, in the order
         # the engine emitted them. The websocket only reaches whoever is
@@ -353,7 +357,12 @@ class Workspace:
         return output_root
 
     def reserve_export(self, source, run_id, *, allow_existing=False):
-        """Atomically reserve a source-side run id for this workspace."""
+        """Atomically claim a source-side run id for this workspace.
+
+        The source-side marker serializes publication. The workspace-side
+        destination claim remains afterward as durable ownership evidence:
+        a cancelled FINALIZE may need to verify or rebuild its own export.
+        """
         output_root = self._export_root(source)
         reservations = output_root / EXPORT_RESERVATION_DIR_NAME
         if reservations.is_symlink():
@@ -378,12 +387,28 @@ class Workspace:
             created = True
 
         destination = output_root / run_id
+        claim = self.export_destination_claim
+        if claim.is_symlink():
+            if created:
+                marker.unlink()
+            raise ValueError(f"deliverable export claim must not be a symlink: {claim}")
+        claimed_destination = claim.read_text() if claim.is_file() else None
+        if claimed_destination not in {None, str(destination)}:
+            if created:
+                marker.unlink()
+            raise ValueError(
+                f"workspace already claims another deliverable export:"
+                f" {claimed_destination}"
+            )
+        owns_destination = allow_existing and claimed_destination == str(destination)
         if (destination.exists() or destination.is_symlink()) and (
-            not allow_existing or created or destination.is_symlink()
+            not owns_destination or destination.is_symlink()
         ):
             if created:
                 marker.unlink()
             raise FileExistsError(f"deliverable export already exists: {destination}")
+        if claimed_destination is None:
+            claim.write_text(str(destination))
         return marker
 
     def export_deliverables(self, source, run_id, artifacts):
