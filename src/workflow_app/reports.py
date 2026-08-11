@@ -54,9 +54,8 @@ def _scoping_placeholder(token):
     return f"<!-- {SCOPING_PLACEHOLDER_PREFIX}{token} -->"
 
 
-def render_scoping_answers_template(questions, round_number, placeholder_token):
+def render_scoping_answers_template(questions, round_number):
     lines = [
-        _scoping_placeholder(placeholder_token),
         f"## Round {round_number}",
         "",
         "Replace each placeholder with your answer, then resume the run.",
@@ -113,11 +112,22 @@ def render_scoping_answers(questions, answers, round_number):
     return "\n".join(lines)
 
 
-def append_scoping_round(path, section):
-    """Add a round to the transcript, starting the file on the first round."""
+def upsert_scoping_round(path, placeholder_token, section):
+    """Idempotently make one machine-marked round the open transcript tail."""
     existing = path.read_text() if path.is_file() else f"{SCOPING_ANSWERS_TITLE}\n"
+    marker = _scoping_placeholder(placeholder_token)
+    marker_count = existing.count(marker)
+    if marker_count > 1:
+        raise ValueError(
+            "expected at most one scoping placeholder for the structured token,"
+            f" found {marker_count}"
+        )
+    marked_section = f"{marker}\n{section}"
+    if marker_count == 1:
+        path.write_text(existing[: existing.index(marker)] + marked_section)
+        return
     separator = "" if existing.endswith("\n\n") else "\n"
-    path.write_text(f"{existing}{separator}{section}")
+    path.write_text(f"{existing}{separator}{marked_section}")
 
 
 def replace_scoping_round(path, placeholder_token, section):

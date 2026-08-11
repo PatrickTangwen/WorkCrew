@@ -84,4 +84,6 @@ touched, because they are the pass's own memory of what it already knows.
 machine-only marker to replace the open transcript section instead of parsing
 headings in the editable Markdown file. `scoping_answers.md` remains the
 cumulative human/agent transcript, but it is not the source of workflow round
-identity or placeholder location.
+identity or placeholder location. The token is stable for a run and round, and
+the open section is upserted by that token so replay after a pre-checkpoint
+crash cannot append a duplicate placeholder.

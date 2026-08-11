@@ -24,7 +24,6 @@ import hashlib
 import json
 import shutil
 from pathlib import Path
-from uuid import uuid4
 
 from langgraph.errors import GraphBubbleUp
 from langgraph.graph import END, START, StateGraph
@@ -47,13 +46,13 @@ from workflow_app.provenance.render import build_explorer_data
 from workflow_app.provenance.store import build_provenance, resync_provenance
 from workflow_app.reports import (
     action_counts,
-    append_scoping_round,
     render_human_review_md,
     render_no_scoping_questions,
     render_review_md,
     render_revision_log_md,
     render_scoping_answers_template,
     render_scoping_questions_md,
+    upsert_scoping_round,
     verdict_counts,
 )
 from workflow_app.review_policy import (
@@ -192,7 +191,9 @@ def build_graph(execution, audit, checkpointer):
         )
         questions = ScopingQuestionRound(
             round=round_number,
-            placeholder_token=uuid4().hex,
+            placeholder_token=hashlib.sha256(
+                f"{state['run_id']}\0scoping\0{round_number}".encode()
+            ).hexdigest(),
             questions=result.questions,
         )
         workspace.scoping_questions_json.write_text(questions.model_dump_json(indent=2))
@@ -240,13 +241,10 @@ def build_graph(execution, audit, checkpointer):
             return update
         # Placeholder section the operator edits before resuming; the UI
         # replaces it with structured answers instead.
-        append_scoping_round(
+        upsert_scoping_round(
             workspace.scoping_answers_md,
-            render_scoping_answers_template(
-                questions,
-                round_number,
-                questions.placeholder_token,
-            ),
+            questions.placeholder_token,
+            render_scoping_answers_template(questions, round_number),
         )
         update["scoping_pending"] = True
         return update

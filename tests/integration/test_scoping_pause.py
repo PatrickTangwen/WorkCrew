@@ -16,6 +16,7 @@ from tests.integration.conftest import WORKBOOK_SCHEMA_CONFIG
 from workflow_app.models import ScopingQuestionRound
 from workflow_app.reports import replace_scoping_round
 from workflow_app.runtimes.fake import FakeAgentRuntime
+from workflow_app.workflow import graph as workflow_graph
 from workflow_app.workflow.engine import resume_workflow, run_workflow
 from workflow_app.workflow.graph import MAX_SCOPING_ROUNDS
 from workflow_app.workspace import RunInputs
@@ -410,6 +411,37 @@ def test_failed_resume_no_longer_reports_the_run_as_paused(inputs):
 
     # The answers were ingested, so 'paused' would be a false fact.
     assert run_status(workspace, paused["run_id"]) == "failed"
+
+
+def test_replaying_a_crash_after_placeholder_write_does_not_duplicate_it(
+    inputs, monkeypatch
+):
+    upsert = workflow_graph.upsert_scoping_round
+    crashed = False
+
+    def crash_after_first_write(path, placeholder_token, section):
+        nonlocal crashed
+        upsert(path, placeholder_token, section)
+        if not crashed:
+            crashed = True
+            raise OSError("crash after placeholder write")
+
+    monkeypatch.setattr(workflow_graph, "upsert_scoping_round", crash_after_first_write)
+    with pytest.raises(OSError, match="crash after placeholder write"):
+        start_paused_run(inputs)
+
+    monkeypatch.setattr(workflow_graph, "upsert_scoping_round", upsert)
+    (workspace,) = [path for path in inputs["runs_root"].iterdir() if path.is_dir()]
+    state = resume_workflow(
+        run_id=workspace.name,
+        runs_root=inputs["runs_root"],
+        runtimes=make_runtimes(scoping=SCOPING_OUTPUT),
+    )
+
+    assert "__interrupt__" in state
+    transcript = (workspace / "artifacts/scoping_answers.md").read_text()
+    assert transcript.count("<!-- workcrew:scoping-placeholder:") == 1
+    assert transcript.count("## Round 1") == 1
 
 
 def test_a_scoping_pass_with_no_questions_does_not_pause(inputs):
