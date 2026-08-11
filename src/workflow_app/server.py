@@ -490,18 +490,31 @@ class RunEventLog:
     The websocket only reaches whoever is watching while the run happens.
     This is the copy a reopened run — after a reload, or after the server
     itself restarted — replays.
+
+    Writing it is best effort. A run that cannot record its progress is
+    still a run worth finishing, so a log that fails is abandoned rather
+    than allowed to take the outputs down with it.
     """
 
     def __init__(self, runs_root):
         self.runs_root = Path(runs_root)
+        self.abandoned = set()
 
     def append(self, run_id, event):
+        if run_id in self.abandoned:
+            return
         # The run is still being written, so its audit store may not exist
         # yet; the workspace directory is reserved before the engine starts.
         path = Workspace((self.runs_root / run_id).resolve()).events_jsonl
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(event) + "\n")
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(event) + "\n")
+        except OSError as exc:
+            # Said once, then the log stays shut: a failing disk would
+            # otherwise repeat this for every event left in the run.
+            self.abandoned.add(run_id)
+            emit(f"Run {run_id} progress log stopped ({exc}); the run continues")
 
     def read(self, run_id):
         path = Workspace(
@@ -509,11 +522,17 @@ class RunEventLog:
         ).events_jsonl
         if not path.is_file():
             return []
-        return [
-            json.loads(line)
-            for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
+        events = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                # An append-only log is whole up to its first damaged line;
+                # a write cut short leaves the rest unreadable by definition.
+                break
+        return events
 
 
 class RunHistory:

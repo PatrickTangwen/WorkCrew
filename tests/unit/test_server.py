@@ -14,6 +14,7 @@ from workflow_app.native_picker import PickerUnavailable
 from workflow_app.server import (
     ResumeRunRequest,
     RunCoordinator,
+    RunEventLog,
     RunRecord,
     ServerOptions,
     TrackedRun,
@@ -518,3 +519,34 @@ def test_pick_rejects_an_unknown_mode(tmp_path):
     response = client.post("/api/pick", json={"mode": "drive", "prompt": "Choose"})
 
     assert response.status_code == 422
+
+
+def test_a_progress_log_that_cannot_be_written_never_reaches_the_run(
+    tmp_path, capsys
+):
+    runs_root = tmp_path / "runs"
+    runs_root.mkdir()
+    # A file where the run's workspace belongs: nothing can be written under it.
+    (runs_root / "run-1").write_text("not a directory")
+    log = RunEventLog(runs_root)
+
+    log.append("run-1", {"type": "progress", "message": "one"})
+    log.append("run-1", {"type": "progress", "message": "two"})
+
+    # The run carries on; the operator is told once, not once per event.
+    assert capsys.readouterr().err.count("progress log") == 1
+
+
+def test_a_progress_log_is_read_up_to_the_point_it_was_damaged(tmp_path):
+    runs_root = tmp_path / "runs"
+    workspace = Workspace(runs_root / "run-1")
+    workspace.audit_db.parent.mkdir(parents=True)
+    workspace.audit_db.touch()
+    # A write cut short by a full disk leaves the last line half-written.
+    workspace.events_jsonl.write_text(
+        '{"type": "progress", "message": "one"}\n{"type": "prog'
+    )
+
+    assert RunEventLog(runs_root).read("run-1") == [
+        {"type": "progress", "message": "one"}
+    ]
