@@ -39,6 +39,41 @@ class ArtifactEntry:
         }
 
 
+def deliverable_entries(workspace):
+    """The public artifacts of one run workspace, keyed by file name.
+
+    One definition serves both the app's artifact list and the export
+    into the operator's source folder, so the two can never describe
+    different sets of files.
+    """
+    workspace = Path(workspace).resolve()
+    entries = {}
+    artifacts_dir = workspace / "artifacts"
+    if artifacts_dir.is_dir():
+        for path in artifacts_dir.iterdir():
+            entry = _entry(path, workspace)
+            if entry is not None:
+                entries[entry.path.name] = entry
+
+    final_entry = _entry(workspace / "output" / "final.xlsx", workspace)
+    if final_entry is not None:
+        entries[final_entry.path.name] = final_entry
+    return entries
+
+
+def _entry(path, workspace):
+    artifact_format = ARTIFACT_FORMATS.get(path.suffix.lower())
+    resolved = path.resolve()
+    if (
+        artifact_format is None
+        or not resolved.is_relative_to(workspace)
+        or not resolved.is_file()
+    ):
+        return None
+    kind, media_type = artifact_format
+    return ArtifactEntry(resolved, kind, media_type)
+
+
 class ArtifactCatalog:
     def __init__(self, runs_root):
         self.runs_root = Path(runs_root).resolve()
@@ -63,28 +98,4 @@ class ArtifactCatalog:
         return workspace
 
     def _entries(self, workspace):
-        entries = {}
-        artifacts_dir = workspace / "artifacts"
-        if artifacts_dir.is_dir():
-            for path in artifacts_dir.iterdir():
-                entry = self._entry(path, workspace)
-                if entry is not None:
-                    entries[entry.path.name] = entry
-
-        final_xlsx = workspace / "output" / "final.xlsx"
-        final_entry = self._entry(final_xlsx, workspace)
-        if final_entry is not None:
-            entries[final_entry.path.name] = final_entry
-        return entries
-
-    def _entry(self, path, workspace):
-        artifact_format = ARTIFACT_FORMATS.get(path.suffix.lower())
-        resolved = path.resolve()
-        if (
-            artifact_format is None
-            or not resolved.is_relative_to(workspace)
-            or not resolved.is_file()
-        ):
-            return None
-        kind, media_type = artifact_format
-        return ArtifactEntry(resolved, kind, media_type)
+        return deliverable_entries(workspace)

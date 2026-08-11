@@ -30,6 +30,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 from pydantic import ValidationError
 
+from workflow_app.artifacts import deliverable_entries
 from workflow_app.cancellation import WorkflowCancelled
 from workflow_app.handoff import build_handoff, render_handoff_markdown
 from workflow_app.ingestion.manifest import Manifest, build_manifest
@@ -872,7 +873,16 @@ def build_graph(execution, audit, checkpointer):
         write_explorers(state, version_suffix="_v2", include_review_cycle=True)
         shutil.copy2(workspace.draft_xlsx, workspace.final_xlsx)
         audit.record_run_finished(state["run_id"], "completed")
+        # The summary reports the recorded status and finish time, so it
+        # is written after the run is closed and before the export that
+        # carries it out to the operator.
         _write_run_summary(workspace, audit, state["run_id"])
+        destination = workspace.export_deliverables(
+            inputs.source,
+            state["run_id"],
+            [entry.path for entry in deliverable_entries(workspace.root).values()],
+        )
+        progress.emit(f"Deliverables exported to {destination}")
 
     def route_unresolved(state):
         review = load_review(state)

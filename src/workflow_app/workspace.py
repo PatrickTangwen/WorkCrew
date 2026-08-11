@@ -1,12 +1,18 @@
 """Per-run workspace layout (plan sections 12, 35).
 
 Every run gets an isolated directory under the runs root. Inputs are
-copied in untouched; original files are never modified.
+copied in untouched; original files are never modified. The finished
+run's deliverables are additionally exported into the operator's source
+folder, under OUTPUT_DIR_NAME (ADR 0035).
 """
 
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+
+# Deliverables are exported to <source>/<OUTPUT_DIR_NAME>/<run_id>/, so
+# the operator finds the results beside the documents they came from.
+OUTPUT_DIR_NAME = "workcrew-output"
 
 
 def validate_task_and_rules(task, rules_text, rules_file):
@@ -14,6 +20,22 @@ def validate_task_and_rules(task, rules_text, rules_file):
         raise ValueError("task description must not be empty")
     if rules_text is not None and rules_file is not None:
         raise ValueError("rules may be given as text or as a file, not both")
+
+
+# Clipboard images arrive as content, not as files on the operator's
+# disk, so they are materialized once — into the run workspace.
+@dataclass(frozen=True)
+class TaskImage:
+    suffix: str
+    data: bytes
+
+
+IMAGE_SUFFIXES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+}
 
 
 @dataclass(frozen=True)
@@ -24,6 +46,12 @@ class RunInputs:
     # pass derives the workbook schema from it (ADR 0032), so it is a
     # required input rather than an optional hint.
     task: str
+    # Optional operator-chosen name for the run. It names the run id and
+    # nothing else; unset, the source folder names the run.
+    name: str | None = None
+    # Screenshots and diagrams that belong to the task description —
+    # what the operator pasted beside their own words (ADR 0037).
+    task_images: tuple = ()
     # Optional extraction rules, given either as prose or as one text
     # file. At most one of the two is set; both unset means the run has
     # no rules beyond the task itself.
@@ -59,6 +87,7 @@ SUBDIRS = (
     "input/sources",
     "input/rules",
     "input/workbook",
+    "input/task_images",
     "working",
     "agent_outputs/filler",
     "agent_outputs/reviewer",
@@ -89,6 +118,22 @@ class Workspace:
     @property
     def task_md(self):
         return self.root / "input" / "task.md"
+
+    @property
+    def task_images_dir(self):
+        return self.root / "input" / "task_images"
+
+    def task_image_paths(self):
+        """The task's images, in the order the operator pasted them."""
+        return sorted(
+            path for path in self.task_images_dir.glob("*") if path.is_file()
+        )
+
+    @property
+    def agents_json(self):
+        # The model and effort each role ran with. A resume is a fresh
+        # process, so the run has to carry its own configuration.
+        return self.root / "input" / "agents.json"
 
     @property
     def rules_md(self):
@@ -235,9 +280,21 @@ class Workspace:
             (self.root / subdir).mkdir(parents=True, exist_ok=True)
 
     def copy_inputs(self, inputs):
-        shutil.copytree(inputs.source, self.input_sources, dirs_exist_ok=True)
+        shutil.copytree(
+            inputs.source,
+            self.input_sources,
+            dirs_exist_ok=True,
+            ignore=_ignore_exported_output(inputs.source),
+        )
         shutil.copy2(inputs.workbook, self.input_workbook / inputs.workbook.name)
-        self.task_md.write_text(inputs.task)
+        # Numbered by paste order, named by the workspace rather than by
+        # the clipboard: a pasted image carries no trustworthy file name.
+        images = []
+        for index, image in enumerate(inputs.task_images, start=1):
+            path = self.task_images_dir / f"task-image-{index}{image.suffix}"
+            path.write_bytes(image.data)
+            images.append(path.relative_to(self.root))
+        self.task_md.write_text(render_task_md(inputs.task, images))
         # Prose and file rules land in the same place, so every later
         # stage reads rules from one path and never learns which form
         # the operator chose. No rules at all leaves input/rules/ empty.
@@ -249,3 +306,50 @@ class Workspace:
             shutil.copy2(inputs.scoping_answers, self.scoping_answers_md)
         if inputs.review_policy is not None:
             shutil.copy2(inputs.review_policy, self.review_policy_yaml)
+
+    def export_deliverables(self, source, run_id, artifacts):
+        """Copy this run's public artifacts into the source folder.
+
+        `artifacts` are the same entries the run's artifact catalog
+        publishes, so the exported folder and the app's artifact list
+        can never describe different sets of files. The export is
+        run-scoped: a later run on the same source folder cannot
+        silently overwrite an earlier run's deliverables.
+        """
+        destination = Path(source) / OUTPUT_DIR_NAME / run_id
+        destination.mkdir(parents=True, exist_ok=True)
+        for artifact in artifacts:
+            shutil.copy2(artifact, destination / artifact.name)
+        return destination
+
+
+def render_task_md(task, images):
+    """The operator's words, plus a pointer to what they pasted with them.
+
+    Agents read `input/task.md` as the statement of intent, so the images
+    have to be named there — an image nobody is told to open is an image
+    nobody reads.
+    """
+    if not images:
+        return task
+    listed = "\n".join(f"- `{image}`" for image in images)
+    return (
+        f"{task.rstrip()}\n\n## Attached images\n\n"
+        "The operator pasted these with the task description; read them as"
+        f" part of it.\n\n{listed}\n"
+    )
+
+
+def _ignore_exported_output(source):
+    # A second run on the same source folder must not ingest the first
+    # run's deliverables as source documents. Only the export directory
+    # at the source root is skipped; a directory of the same name deeper
+    # in the tree is the operator's own and is copied.
+    root = Path(source).resolve()
+
+    def ignore(directory, names):
+        if Path(directory).resolve() != root:
+            return set()
+        return {name for name in names if name == OUTPUT_DIR_NAME}
+
+    return ignore
