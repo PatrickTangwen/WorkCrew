@@ -24,6 +24,7 @@ import hashlib
 import json
 import shutil
 from pathlib import Path
+from uuid import uuid4
 
 from langgraph.errors import GraphBubbleUp
 from langgraph.graph import END, START, StateGraph
@@ -168,9 +169,9 @@ def build_graph(execution, audit, checkpointer):
         return {"manifest_path": str(workspace.manifest_json)}
 
     def outline_workbook(state):
-        # Sheet names, column letters, and the template's top rows are
-        # facts about the file, read deterministically so the scoping
-        # agent never guesses a column letter (ADR 0032).
+        # Sheet names, column letters, and non-empty used cells are facts
+        # about the file, read deterministically so the scoping agent never
+        # guesses a column letter or misses a header below a title block.
         outline = build_outline(workspace.input_workbook / inputs.workbook.name)
         workspace.workbook_outline_json.write_text(outline.model_dump_json(indent=2))
         progress.emit(f"Outlining workbook... {len(outline.sheets)} sheets found")
@@ -191,6 +192,7 @@ def build_graph(execution, audit, checkpointer):
         )
         questions = ScopingQuestionRound(
             round=round_number,
+            placeholder_token=uuid4().hex,
             questions=result.questions,
         )
         workspace.scoping_questions_json.write_text(questions.model_dump_json(indent=2))
@@ -240,7 +242,11 @@ def build_graph(execution, audit, checkpointer):
         # replaces it with structured answers instead.
         append_scoping_round(
             workspace.scoping_answers_md,
-            render_scoping_answers_template(questions, round_number),
+            render_scoping_answers_template(
+                questions,
+                round_number,
+                questions.placeholder_token,
+            ),
         )
         update["scoping_pending"] = True
         return update

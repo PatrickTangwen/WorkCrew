@@ -10,7 +10,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { RunDetail } from "@/components/run-detail"
-import type { RunRecord, WorkflowEvent } from "@/lib/api"
+import type { RunRecord, ScopingQuestions, WorkflowEvent } from "@/lib/api"
 import { useAppStore } from "@/store/use-app-store"
 
 class MockWebSocket {
@@ -252,17 +252,20 @@ describe("run progress", () => {
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
         if (url.endsWith("/artifacts/scoping_questions.json")) {
+          const questions: ScopingQuestions = {
+            round: 1,
+            placeholder_token: "round-1-placeholder",
+            questions: [
+              {
+                id: "Q1",
+                question: "What is one row?",
+                type: "text",
+                options: null,
+              },
+            ],
+          }
           return new Response(
-            JSON.stringify({
-              questions: [
-                {
-                  id: "Q1",
-                  question: "What is one row?",
-                  type: "text",
-                  options: null,
-                },
-              ],
-            }),
+            JSON.stringify(questions),
             { status: 200, headers: { "Content-Type": "application/json" } }
           )
         }

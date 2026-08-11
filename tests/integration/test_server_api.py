@@ -6,6 +6,11 @@ from workflow_app.server import ServerOptions, create_app
 
 SCOPING_DONE = {"workbook_schema": WORKBOOK_SCHEMA_CONFIG, "questions": []}
 
+SECOND_ROUND = {
+    "workbook_schema": WORKBOOK_SCHEMA_CONFIG,
+    "questions": [{"id": "Q5", "question": "Which mapping applies?", "type": "text"}],
+}
+
 SCOPING_OUTPUT = {
     "workbook_schema": WORKBOOK_SCHEMA_CONFIG,
     "questions": [
@@ -205,3 +210,75 @@ Note: Except beta, which spans both.
 Yes
 """
     )
+
+
+def test_a_note_that_looks_like_the_next_heading_does_not_block_resume(inputs):
+    runtime = FakeAgentRuntime(
+        {
+            "scoping": [SCOPING_OUTPUT, SECOND_ROUND, SCOPING_DONE],
+            "filler": {"proposals": []},
+            "reviewer": {"findings": []},
+        }
+    )
+    app = create_app(
+        inputs["runs_root"] / "missing-static",
+        options=ServerOptions(
+            home_dir=inputs["source"].parent,
+            runs_root=inputs["runs_root"],
+            runtimes={role: runtime for role in ("scoping", "filler", "reviewer")},
+        ),
+    )
+    payload = {
+        "source": str(inputs["source"]),
+        "workbook": str(inputs["workbook"]),
+        "task": inputs["task"],
+        "rules_file": str(inputs["rules_file"]),
+        "scoping_answers": None,
+        "review_policy": None,
+    }
+
+    with TestClient(app) as client:
+        created = client.post("/api/runs", json=payload)
+        run_id = created.json()["run_id"]
+        with client.websocket_connect(f"/ws/runs/{run_id}") as websocket:
+            events = []
+            while not events or events[-1]["type"] != "paused":
+                events.append(websocket.receive_json())
+
+            first = client.post(
+                f"/api/runs/{run_id}/resume",
+                json={
+                    "answers": {
+                        "Q1": {"value": "One source folder."},
+                        "Q2": {
+                            "value": "fall",
+                            "note": "Context\n## Round 2\nThis is still free prose.",
+                        },
+                        "Q3": {"value": ["alpha", "beta"]},
+                        "Q4": {"value": True},
+                    }
+                },
+            )
+            assert first.status_code == 202
+            events.append(websocket.receive_json())
+            while events[-1]["type"] != "paused":
+                events.append(websocket.receive_json())
+
+            question_round = client.get(
+                f"/api/runs/{run_id}/artifacts/scoping_questions.json"
+            ).json()
+            assert question_round["round"] == 2
+            second = client.post(
+                f"/api/runs/{run_id}/resume",
+                json={"answers": {"Q5": {"value": "Use the broader mapping."}}},
+            )
+            assert second.status_code == 202
+            events.append(websocket.receive_json())
+            while events[-1]["type"] != "completed":
+                events.append(websocket.receive_json())
+
+    answers = (
+        inputs["runs_root"] / run_id / "artifacts/scoping_answers.md"
+    ).read_text()
+    assert "## Round 2\nThis is still free prose." in answers
+    assert "Use the broader mapping." in answers

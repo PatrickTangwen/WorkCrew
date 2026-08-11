@@ -79,8 +79,9 @@ touched, because they are the pass's own memory of what it already knows.
 
 ## Follow-up amendment: round identity is structured state
 
-`artifacts/scoping_questions.json` records the current `round` alongside its
-questions. The resume API uses that value to replace the matching transcript
-placeholder instead of counting headings in the editable Markdown file.
-`scoping_answers.md` remains the cumulative human/agent transcript, but it is
-not the sole source of workflow round identity.
+`artifacts/scoping_questions.json` records the current `round` and an opaque
+`placeholder_token` alongside its questions. The resume API uses the token's
+machine-only marker to replace the open transcript section instead of parsing
+headings in the editable Markdown file. `scoping_answers.md` remains the
+cumulative human/agent transcript, but it is not the source of workflow round
+identity or placeholder location.

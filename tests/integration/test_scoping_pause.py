@@ -129,13 +129,13 @@ def test_run_pauses_after_scoping_with_question_artifacts(inputs):
     assert "__interrupt__" in state
 
     stored = json.loads((workspace / "artifacts/scoping_questions.json").read_text())
-    assert (
-        stored
-        == ScopingQuestionRound(
-            round=1,
-            questions=SCOPING_OUTPUT["questions"],
-        ).model_dump()
-    )
+    question_round = ScopingQuestionRound.model_validate(stored)
+    assert question_round.round == 1
+    assert question_round.placeholder_token
+    assert [
+        question.model_dump(exclude_defaults=True, exclude_none=True)
+        for question in question_round.questions
+    ] == SCOPING_OUTPUT["questions"]
     assert Path(state["scoping_questions_path"]) == (
         workspace / "artifacts/scoping_questions.json"
     )
@@ -454,12 +454,12 @@ SECOND_ROUND = {
 
 
 def answer_open_round(workspace, text):
-    round_number = json.loads(
+    question_round = json.loads(
         (workspace / "artifacts/scoping_questions.json").read_text()
-    )["round"]
+    )
     replace_scoping_round(
         workspace / "artifacts/scoping_answers.md",
-        round_number,
+        question_round["placeholder_token"],
         text,
     )
 

@@ -62,6 +62,5 @@ def _rows_of(workbook, sheet):
             row=number,
             cells=[CellOutline(column=column, value=value) for column, value in cells],
         )
-        for number, cells in enumerate(writer.outline_rows(workbook, sheet), start=1)
-        if cells
+        for number, cells in writer.outline_rows(workbook, sheet)
     ]

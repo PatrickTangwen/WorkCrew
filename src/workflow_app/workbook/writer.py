@@ -59,13 +59,23 @@ def sheet_names(workbook):
 
 def outline_rows(workbook, sheet):
     """Column letter and text of every non-empty cell in the used rows."""
+    rows = {}
+    # Worksheet.iter_rows expands the full max_row × max_column rectangle.
+    # A distant sparse cell can make that rectangle enormous, so this
+    # openpyxl isolation layer reads its sparse cell store directly.
+    for (row, column), cell in workbook[sheet]._cells.items():
+        if cell.value is None:
+            continue
+        value = str(cell.value).strip()
+        if not value:
+            continue
+        rows.setdefault(row, []).append((column, cell.column_letter, value))
     return [
-        [
-            (cell.column_letter, str(cell.value).strip())
-            for cell in cells
-            if cell.value is not None and str(cell.value).strip()
-        ]
-        for cells in workbook[sheet].iter_rows()
+        (
+            row,
+            [(column_letter, value) for _, column_letter, value in sorted(cells)],
+        )
+        for row, cells in sorted(rows.items())
     ]
 
 

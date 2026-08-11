@@ -85,6 +85,32 @@ def test_headers_after_a_long_title_block_stay_visible(tmp_path):
     assert [cell.value for cell in rows[-1].cells] == ["Invoice No", "Vendor"]
 
 
+def test_a_far_sparse_cell_does_not_expand_the_empty_rectangle(tmp_path, monkeypatch):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Invoices"
+    sheet["A1"] = "Invoice No"
+    sheet["XFD1048576"] = "Remote note"
+
+    def forbid_rectangular_iteration(*args, **kwargs):
+        raise AssertionError("outline must not expand a sparse worksheet rectangle")
+
+    monkeypatch.setattr(sheet, "iter_rows", forbid_rectangular_iteration)
+    monkeypatch.setattr(
+        "workflow_app.workbook.outline.writer.open_template",
+        lambda path: workbook,
+    )
+    path = tmp_path / "template.xlsx"
+    path.touch()
+
+    rows = build_outline(path).sheets[0].rows
+
+    assert [row.row for row in rows] == [1, 1_048_576]
+    assert [(cell.column, cell.value) for cell in rows[-1].cells] == [
+        ("XFD", "Remote note")
+    ]
+
+
 def test_values_are_stringified(tmp_path):
     path = write_workbook(tmp_path / "template.xlsx", {"A1": 1200, "B1": "Vendor"})
 

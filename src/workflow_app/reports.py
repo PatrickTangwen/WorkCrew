@@ -7,8 +7,6 @@ evidence so the V1 flow — read human_review.md, edit final.xlsx — needs
 no other file.
 """
 
-import re
-
 
 def _evidence_lines(evidence, indent="  "):
     return [
@@ -49,10 +47,16 @@ def render_scoping_questions_md(questions):
 
 
 SCOPING_ANSWERS_TITLE = "# Scoping answers"
+SCOPING_PLACEHOLDER_PREFIX = "workcrew:scoping-placeholder:"
 
 
-def render_scoping_answers_template(questions, round_number):
+def _scoping_placeholder(token):
+    return f"<!-- {SCOPING_PLACEHOLDER_PREFIX}{token} -->"
+
+
+def render_scoping_answers_template(questions, round_number, placeholder_token):
     lines = [
+        _scoping_placeholder(placeholder_token),
         f"## Round {round_number}",
         "",
         "Replace each placeholder with your answer, then resume the run.",
@@ -116,22 +120,22 @@ def append_scoping_round(path, section):
     path.write_text(f"{existing}{separator}{section}")
 
 
-def replace_scoping_round(path, round_number, section):
+def replace_scoping_round(path, placeholder_token, section):
     """Answer the structured open round, leaving earlier rounds untouched.
 
-    The scoping pass appends a placeholder section for the round it just
-    asked; the CLI operator edits it, and the UI posts structured answers
-    that land here instead.
+    The scoping pass records an opaque token in structured state and appends
+    its matching marker before the editable section. The UI uses that marker
+    rather than interpreting any operator-authored Markdown headings.
     """
     text = path.read_text() if path.is_file() else ""
-    heading = re.compile(rf"^## Round {round_number}$", re.MULTILINE)
-    matches = list(heading.finditer(text))
-    if len(matches) != 1:
+    marker = _scoping_placeholder(placeholder_token)
+    marker_count = text.count(marker)
+    if marker_count != 1:
         raise ValueError(
-            f"expected one placeholder for scoping round {round_number},"
-            f" found {len(matches)}"
+            "expected one scoping placeholder for the structured token,"
+            f" found {marker_count}"
         )
-    path.write_text(text[: matches[0].start()] + section)
+    path.write_text(text[: text.index(marker)] + section)
 
 
 def render_review_md(review):

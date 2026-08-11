@@ -54,6 +54,7 @@ class ScopingQuestionRound(ScopingQuestions):
     """The questions artifact plus its structured workflow round."""
 
     round: int
+    placeholder_token: str
 
 
 class ScopingResult(BaseModel):

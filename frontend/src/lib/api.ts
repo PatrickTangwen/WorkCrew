@@ -73,7 +73,11 @@ export type ScopingAnswer = {
 }
 
 export type ScopingAnswers = Record<string, ScopingAnswer>
-export type ScopingQuestions = { round: number; questions: ScopingQuestion[] }
+export type ScopingQuestions = {
+  round: number
+  placeholder_token: string
+  questions: ScopingQuestion[]
+}
 
 export type ArtifactType = "html" | "md" | "xlsx" | "json"
 

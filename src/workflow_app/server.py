@@ -230,7 +230,7 @@ class RunCoordinator:
             # earlier rounds intact for the next pass to read.
             replace_scoping_round(
                 workspace.scoping_answers_md,
-                questions.round,
+                questions.placeholder_token,
                 render_scoping_answers(questions, request.answers, questions.round),
             )
 
