@@ -250,6 +250,40 @@ describe("run progress", () => {
     expect(await screen.findByText("run log unreadable")).toBeVisible()
   })
 
+  it("leaves a pause behind once the engine reports work after it", async () => {
+    // The app feeds the detail from the store, which is what the replayed
+    // events update; a fixed prop would never show the pause sticking.
+    act(() => useAppStore.getState().showRun(run))
+    render(<StoredRunDetail />)
+    const socket = MockWebSocket.instances[0]
+
+    // Replaying a run's history walks back through a pause the operator
+    // answered minutes ago. The engine narrates in order, so the work that
+    // followed it says the run is going again.
+    socket.receive(
+      event({
+        type: "paused",
+        reason: "Scoping questions need answers",
+        questions_artifact: "/runs/run-streaming/artifacts/scoping_questions.json",
+      })
+    )
+    socket.receive(
+      event({ type: "phase_change", phase: "CLAUDE_FILL", status: "active" })
+    )
+
+    expect(
+      screen.queryByRole("heading", { name: "Scoping questions" })
+    ).not.toBeInTheDocument()
+    const pipeline = screen.getByRole("list", { name: "Workflow stages" })
+    expect(within(pipeline).getByText("Filler").closest("li")).toHaveAttribute(
+      "data-status",
+      "active"
+    )
+    await waitFor(() =>
+      expect(useAppStore.getState().currentRun?.status).not.toBe("paused")
+    )
+  })
+
   it("marks the current stage stopped when the operator cancels", () => {
     render(<RunDetail run={run} />)
 

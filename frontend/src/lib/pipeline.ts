@@ -66,16 +66,20 @@ const terminalStatuses: RunStatus[] = ["completed", "failed", "cancelled"]
  * run knows its own status, and a resumed one has already left the pause the
  * events still remember.
  */
+/**
+ * What the run is doing, and when it stopped if it has. The engine narrates
+ * in order, so its last word is the current state: a pause or a failure that
+ * was followed by more work is history, not status. The record answers only
+ * for a run that has nothing recorded.
+ */
 function endingOf(run: RunRecord, events: WorkflowEvent[]) {
-  for (let index = events.length - 1; index >= 0; index--) {
-    const status = workflowEventDetails(events[index]).runStatus
-    if (status !== null && terminalStatuses.includes(status)) {
-      // The terminal event is the moment the run stopped, which is what
-      // the clock settles on without waiting for a reload.
-      return { status, at: events[index].timestamp }
-    }
-  }
-  return { status: run.status, at: run.finished_at }
+  const last = events[events.length - 1]
+  if (last === undefined) return { status: run.status, at: run.finished_at }
+  const status = workflowEventDetails(last).runStatus
+  if (status === null) return { status: "running" as RunStatus, at: null }
+  // A terminal event is the moment the run stopped, which is what the clock
+  // settles on without waiting for a reload.
+  return { status, at: terminalStatuses.includes(status) ? last.timestamp : null }
 }
 
 function stageStates(

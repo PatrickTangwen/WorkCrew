@@ -95,7 +95,11 @@ function runAfterEvent(run: RunRecord, event: WorkflowEvent) {
   return {
     ...run,
     phase: details.phase ?? run.phase,
-    status: details.runStatus ?? run.status,
+    // The engine narrates in order, so anything it says after a pause means
+    // the pause was answered. Replaying a run's history walks back through
+    // pauses that ended minutes ago.
+    status:
+      details.runStatus ?? (run.status === "paused" ? "running" : run.status),
   }
 }
 
