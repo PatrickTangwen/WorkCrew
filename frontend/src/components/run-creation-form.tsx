@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react"
-import { FileSpreadsheet, FileText, Folder, Play } from "lucide-react"
+import { FileSpreadsheet, Folder, Play } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -19,14 +19,13 @@ import {
 } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
-type PathKey = "source" | "workbook" | "scoping_answers" | "review_policy"
+type PathKey = "source" | "workbook"
 
 const paths: Array<{
   key: PathKey
   label: string
   description: string
   mode: PickMode
-  required: boolean
   icon: typeof Folder
 }> = [
   {
@@ -34,7 +33,6 @@ const paths: Array<{
     label: "Source folder",
     description: "Documents the workflow will read",
     mode: "directory",
-    required: true,
     icon: Folder,
   },
   {
@@ -42,24 +40,7 @@ const paths: Array<{
     label: "Workbook",
     description: "Excel template to fill",
     mode: "file",
-    required: true,
     icon: FileSpreadsheet,
-  },
-  {
-    key: "scoping_answers",
-    label: "Scoping answers",
-    description: "Pre-answered decisions that skip the pause",
-    mode: "file",
-    required: false,
-    icon: FileText,
-  },
-  {
-    key: "review_policy",
-    label: "Review policy",
-    description: "YAML policy override for review coverage",
-    mode: "file",
-    required: false,
-    icon: FileText,
   },
 ]
 
@@ -73,8 +54,6 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
   const [values, setValues] = useState<Record<PathKey, string>>({
     source: "",
     workbook: "",
-    scoping_answers: "",
-    review_policy: "",
   })
   const [task, setTask] = useState("")
   const [rulesMode, setRulesMode] = useState<RulesMode>("none")
@@ -119,8 +98,8 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
       task: task.trim(),
       rules_text: rulesMode === "text" ? rulesText.trim() : null,
       rules_file: rulesMode === "file" ? rulesFile : null,
-      scoping_answers: values.scoping_answers || null,
-      review_policy: values.review_policy || null,
+      scoping_answers: null,
+      review_policy: null,
     }
     try {
       onCreated(await createRun(input))
@@ -172,7 +151,7 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium">{field.label}</p>
                         <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                          {field.required ? "Required" : "Optional"}
+                          Required
                         </span>
                       </div>
                       <p className="mt-0.5 text-xs text-muted-foreground">

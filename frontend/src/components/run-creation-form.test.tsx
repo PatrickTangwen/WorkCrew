@@ -140,22 +140,15 @@ describe("RunCreationForm", () => {
     })
   })
 
-  it("sends optional scoping answers and review policy files", async () => {
+  it("does not expose scoping answers or review policy inputs", () => {
     render(<RunCreationForm onCreated={vi.fn()} />)
-    await fillRequiredInputs()
 
-    await selectPath(
-      "Scoping answers input",
-      "/home/operator/scoping-answers.md"
-    )
-    await selectPath("Review policy input", "/home/operator/review-policy.yaml")
-    fireEvent.click(screen.getByRole("button", { name: "Start run" }))
-
-    await waitFor(() => expect(createRun).toHaveBeenCalled())
-    expect(vi.mocked(createRun).mock.calls[0][0]).toMatchObject({
-      scoping_answers: "/home/operator/scoping-answers.md",
-      review_policy: "/home/operator/review-policy.yaml",
-    })
+    expect(
+      screen.queryByRole("group", { name: "Scoping answers input" })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole("group", { name: "Review policy input" })
+    ).not.toBeInTheDocument()
   })
 
   it("blocks the run while a chosen rules mode is still empty", async () => {
