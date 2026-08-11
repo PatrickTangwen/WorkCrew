@@ -15,12 +15,15 @@ envelope's `structured_output` field carries the schema-validated
 output; `--json-schema` requires claude CLI >= 2.1.205 (an invalid
 schema is a hard CLI error there, silent degradation before).
 
-Headless runs cannot answer permission prompts, so the adapter passes
-`--permission-mode bypassPermissions`. This is the plan's section 13
-policy expressed in print mode: tool access is deliberately not
-restricted (`--allowedTools` unused), READ/WRITE boundaries are
-prompt-instructed, and the workspace scoping comes from launching the
-process inside the isolated run workspace.
+Headless runs cannot answer permission prompts, so the mode must never
+block on one. The adapter passes `--permission-mode auto`: it grants the
+tool access a run needs without asking, while keeping the CLI's own
+guardrails that `bypassPermissions` (the mode used until 2026-08-10)
+switches off entirely. This is the plan's section 13 policy expressed in
+print mode: tool access is not restricted by an allowlist
+(`--allowedTools` unused), READ/WRITE boundaries are prompt-instructed,
+and the workspace scoping comes from launching the process inside the
+isolated run workspace.
 
 ### Personal configuration is excluded from the invocation
 

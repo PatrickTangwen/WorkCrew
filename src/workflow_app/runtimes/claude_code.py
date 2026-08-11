@@ -65,11 +65,14 @@ def print_auth_diagnostic():
 class ClaudeCodeRuntime:
     name = "claude-code"
 
-    def __init__(self, command="claude", model=None):
+    def __init__(self, command="claude", model=None, effort=None):
         # model: full model name (a "[1m]" suffix selects the 1M-context
-        # variant); None uses the CLI's own default.
+        # variant); effort: the CLI's --effort level
+        # (low/medium/high/xhigh/max). None leaves the CLI's own default
+        # in place for either.
         self._command = command
         self._model = model
+        self._effort = effort
         print_auth_diagnostic()
 
     def run(self, request):
@@ -86,14 +89,18 @@ class ClaudeCodeRuntime:
             "json",
             "--json-schema",
             schema,
-            # Headless runs cannot answer permission prompts. Tool
-            # access is deliberately unrestricted; READ/WRITE
-            # boundaries are prompt-instructed (plan section 13).
+            # Headless runs cannot answer permission prompts, so the mode
+            # must never block on one. "auto" grants the tool access a run
+            # needs without disabling the CLI's own guardrails the way
+            # bypassPermissions does; READ/WRITE boundaries stay
+            # prompt-instructed (plan section 13).
             "--permission-mode",
-            "bypassPermissions",
+            "auto",
         ]
         if self._model is not None:
             argv += ["--model", self._model]
+        if self._effort is not None:
+            argv += ["--effort", self._effort]
 
         process = run_process(
             argv,
