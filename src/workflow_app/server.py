@@ -4,6 +4,7 @@ import asyncio
 import base64
 import binascii
 import errno
+import json
 import socket
 import webbrowser
 from collections.abc import Callable
@@ -27,6 +28,7 @@ from workflow_app.artifacts import (
     ArtifactCatalog,
     ArtifactNotFoundError,
     RunNotFoundError,
+    resolve_run_workspace,
 )
 from workflow_app.audit.db import AuditStore
 from workflow_app.cancellation import CancellationToken, WorkflowCancelled
@@ -116,6 +118,9 @@ class RunRecord(BaseModel):
     run_id: str
     status: RunStatus
     start_time: str
+    # Null until the run stops. A finished run reports its own total time
+    # rather than leaving the reader to guess from a stale summary.
+    finished_at: str | None = None
     workspace_path: str
     phase: str
     source_name: str
@@ -154,7 +159,6 @@ class RunFacts:
 @dataclass
 class TrackedRun:
     record: RunRecord
-    finished_at: str | None = None
     events: "RunEventChannel" = field(default_factory=lambda: RunEventChannel())
     task: asyncio.Task | None = None
     cancellation: CancellationToken = field(default_factory=CancellationToken)
@@ -204,6 +208,7 @@ class RunCoordinator:
         self.options = options
         self.runs = {}
         self.tasks = set()
+        self.event_log = RunEventLog(options.runs_root)
 
     async def start(self, request):
         if any(
@@ -314,6 +319,9 @@ class RunCoordinator:
             tracked.events = RunEventChannel()
         tracked.cancellation = CancellationToken()
         tracked.record.status = "running"
+        # A run that is going again has not finished. Keeping the previous
+        # ending would report the abandoned attempt's total as this one's.
+        tracked.record.finished_at = None
         response = tracked.record.model_dump()
         progress_callback = self._progress_callback(tracked)
         self._schedule(tracked, self._resume(tracked, progress_callback))
@@ -350,7 +358,7 @@ class RunCoordinator:
                 run_id=tracked.record.run_id,
                 status=tracked.record.status,
                 started_at=tracked.record.start_time,
-                finished_at=tracked.finished_at,
+                finished_at=tracked.record.finished_at,
                 source_name=tracked.record.source_name,
                 workbook_name=tracked.record.workbook_name,
             ).summary()
@@ -408,7 +416,7 @@ class RunCoordinator:
             result = await asyncio.to_thread(operation, **kwargs)
         except WorkflowCancelled:
             tracked.record.status = "cancelled"
-            tracked.finished_at = datetime.now(UTC).isoformat()
+            tracked.record.finished_at = datetime.now(UTC).isoformat()
             return
         self._record_result(tracked, result)
 
@@ -417,7 +425,7 @@ class RunCoordinator:
         record.phase = result.get("phase", record.phase)
         record.status = "paused" if "__interrupt__" in result else "completed"
         if record.status == "completed":
-            tracked.finished_at = datetime.now(UTC).isoformat()
+            tracked.record.finished_at = datetime.now(UTC).isoformat()
 
     def _runtimes(self, agents):
         if self.options.runtimes is not None:
@@ -430,6 +438,10 @@ class RunCoordinator:
         loop = asyncio.get_running_loop()
 
         def callback(event):
+            # Written from the engine's own thread, before anyone is told
+            # about the event: the log is what a reopened run replays, so
+            # it must never trail the websocket.
+            self.event_log.append(tracked.record.run_id, event)
             delivered = asyncio.run_coroutine_threadsafe(
                 self._deliver_event(tracked, dict(event)), loop
             )
@@ -453,7 +465,7 @@ class RunCoordinator:
         if not task.cancelled() and task.exception() is not None:
             record = tracked.record
             record.status = "failed"
-            tracked.finished_at = datetime.now(UTC).isoformat()
+            record.finished_at = datetime.now(UTC).isoformat()
 
     def _receive_event(self, tracked, event):
         record = tracked.record
@@ -463,13 +475,45 @@ class RunCoordinator:
             record.status = "paused"
         elif event["type"] == "completed":
             record.status = "completed"
-            tracked.finished_at = datetime.now(UTC).isoformat()
+            record.finished_at = datetime.now(UTC).isoformat()
         elif event["type"] == "failed":
             record.status = (
                 "cancelled" if event.get("reason") == "cancelled" else "failed"
             )
-            tracked.finished_at = datetime.now(UTC).isoformat()
+            record.finished_at = datetime.now(UTC).isoformat()
         tracked.events.publish(event)
+
+
+class RunEventLog:
+    """One run's progress stream on disk, one JSON event per line.
+
+    The websocket only reaches whoever is watching while the run happens.
+    This is the copy a reopened run — after a reload, or after the server
+    itself restarted — replays.
+    """
+
+    def __init__(self, runs_root):
+        self.runs_root = Path(runs_root)
+
+    def append(self, run_id, event):
+        # The run is still being written, so its audit store may not exist
+        # yet; the workspace directory is reserved before the engine starts.
+        path = Workspace((self.runs_root / run_id).resolve()).events_jsonl
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(event) + "\n")
+
+    def read(self, run_id):
+        path = Workspace(
+            resolve_run_workspace(self.runs_root, run_id)
+        ).events_jsonl
+        if not path.is_file():
+            return []
+        return [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
 
 
 class RunHistory:
@@ -499,6 +543,7 @@ class RunHistory:
             run_id=run["run_id"],
             status=run["status"],
             start_time=run["started_at"],
+            finished_at=run["finished_at"],
             workspace_path=str(workspace),
             phase=phase,
             source_name=Path(run["source_path"]).name,
@@ -575,6 +620,7 @@ def create_app(static_dir=DEFAULT_STATIC_DIR, require_frontend=False, options=No
     coordinator = RunCoordinator(options)
     history = RunHistory(options.runs_root)
     artifacts = ArtifactCatalog(options.runs_root)
+    event_log = RunEventLog(options.runs_root)
 
     @app.get("/api/agents")
     async def list_agent_options():
@@ -629,6 +675,14 @@ def create_app(static_dir=DEFAULT_STATIC_DIR, require_frontend=False, options=No
             pass
         finally:
             coordinator.unsubscribe(run_id, queue)
+
+    @app.get("/api/runs/{run_id}/events")
+    def list_run_events(run_id: str):
+        """The run's whole progress stream, however long ago it happened."""
+        try:
+            return event_log.read(run_id)
+        except RunNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Run not found") from exc
 
     @app.get("/api/runs/{run_id}/artifacts")
     def list_artifacts(run_id: str):

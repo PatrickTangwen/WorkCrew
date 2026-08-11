@@ -24,6 +24,21 @@ class ArtifactNotFoundError(FileNotFoundError):
     pass
 
 
+def resolve_run_workspace(runs_root, run_id):
+    """The workspace one run id names, or a refusal.
+
+    A run exists when it has an audit store; a run id that resolves
+    outside the runs root names nothing, whatever it points at.
+    """
+    root = Path(runs_root).resolve()
+    workspace = (root / run_id).resolve()
+    if not workspace.is_relative_to(root) or not (
+        workspace / "state" / "audit.sqlite"
+    ).is_file():
+        raise RunNotFoundError(run_id)
+    return workspace
+
+
 @dataclass(frozen=True)
 class ArtifactEntry:
     path: Path
@@ -91,11 +106,7 @@ class ArtifactCatalog:
             raise ArtifactNotFoundError(name) from exc
 
     def _workspace(self, run_id):
-        workspace = (self.runs_root / run_id).resolve()
-        audit_db = workspace / "state" / "audit.sqlite"
-        if not workspace.is_relative_to(self.runs_root) or not audit_db.is_file():
-            raise RunNotFoundError(run_id)
-        return workspace
+        return resolve_run_workspace(self.runs_root, run_id)
 
     def _entries(self, workspace):
         return deliverable_entries(workspace)

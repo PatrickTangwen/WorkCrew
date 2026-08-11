@@ -1,192 +1,238 @@
-import { useEffect, useMemo, useRef } from "react"
-import { Check, Circle, LoaderCircle, X } from "lucide-react"
+import { useEffect, useState } from "react"
 
+import { ThinkingOrb } from "@/components/thinking-orb"
+import { formatClock, formatDuration } from "@/lib/format"
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+  stageStatePresentation,
+  stageSummary,
+  type PipelineView,
+  type StageState,
+  type StageView,
+} from "@/lib/pipeline"
 import { cn } from "@/lib/utils"
-import type { RunRecord, WorkflowEvent } from "@/lib/api"
-import { workflowEventDetails } from "@/lib/workflow-events"
 
-const stages = ["Scoping", "Filler", "Review", "Revision", "Re-review", "Finalize"]
-
-const phaseStage: Record<string, number> = {
-  INITIALIZING: 0,
-  INIT: 0,
-  PREPARE_WORKSPACE: 0,
-  BUILD_MANIFEST: 0,
-  OUTLINE_WORKBOOK: 0,
-  LOAD_SCHEMA: 0,
-  CLAUDE_SCOPE: 0,
-  AWAIT_SCOPING_ANSWERS: 0,
-  CLAUDE_FILL: 1,
-  VALIDATE: 1,
-  WRITE_DRAFT: 1,
-  CODEX_REVIEW: 2,
-  CLAUDE_REVISE: 3,
-  APPLY_ALLOWED_REVISIONS: 3,
-  CODEX_REREVIEW: 4,
-  HUMAN_REVIEW: 4,
-  FINALIZE: 5,
+/** The bar under the card title: one segment per stage, filled as they land. */
+const trackClass: Record<StageState, string> = {
+  completed: "bg-ink",
+  active: "bg-brand animate-wc-pulse",
+  waiting: "bg-brand/60",
+  failed: "bg-bad",
+  stopped: "bg-line",
+  pending: "bg-line",
 }
 
-type StageStatus = "pending" | "active" | "completed" | "failed"
-
-function stageStatuses(run: RunRecord, events: WorkflowEvent[]): StageStatus[] {
-  if (
-    run.status === "completed" ||
-    events.some((event) => workflowEventDetails(event).runStatus === "completed")
-  ) {
-    return stages.map(() => "completed")
+function StageMarker({ state }: { state: StageState }) {
+  if (state === "completed") {
+    return (
+      <span className="grid size-4 place-items-center rounded-full bg-ink">
+        <span className="h-[2.5px] w-[5.5px] -translate-y-px rotate-[-45deg] border-b-[1.25px] border-l-[1.25px] border-surface" />
+      </span>
+    )
   }
-
-  const phaseEvent = [...events]
-    .reverse()
-    .map(workflowEventDetails)
-    .find((event) => event.phaseStatus !== null)
-  const phase = phaseEvent?.phase ?? run.phase
-  const current = phaseStage[phase] ?? 0
-  const failed =
-    run.status === "failed" ||
-    events.some((event) => workflowEventDetails(event).runStatus === "failed") ||
-    phaseEvent?.phaseStatus === "failed"
-  const currentStatus: StageStatus = failed
-    ? "failed"
-    : phaseEvent?.phaseStatus === "completed"
-      ? "completed"
-      : "active"
-
-  return stages.map((_, index) => {
-    if (index < current) return "completed"
-    if (index === current) return currentStatus
-    return "pending"
-  })
+  if (state === "active") {
+    return (
+      <span className="box-border size-4 rounded-full border-[1.25px] border-brand bg-[linear-gradient(to_right,var(--brand)_50%,transparent_50%)]" />
+    )
+  }
+  if (state === "waiting") {
+    return (
+      <span className="box-border grid size-4 place-items-center rounded-full border-[1.5px] border-brand/55">
+        <span className="size-[4.5px] rounded-full bg-brand" />
+      </span>
+    )
+  }
+  if (state === "failed") {
+    return (
+      <span className="box-border grid size-4 place-items-center rounded-full bg-bad font-mono text-[8px] font-medium text-surface">
+        ✕
+      </span>
+    )
+  }
+  if (state === "stopped") {
+    return (
+      <span className="box-border grid size-4 place-items-center rounded-full border-[1.25px] border-line-dash font-mono text-[8px] font-medium text-ghost">
+        –
+      </span>
+    )
+  }
+  return <span className="box-border size-4 rounded-full border-[1.25px] border-line-strong" />
 }
 
-const statusStyle: Record<StageStatus, string> = {
-  pending: "border-border bg-background text-muted-foreground",
-  active: "border-foreground/25 bg-foreground text-background shadow-sm",
-  completed: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  failed: "border-red-200 bg-red-50 text-red-700",
-}
-
-function StageIcon({ status }: { status: StageStatus }) {
-  if (status === "completed") return <Check aria-hidden="true" />
-  if (status === "failed") return <X aria-hidden="true" />
-  if (status === "active") return <LoaderCircle className="animate-spin" aria-hidden="true" />
-  return <Circle aria-hidden="true" />
-}
-
-function StagePipeline({ run, events }: { run: RunRecord; events: WorkflowEvent[] }) {
-  const statuses = useMemo(() => stageStatuses(run, events), [events, run])
+function StageCell({
+  stage,
+  selected,
+  onSelect,
+}: {
+  stage: StageView
+  selected: boolean
+  onSelect: () => void
+}) {
+  const presentation = stageStatePresentation[stage.state]
   return (
-    <ol
-      aria-label="Workflow stages"
-      className="grid gap-2 sm:grid-cols-3 xl:grid-cols-6"
-    >
-      {stages.map((stage, index) => (
-        <li
-          key={stage}
-          data-status={statuses[index]}
-          aria-label={`${stage}: ${statuses[index]}`}
-          className={cn(
-            "flex items-center gap-2 rounded-xl border px-3 py-3 text-xs font-medium",
-            statusStyle[statuses[index]]
-          )}
-        >
-          <span className="[&_svg]:size-3.5">
-            <StageIcon status={statuses[index]} />
+    <li data-status={stage.state} aria-label={`${stage.name}: ${stage.state}`}>
+      <button
+        type="button"
+        aria-pressed={selected}
+        onClick={onSelect}
+        className={cn(
+          "flex w-full min-w-0 cursor-pointer flex-col gap-[5px] rounded-[9px] border px-2.5 py-[9px] text-left focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
+          selected ? "border-line-dash bg-shell" : "border-line-soft bg-transparent"
+        )}
+      >
+        <span className="flex w-full min-w-0 items-center gap-1.5">
+          <span className="grid size-[18px] shrink-0 place-items-center">
+            <StageMarker state={stage.state} />
           </span>
-          <span>{stage}</span>
-        </li>
-      ))}
-    </ol>
+          <span
+            className={cn(
+              "truncate text-[11.5px] font-medium",
+              stage.state === "pending" ? "text-ghost" : "text-ink"
+            )}
+          >
+            {stage.name}
+          </span>
+        </span>
+        <span className="flex w-full flex-nowrap items-baseline justify-between gap-1.5">
+          <span
+            className={cn(
+              "shrink-0 font-mono text-[9.5px] font-medium tracking-[0.06em] uppercase",
+              presentation.className
+            )}
+          >
+            {presentation.word}
+          </span>
+          <span className="font-mono text-[10.5px] text-ghost">
+            {stage.duration === null ? "—" : formatDuration(stage.duration)}
+          </span>
+        </span>
+      </button>
+    </li>
   )
 }
 
-function LogStream({ events }: { events: WorkflowEvent[] }) {
-  const end = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    end.current?.scrollIntoView({ block: "end" })
-  }, [events])
-
+/**
+ * The stage under the fold: its headline, and the events it produced. The
+ * headline shimmers only while that stage is the one doing work.
+ */
+function StageDetail({ stage, headline }: { stage: StageView; headline: string }) {
+  const presentation = stageStatePresentation[stage.state]
+  const active = stage.state === "active"
   return (
-    <div
-      aria-label="Run log"
-      aria-live="polite"
-      className="max-h-64 overflow-y-auto rounded-xl border bg-muted/20"
-    >
-      {events.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">
-          Waiting for workflow events…
+    <div className="mt-4 border-t border-line-soft pt-3.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="flex items-center gap-2 text-[12.5px] font-medium text-ink">
+          {active && <ThinkingOrb state="shaping" size={16} />}
+          {active ? (
+            <span className="animate-wc-shimmer bg-[linear-gradient(100deg,var(--ghost)_0%,var(--ghost)_38%,var(--ink)_50%,var(--ghost)_62%,var(--ghost)_100%)] bg-[length:220%_100%] bg-clip-text text-transparent">
+              {headline}
+            </span>
+          ) : (
+            <span>{headline}</span>
+          )}
         </p>
-      ) : (
-        <ul className="divide-y font-mono text-xs">
-          {events.map((event, index) => {
-            const details = workflowEventDetails(event)
-            return (
-              <li
-                key={`${event.timestamp}-${index}`}
-                className="flex gap-3 px-4 py-2.5"
+        <p
+          className={cn(
+            "shrink-0 font-mono text-[9.5px] font-medium tracking-[0.06em] uppercase",
+            presentation.className
+          )}
+        >
+          {presentation.word} ·{" "}
+          {stage.duration === null ? "—" : formatDuration(stage.duration)}
+        </p>
+      </div>
+
+      {stage.entries.length > 0 ? (
+        // The stage's own slice of the record. The event log holds all of it.
+        <ul className="mt-2.5 ml-0.5 flex max-h-52 flex-col overflow-y-auto border-l border-line-strong pl-3">
+          {stage.entries.map((entry, index) => (
+            <li
+              key={`${entry.timestamp}-${index}`}
+              className="flex items-baseline gap-3 py-[3px]"
+            >
+              <time
+                dateTime={entry.timestamp}
+                className="w-[54px] shrink-0 font-mono text-[10.5px] text-ghost"
               >
-                <time
-                  dateTime={event.timestamp}
-                  className="shrink-0 text-muted-foreground"
-                >
-                  {new Date(event.timestamp).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                  })}
-                </time>
-                <span
-                  className={cn(
-                    "min-w-0 break-words",
-                    (details.error !== null || details.phaseStatus === "failed") &&
-                      "text-destructive"
-                  )}
-                >
-                  {details.logMessage}
-                </span>
-              </li>
-            )
-          })}
+                {formatClock(entry.timestamp)}
+              </time>
+              <span
+                className={cn(
+                  "min-w-0 text-[11.5px] leading-[1.5] text-pretty",
+                  entry.failed ? "text-bad-ink" : "text-body"
+                )}
+              >
+                {entry.message}
+              </span>
+            </li>
+          ))}
         </ul>
+      ) : (
+        <p className="mt-1.5 text-xs leading-[1.6] text-pretty text-subtle">
+          {stageSummary[stage.state]}
+        </p>
       )}
-      <div ref={end} />
     </div>
   )
 }
 
-function WorkflowProgress({ run, events }: { run: RunRecord; events: WorkflowEvent[] }) {
-  const failure = [...events]
-    .reverse()
-    .map(workflowEventDetails)
-    .find((event) => event.error !== null)
+/** The six-stage pipeline, with whichever stage the operator is reading. */
+function WorkflowProgress({
+  pipeline,
+  runId,
+}: {
+  pipeline: PipelineView
+  runId: string
+}) {
+  const [selected, setSelected] = useState<number | null>(null)
+
+  // Opening another run starts from that run's own stage, not the last one read.
+  useEffect(() => setSelected(null), [runId])
+
+  const focus = selected ?? Math.min(pipeline.current, pipeline.stages.length - 1)
+  const stage = pipeline.stages[focus]
+  const latest = stage.entries[stage.entries.length - 1]
+  const headline =
+    focus === pipeline.current && latest
+      ? `${stage.name} — ${latest.message}`
+      : stage.name
+
   return (
-    <Card className="min-h-72 bg-background">
-      <CardHeader className="border-b">
-        <CardTitle>Workflow progress</CardTitle>
-        <CardDescription>
-          Live engine stages and timestamped progress messages.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <StagePipeline run={run} events={events} />
-        {failure?.error && (
-          <p className="rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm text-destructive">
-            {failure.error}
-          </p>
-        )}
-        <LogStream events={events} />
-      </CardContent>
-    </Card>
+    <div className="rounded-[14px] border border-line bg-surface p-5 shadow-[0_1px_3px_rgba(31,30,28,.05)]">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-[13px] font-medium text-ink">Pipeline</p>
+        <p className="font-mono text-[11px] text-faint">
+          {pipeline.current >= pipeline.stages.length
+            ? `${pipeline.stages.length} of ${pipeline.stages.length} complete`
+            : `step ${pipeline.current + 1} of ${pipeline.stages.length}`}
+        </p>
+      </div>
+
+      <div aria-hidden="true" className="mt-3 flex gap-[3px]">
+        {pipeline.stages.map((item) => (
+          <span
+            key={item.name}
+            className={cn("h-1.5 flex-1 rounded-[3px]", trackClass[item.state])}
+          />
+        ))}
+      </div>
+
+      <ul
+        aria-label="Workflow stages"
+        className="mt-2.5 grid grid-cols-[repeat(auto-fit,minmax(146px,1fr))] gap-1.5"
+      >
+        {pipeline.stages.map((item, index) => (
+          <StageCell
+            key={item.name}
+            stage={item}
+            selected={index === focus}
+            onSelect={() => setSelected(index)}
+          />
+        ))}
+      </ul>
+
+      <StageDetail stage={stage} headline={headline} />
+    </div>
   )
 }
 
-export { LogStream, StagePipeline, WorkflowProgress }
+export { WorkflowProgress }

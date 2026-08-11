@@ -61,8 +61,8 @@ describe("run history", () => {
       "Open run run-newer",
       "Open run run-older",
     ])
-    expect(within(sidebar).getByText("Failed")).toBeVisible()
-    expect(within(sidebar).getByText("Completed")).toBeVisible()
+    expect(within(sidebar).getByText(/^Failed ·/)).toBeVisible()
+    expect(within(sidebar).getByText(/^Completed ·/)).toBeVisible()
     expect(within(sidebar).getByText("4s")).toBeVisible()
     expect(within(sidebar).getByText("1m 30s")).toBeVisible()
     expect(within(sidebar).getByText("older-source → older.xlsx")).toBeVisible()
@@ -77,14 +77,14 @@ describe("run history", () => {
     ).toBeVisible()
     expect(
       within(screen.getByRole("region", { name: "Run detail" })).getByText(
-        "Completed"
+        "5 of 5 complete"
       )
     ).toBeVisible()
     expect(runCards[1]).toHaveAttribute("aria-current", "true")
 
     fireEvent.click(within(sidebar).getByRole("button", { name: "New run" }))
     expect(
-      screen.getByRole("heading", { name: "Assemble the working set." })
+      screen.getByRole("heading", { name: "What should this run produce?" })
     ).toBeVisible()
   })
 })

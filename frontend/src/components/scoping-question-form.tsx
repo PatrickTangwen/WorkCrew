@@ -1,20 +1,12 @@
 import { useEffect, useState, type ComponentType, type FormEvent } from "react"
-import { CircleHelp, Send } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import type {
   ScopingAnswers,
   ScopingAnswerValue,
   ScopingQuestion,
   ScopingQuestionType,
 } from "@/lib/api"
+import { cn } from "@/lib/utils"
 
 type FormStatus = "idle" | "loading" | "ready" | "submitting" | "error"
 
@@ -39,6 +31,9 @@ type Choice = {
   onChange: (checked: boolean) => void
 }
 
+const textareaClass =
+  "w-full resize-y rounded-[9px] border border-line bg-surface px-3 py-2.5 text-[12.5px] leading-[1.5] text-ink outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+
 function ChoiceList({
   questionId,
   inputType,
@@ -53,7 +48,10 @@ function ChoiceList({
       {choices.map((choice) => (
         <label
           key={choice.key}
-          className="flex cursor-pointer items-center gap-3 rounded-lg border bg-background px-3 py-2.5 text-sm"
+          className={cn(
+            "flex cursor-pointer items-center gap-2.5 rounded-[9px] border bg-surface px-3 py-2.5 text-[12.5px] text-ink",
+            choice.checked ? "border-brand" : "border-line"
+          )}
         >
           <input
             type={inputType}
@@ -61,7 +59,24 @@ function ChoiceList({
             value={choice.value}
             checked={choice.checked}
             onChange={(event) => choice.onChange(event.target.checked)}
+            className="sr-only"
           />
+          <span
+            aria-hidden="true"
+            className={cn(
+              "grid size-[15px] shrink-0 place-items-center border-[1.5px]",
+              inputType === "checkbox" ? "rounded-[4px]" : "rounded-full",
+              choice.checked ? "border-brand bg-brand" : "border-line-dash bg-white"
+            )}
+          >
+            <span
+              className={cn(
+                "size-1.5 bg-white",
+                inputType === "checkbox" ? "rounded-[1px]" : "rounded-full",
+                !choice.checked && "opacity-0"
+              )}
+            />
+          </span>
           {choice.label}
         </label>
       ))}
@@ -82,7 +97,8 @@ function TextQuestion({ question, answer, onChange }: QuestionControlProps) {
       value={typeof answer === "string" ? answer : ""}
       onChange={(event) => onChange(event.target.value)}
       rows={3}
-      className="mt-3 w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+      placeholder="Type your answer"
+      className={cn(textareaClass, "mt-3")}
     />
   )
 }
@@ -204,86 +220,89 @@ function ScopingQuestionForm({
     onSubmit(answers)
   }
 
+  const done = questions.filter((question) => answered(values[question.id])).length
+
   return (
-    <Card className="bg-background">
-      <CardHeader className="border-b">
-        <CardTitle
-          role="heading"
-          aria-level={2}
-          className="flex items-center gap-2"
-        >
-          <CircleHelp className="size-4" /> Scoping questions
-        </CardTitle>
-        <CardDescription>
+    <section className="overflow-hidden rounded-[14px] border border-brand/26 bg-surface shadow-[0_1px_3px_rgba(31,30,28,.05)]">
+      <div className="border-b border-line-soft bg-brand/8 px-5 py-4">
+        <h2 className="text-sm font-medium text-ink">Scoping questions</h2>
+        <p className="mt-1 text-xs text-subtle">
           The workflow needs a few decisions before extraction can continue.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {status === "loading" || status === "idle" ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            Loading questions…
-          </p>
-        ) : (
-          <form className="space-y-4" onSubmit={submit}>
-            {questions.map((question, index) => {
-              const type = question.type ?? "text"
-              const QuestionControl = questionControls[type]
-              return (
-                <fieldset
-                  key={question.id}
-                  className="rounded-xl border bg-muted/18 p-4"
-                >
-                  <legend className="px-1 text-sm font-medium">
-                    <span className="mr-2 font-mono text-xs text-muted-foreground">
-                      {index + 1}
+        </p>
+      </div>
+
+      {status === "loading" || status === "idle" ? (
+        <p className="py-8 text-center text-sm text-faint">Loading questions…</p>
+      ) : (
+        <form className="flex flex-col gap-3 p-4" onSubmit={submit}>
+          {questions.map((question, index) => {
+            const type = question.type ?? "text"
+            const QuestionControl = questionControls[type]
+            return (
+              <fieldset
+                key={question.id}
+                className="rounded-[11px] border border-line bg-paper p-[15px]"
+              >
+                <legend className="flex gap-2.5 px-1 text-[13px] leading-[1.45] font-medium text-ink">
+                  <span className="pt-0.5 font-mono text-[11px] text-ghost">
+                    {index + 1}
+                  </span>
+                  {question.question}
+                </legend>
+
+                <QuestionControl
+                  question={question}
+                  answer={values[question.id]}
+                  onChange={(value) => setValue(question.id, value)}
+                />
+
+                {type !== "text" && (
+                  <label className="mt-3 block">
+                    <span className="text-[11px] text-faint">
+                      Add anything the options do not cover (optional)
                     </span>
-                    {question.question}
-                  </legend>
+                    <textarea
+                      aria-label={`Note for ${question.question}`}
+                      value={notes[question.id] ?? ""}
+                      onChange={(event) =>
+                        setNotes((current) => ({
+                          ...current,
+                          [question.id]: event.target.value,
+                        }))
+                      }
+                      rows={2}
+                      className={cn(textareaClass, "mt-1.5")}
+                    />
+                  </label>
+                )}
+              </fieldset>
+            )
+          })}
 
-                  <QuestionControl
-                    question={question}
-                    answer={values[question.id]}
-                    onChange={(value) => setValue(question.id, value)}
-                  />
+          {(validationError || error) && (
+            <p
+              role="alert"
+              className="rounded-[9px] border border-bad-line bg-bad-wash px-3 py-2.5 text-xs text-bad"
+            >
+              {validationError ?? error}
+            </p>
+          )}
 
-                  {type !== "text" && (
-                    <label className="mt-3 block">
-                      <span className="text-xs text-muted-foreground">
-                        Add anything the options do not cover (optional)
-                      </span>
-                      <textarea
-                        aria-label={`Note for ${question.question}`}
-                        value={notes[question.id] ?? ""}
-                        onChange={(event) =>
-                          setNotes((current) => ({
-                            ...current,
-                            [question.id]: event.target.value,
-                          }))
-                        }
-                        rows={2}
-                        className="mt-1.5 w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-                      />
-                    </label>
-                  )}
-                </fieldset>
-              )
-            })}
-
-            {(validationError || error) && (
-              <p role="alert" className="text-sm text-destructive">
-                {validationError ?? error}
-              </p>
-            )}
-            <div className="flex justify-end">
-              <Button type="submit" disabled={status === "submitting"}>
-                <Send />
-                {status === "submitting" ? "Resuming…" : "Submit answers"}
-              </Button>
-            </div>
-          </form>
-        )}
-      </CardContent>
-    </Card>
+          <div className="flex items-center justify-between gap-3.5 pt-0.5">
+            <p className="text-xs text-faint">
+              {done} of {questions.length} answered
+            </p>
+            <button
+              type="submit"
+              disabled={status === "submitting"}
+              className="h-[37px] cursor-pointer rounded-[9px] bg-brand px-[18px] text-[13px] font-medium text-white transition-colors hover:bg-brand/90 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-default disabled:opacity-70"
+            >
+              {status === "submitting" ? "Resuming…" : "Submit answers"}
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
   )
 }
 

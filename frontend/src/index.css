@@ -1,13 +1,64 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource-variable/jetbrains-mono";
 
+/* WorkCrew is a single warm-paper theme. Pinning the variant to an opt-in
+   class keeps shadcn's stray `dark:` utilities from firing off the OS
+   preference, since there is no dark palette behind them. */
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
+    --font-sans: 'Instrument Sans Variable', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+    /* Paper surfaces, lightest to most raised. */
+    --color-paper: var(--paper);
+    --color-shell: var(--shell);
+    --color-surface: var(--surface);
+    --color-raise: var(--raise);
+
+    /* Ink, darkest to faintest. */
+    --color-ink: var(--ink);
+    --color-body: var(--body);
+    --color-subtle: var(--subtle);
+    --color-faint: var(--faint);
+    --color-ghost: var(--ghost);
+
+    --color-line: var(--line);
+    --color-line-soft: var(--line-soft);
+    --color-line-strong: var(--line-strong);
+    /* Dashed strokes read lighter than solid ones, so they get their own tone. */
+    --color-line-dash: var(--line-dash);
+    --color-brand: var(--brand);
+    /* The accent darkened enough to carry text at small sizes. */
+    --color-brand-ink: var(--brand-ink);
+
+    /* One entry per run status, so a status never invents its own colours. */
+    --color-ok: var(--ok);
+    --color-ok-surface: var(--ok-surface);
+    --color-ok-line: var(--ok-line);
+    --color-ok-ink: var(--ok-ink);
+    --color-warn: var(--warn);
+    --color-warn-surface: var(--warn-surface);
+    --color-warn-line: var(--warn-line);
+    --color-warn-ink: var(--warn-ink);
+    --color-info: var(--info);
+    --color-info-surface: var(--info-surface);
+    --color-info-line: var(--info-line);
+    --color-info-ink: var(--info-ink);
+    --color-bad: var(--bad);
+    --color-bad-wash: var(--bad-wash);
+    --color-bad-surface: var(--bad-surface);
+    --color-bad-line: var(--bad-line);
+    --color-bad-ink: var(--bad-ink);
+    --color-idle: var(--idle);
+    --color-idle-surface: var(--idle-surface);
+    --color-idle-line: var(--idle-line);
+    --color-idle-ink: var(--idle-ink);
+
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -16,11 +67,6 @@
     --color-sidebar-primary: var(--sidebar-primary);
     --color-sidebar-foreground: var(--sidebar-foreground);
     --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -49,80 +95,107 @@
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
+    --paper: #faf9f7;
+    --shell: #f5f4f0;
+    --surface: #fdfcfb;
+    --raise: #eae8e2;
+    --ink: #1f1e1c;
+    --body: #46443f;
+    --subtle: #6b6862;
+    --faint: #918e88;
+    --ghost: #a8a5a0;
+    --line: #ebe9e4;
+    --line-soft: #f0efeb;
+    --line-strong: #e2e0da;
+    --line-dash: #d5d3cd;
+    --brand: #5a5f7a;
+    --brand-ink: color-mix(in oklab, var(--brand) 80%, var(--ink));
+
+    --ok: #3f7a5e;
+    --ok-surface: #e8f0ea;
+    --ok-line: #cfe0d4;
+    --ok-ink: #2f6249;
+    --warn: #a8752a;
+    --warn-surface: #f6eedd;
+    --warn-line: #e6d7b8;
+    --warn-ink: #8a6a26;
+    --info: #4a6480;
+    --info-surface: #eaeef3;
+    --info-line: #d3dce6;
+    --info-ink: #3c5470;
+    --bad: #b0432c;
+    --bad-wash: #fdf6f4;
+    --bad-surface: #fbeae5;
+    --bad-line: #eecfc6;
+    --bad-ink: #a13d28;
+    --idle: #a39c92;
+    --idle-surface: #f1efea;
+    --idle-line: #e4e2dc;
+    --idle-ink: #6b6862;
+
+    --background: var(--paper);
+    --foreground: var(--ink);
+    --card: var(--surface);
+    --card-foreground: var(--ink);
+    --popover: var(--surface);
+    --popover-foreground: var(--ink);
+    --primary: var(--brand);
+    --primary-foreground: #ffffff;
+    --secondary: var(--shell);
+    --secondary-foreground: var(--ink);
+    --muted: var(--shell);
+    --muted-foreground: var(--faint);
+    --accent: var(--line-soft);
+    --accent-foreground: var(--ink);
+    --destructive: var(--bad);
+    --border: var(--line);
+    --input: var(--line-strong);
+    --ring: var(--brand);
     --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    --sidebar: var(--shell);
+    --sidebar-foreground: var(--ink);
+    --sidebar-primary: var(--brand);
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: var(--raise);
+    --sidebar-accent-foreground: var(--ink);
+    --sidebar-border: var(--line);
+    --sidebar-ring: var(--brand);
 }
 
-.dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+@theme {
+    /* The heartbeat behind anything the engine is working on right now. */
+    --animate-wc-pulse: wc-pulse 1.8s ease-in-out infinite;
+    /* A light sweep across the headline of the stage currently running. */
+    --animate-wc-shimmer: wc-shimmer 2.6s linear infinite;
+
+    @keyframes wc-pulse {
+        0%,
+        100% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.35;
+        }
+    }
+
+    @keyframes wc-shimmer {
+        from {
+            background-position: 120% 0;
+        }
+        to {
+            background-position: -120% 0;
+        }
+    }
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    scrollbar-width: thin;
+    scrollbar-color: #dedbd5 transparent;
     }
   body {
-    @apply min-w-80 bg-background text-foreground antialiased;
+    @apply min-w-80 bg-paper text-ink antialiased;
     }
   html {
     @apply font-sans;

@@ -1,12 +1,39 @@
 import { useEffect } from "react"
-import { Files, Plus } from "lucide-react"
 
 import { RunCreationForm } from "@/components/run-creation-form"
 import { RunDetail } from "@/components/run-detail"
 import { RunSidebar } from "@/components/run-sidebar"
-import { Button } from "@/components/ui/button"
+import { TopBar } from "@/components/top-bar"
 import { getRun, listRuns, type RunSummary } from "@/lib/api"
 import { useAppStore } from "@/store/use-app-store"
+
+function EmptyState({ onNewRun }: { onNewRun: () => void }) {
+  return (
+    <>
+      <TopBar
+        title={<span className="truncate text-sm font-medium text-ink">WorkCrew</span>}
+      />
+      <div className="grid flex-1 place-items-center px-8 pb-12">
+        <div className="max-w-[440px] text-center">
+          <h1 className="text-[33px] leading-[1.15] font-semibold tracking-[-0.02em] text-ink">
+            Start with the working set.
+          </h1>
+          <p className="mt-3 text-sm leading-[1.65] text-pretty text-subtle">
+            Select source documents, a workbook, and the rules that turn them into a
+            traceable run. Nothing leaves this machine.
+          </p>
+          <button
+            type="button"
+            onClick={onNewRun}
+            className="mt-6 h-[38px] cursor-pointer rounded-[9px] bg-brand px-[18px] text-[13.5px] font-medium text-white transition-colors hover:bg-brand/90 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            New run
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
 
 function App() {
   const view = useAppStore((state) => state.view)
@@ -50,40 +77,24 @@ function App() {
   }
 
   return (
-    <main className="min-h-svh bg-muted/30 lg:grid lg:grid-cols-[288px_minmax(0,1fr)]">
+    <main className="grid min-h-svh grid-cols-[288px_minmax(0,1fr)] bg-paper">
       <RunSidebar
         runs={runs}
         selectedRunId={view === "run" ? (currentRun?.run_id ?? null) : null}
         historyStatus={historyStatus}
         historyError={historyError}
+        onBrand={openNewRun}
         onNewRun={openNewRun}
         onSelect={(run) => void selectRun(run)}
       />
 
       <section
         aria-label={view === "run" ? "Run detail" : undefined}
-        className="min-w-0 p-5 sm:p-8 lg:p-10"
+        className="flex min-h-svh min-w-0 flex-col"
       >
         {view === "new-run" && <RunCreationForm onCreated={showRun} />}
         {view === "run" && currentRun && <RunDetail run={currentRun} />}
-        {view === "empty" && (
-          <div className="grid min-h-[calc(100svh-110px)] place-items-center lg:min-h-[calc(100svh-80px)]">
-            <div className="max-w-md text-center">
-              <div className="mx-auto grid size-14 place-items-center rounded-2xl border bg-background shadow-sm">
-                <Files className="size-6" aria-hidden="true" />
-              </div>
-              <h1 className="mt-5 font-heading text-3xl font-semibold tracking-tight">
-                Start with the working set.
-              </h1>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                Select source documents, a workbook, and the rules that turn them into a traceable run.
-              </p>
-              <Button onClick={openNewRun} className="mt-6">
-                <Plus /> New run
-              </Button>
-            </div>
-          </div>
-        )}
+        {view === "empty" && <EmptyState onNewRun={openNewRun} />}
       </section>
     </main>
   )

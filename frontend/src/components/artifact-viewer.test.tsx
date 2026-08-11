@@ -17,6 +17,7 @@ const run = {
   run_id: "run-completed",
   status: "completed" as const,
   start_time: "2026-08-09T12:00:00Z",
+  finished_at: null,
   workspace_path: "/runs/run-completed",
   phase: "FINALIZE",
   source_name: "source",

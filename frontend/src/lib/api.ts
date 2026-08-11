@@ -15,6 +15,8 @@ export type RunRecord = {
   run_id: string
   status: RunStatus
   start_time: string
+  /** Null until the run stops; the run's own total time once it has. */
+  finished_at: string | null
   workspace_path: string
   phase: string
   source_name: string
@@ -199,6 +201,12 @@ export async function readArtifactText(runId: string, name: string) {
   const response = await fetch(artifactUrl(runId, name))
   if (response.ok) return response.text()
   throw await responseError(response)
+}
+
+/** The run's whole recorded event stream, however long ago it happened. */
+export async function listRunEvents(runId: string) {
+  const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/events`)
+  return readResponse<WorkflowEvent[]>(response)
 }
 
 export async function getScopingQuestions(runId: string) {

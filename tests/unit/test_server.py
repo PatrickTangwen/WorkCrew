@@ -438,6 +438,7 @@ def test_get_historical_run_reads_detail_from_audit_store(tmp_path):
         "run_id": run_id,
         "status": "completed",
         "start_time": "2026-08-09T12:00:00+00:00",
+        "finished_at": "2026-08-09T12:00:45+00:00",
         "workspace_path": str(workspace.root.resolve()),
         "phase": "FINALIZE",
         "source_name": "source-documents",

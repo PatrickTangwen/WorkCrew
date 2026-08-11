@@ -179,6 +179,13 @@ class Workspace:
         return self.root / "state" / "checkpoints.sqlite"
 
     @property
+    def events_jsonl(self):
+        # The run's progress stream, one JSON event per line, in the order
+        # the engine emitted them. The websocket only reaches whoever is
+        # watching at the time; this is what a run can be reopened on.
+        return self.root / "state" / "events.jsonl"
+
+    @property
     def manifest_json(self):
         return self.artifacts / "manifest.json"
 

@@ -26,9 +26,7 @@ from workflow_app.models import (
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "contracts"
 SCOPING_PROMPT = Path(__file__).parents[2] / "src/workflow_app/prompts/scoping.md"
 GRAPH_SOURCE = Path(__file__).parents[2] / "src/workflow_app/workflow/graph.py"
-PROGRESS_TSX = (
-    Path(__file__).parents[2] / "frontend/src/components/workflow-progress.tsx"
-)
+PIPELINE_TS = Path(__file__).parents[2] / "frontend/src/lib/pipeline.ts"
 
 CONTRACT_FIXTURES = [
     (Evidence, "evidence.json"),
@@ -278,7 +276,7 @@ def test_every_engine_stage_maps_to_a_ui_pipeline_stage():
         re.findall(r'graph\.add_node\(\s*"([A-Z_]+)"', GRAPH_SOURCE.read_text())
     )
     mapped = set(
-        re.findall(r"^\s*([A-Z_]+): \d+,$", PROGRESS_TSX.read_text(), re.MULTILINE)
+        re.findall(r"^\s*([A-Z_]+): \d+,$", PIPELINE_TS.read_text(), re.MULTILINE)
     )
 
     assert stages, "no graph stages found; the add_node scan needs updating"

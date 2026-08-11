@@ -39,6 +39,7 @@ const run: RunRecord = {
   run_id: "run-streaming",
   status: "running",
   start_time: "2026-08-09T12:00:00Z",
+  finished_at: null,
   workspace_path: "/runs/run-streaming",
   phase: "INITIALIZING",
   source_name: "source",
@@ -84,7 +85,7 @@ describe("run progress", () => {
     expect(MockWebSocket.instances[0].close).toHaveBeenCalledOnce()
   })
 
-  it("advances the six-stage pipeline and shows timestamped, auto-scrolling logs", () => {
+  it("advances the pipeline and shows timestamped stage events", () => {
     render(<RunDetail run={run} />)
     const socket = MockWebSocket.instances[0]
 
@@ -116,12 +117,12 @@ describe("run progress", () => {
       "data-status",
       "pending"
     )
+    // The focused stage is the one the run is on, so its events are on screen.
     expect(screen.getByText("Starting Filler...")).toBeVisible()
     const progressEntry = screen.getByText("Starting Filler...").closest("li")
     expect(
       progressEntry?.querySelector('time[datetime="2026-08-09T12:30:00Z"]')
     ).not.toBeNull()
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalled()
 
     socket.receive(
       event({
@@ -149,8 +150,177 @@ describe("run progress", () => {
     const stages = within(
       screen.getByRole("list", { name: "Workflow stages" })
     ).getAllByRole("listitem")
-    expect(stages).toHaveLength(6)
+    expect(stages).toHaveLength(5)
     expect(stages.every((stage) => stage.dataset.status === "completed")).toBe(true)
+  })
+
+  it("folds the re-review phase into Finalize, leaving five stages", () => {
+    render(<RunDetail run={run} />)
+
+    MockWebSocket.instances[0].receive(
+      event({ type: "phase_change", phase: "CODEX_REREVIEW", status: "active" })
+    )
+
+    const pipeline = screen.getByRole("list", { name: "Workflow stages" })
+    const stages = within(pipeline).getAllByRole("listitem")
+    expect(stages.map((stage) => stage.getAttribute("aria-label"))).toEqual([
+      "Scoping: completed",
+      "Filler: completed",
+      "Review: completed",
+      "Revision: completed",
+      "Finalize: active",
+    ])
+    expect(screen.getByText("step 5 of 5")).toBeVisible()
+    expect(within(pipeline).queryByText("Re-review")).not.toBeInTheDocument()
+  })
+
+  it("stops the clock at the moment the run finished", () => {
+    render(<RunDetail run={run} />)
+
+    MockWebSocket.instances[0].receive(
+      event(
+        { type: "completed", final_xlsx: "/runs/run-streaming/output/final.xlsx" },
+        // Half an hour after the run's own start_time.
+        "2026-08-09T12:30:00Z"
+      )
+    )
+
+    // Without the finish time the clock would still be counting from
+    // start_time to now, which is why it only ever looked right on reload.
+    expect(screen.getByText("30m 0s")).toBeVisible()
+  })
+
+  it("replays a finished run's recorded events instead of its dead socket", async () => {
+    const recorded: WorkflowEvent[] = [
+      event({ type: "phase_change", phase: "CLAUDE_FILL", status: "active" }),
+      event({ type: "progress", phase: "CLAUDE_FILL", message: "Resolved 142 cells" }),
+      event(
+        { type: "completed", final_xlsx: "/runs/run-streaming/output/final.xlsx" },
+        "2026-08-09T12:30:00Z"
+      ),
+    ]
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.endsWith("/events")) {
+          return new Response(JSON.stringify(recorded), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          })
+        }
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      })
+    )
+
+    render(<RunDetail run={{ ...run, status: "completed", phase: "FINALIZE" }} />)
+
+    // A finished run has nothing left to stream, so no socket is opened.
+    expect(MockWebSocket.instances).toHaveLength(0)
+    const pipeline = await screen.findByRole("list", { name: "Workflow stages" })
+    expect(fetch).toHaveBeenCalledWith("/api/runs/run-streaming/events")
+
+    fireEvent.click(within(pipeline).getByText("Filler"))
+    expect(screen.getByText("Resolved 142 cells")).toBeVisible()
+
+    fireEvent.click(screen.getByRole("button", { name: /^Event log/ }))
+    const log = await screen.findByRole("dialog", { name: "Event log" })
+    expect(within(log).getByText("CLAUDE_FILL started")).toBeVisible()
+    expect(within(log).getByText("Resolved 142 cells")).toBeVisible()
+  })
+
+  it("says so when a run's recorded log cannot be read", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ detail: "run log unreadable" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+    )
+
+    render(<RunDetail run={{ ...run, status: "cancelled", phase: "CLAUDE_FILL" }} />)
+
+    fireEvent.click(screen.getByRole("button", { name: /^Event log/ }))
+
+    expect(await screen.findByText("run log unreadable")).toBeVisible()
+  })
+
+  it("marks the current stage stopped when the operator cancels", () => {
+    render(<RunDetail run={run} />)
+
+    MockWebSocket.instances[0].receive(
+      event({ type: "phase_change", phase: "CLAUDE_FILL", status: "active" })
+    )
+    MockWebSocket.instances[0].receive(
+      event({ type: "failed", error: "Cancelled by operator", reason: "cancelled" })
+    )
+
+    const pipeline = screen.getByRole("list", { name: "Workflow stages" })
+    expect(within(pipeline).getByText("Filler").closest("li")).toHaveAttribute(
+      "data-status",
+      "stopped"
+    )
+    // A cancellation is not a failure, so no error card claims one.
+    expect(screen.getByText(/This run was cancelled early/)).toBeVisible()
+  })
+
+  it("keeps the pipeline beside the questions while a run is paused", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            round: 1,
+            placeholder_token: "round-1-placeholder",
+            questions: [{ id: "Q1", question: "What is one row?", type: "text" }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    )
+    act(() => useAppStore.getState().showRun(run))
+    render(<StoredRunDetail />)
+
+    MockWebSocket.instances[0].receive(
+      event({
+        type: "paused",
+        reason: "Scoping questions need answers",
+        questions_artifact: "/runs/run-streaming/artifacts/scoping_questions.json",
+      })
+    )
+
+    await screen.findByRole("heading", { name: "Scoping questions" })
+    const pipeline = screen.getByRole("list", { name: "Workflow stages" })
+    expect(within(pipeline).getByText("Scoping").closest("li")).toHaveAttribute(
+      "data-status",
+      "waiting"
+    )
+  })
+
+  it("keeps the whole record behind the event log", async () => {
+    render(<RunDetail run={run} />)
+
+    MockWebSocket.instances[0].receive(
+      event({ type: "phase_change", phase: "CLAUDE_FILL", status: "active" })
+    )
+    MockWebSocket.instances[0].receive(
+      event({ type: "progress", phase: "CODEX_REVIEW", message: "Reviewer started" })
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: /^Event log/ }))
+
+    const log = await screen.findByRole("dialog", { name: "Event log" })
+    // The focused stage shows its own slice; the log shows every stage's.
+    expect(within(log).getByText("Reviewer started")).toBeVisible()
+    expect(within(log).getByText("CLAUDE_FILL started")).toBeVisible()
+
+    fireEvent.click(within(log).getByRole("button", { name: "Close" }))
+    expect(screen.queryByRole("dialog", { name: "Event log" })).not.toBeInTheDocument()
   })
 
   it("offers Cancel only while running and updates detail state from the response", async () => {
@@ -187,11 +357,16 @@ describe("run progress", () => {
     async (status) => {
       vi.stubGlobal(
         "fetch",
-        vi.fn().mockResolvedValue(
-          new Response(JSON.stringify({ ...run, status: "running" }), {
-            status: 202,
-            headers: { "Content-Type": "application/json" },
-          })
+        vi.fn(async (input: RequestInfo | URL) =>
+          String(input).endsWith("/events")
+            ? new Response(JSON.stringify([]), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+              })
+            : new Response(JSON.stringify({ ...run, status: "running" }), {
+                status: 202,
+                headers: { "Content-Type": "application/json" },
+              })
         )
       )
       act(() => useAppStore.getState().showRun({ ...run, status }))
@@ -220,25 +395,28 @@ describe("run progress", () => {
     }
   )
 
-  it("replays the failing stage and error when a failed run detail mounts", () => {
+  it("replays the failing stage and error when a failed run detail mounts", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify([
+            event({ type: "phase_change", phase: "CODEX_REVIEW", status: "failed" }),
+            event({ type: "failed", error: "Reviewer timed out" }),
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    )
+
     render(<RunDetail run={{ ...run, status: "failed", phase: "CODEX_REVIEW" }} />)
 
-    expect(MockWebSocket.instances).toHaveLength(1)
-    MockWebSocket.instances[0].receive(
-      event({
-        type: "phase_change",
-        phase: "CODEX_REVIEW",
-        status: "failed",
-      })
-    )
-    MockWebSocket.instances[0].receive(
-      event({ type: "failed", error: "Reviewer timed out" })
-    )
-
-    const pipeline = screen.getByRole("list", { name: "Workflow stages" })
-    expect(within(pipeline).getByText("Review").closest("li")).toHaveAttribute(
-      "data-status",
-      "failed"
+    const pipeline = await screen.findByRole("list", { name: "Workflow stages" })
+    await waitFor(() =>
+      expect(within(pipeline).getByText("Review").closest("li")).toHaveAttribute(
+        "data-status",
+        "failed"
+      )
     )
     expect(screen.getAllByText("Reviewer timed out").length).toBeGreaterThan(0)
   })
@@ -271,6 +449,12 @@ describe("run progress", () => {
         }
         if (url.endsWith("/resume") && init?.method === "POST") {
           return resumeResponse
+        }
+        if (url.endsWith("/events") || url.endsWith("/artifacts")) {
+          return new Response(JSON.stringify([]), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          })
         }
         throw new Error(`Unexpected request: ${url}`)
       }

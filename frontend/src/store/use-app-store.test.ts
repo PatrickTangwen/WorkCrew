@@ -18,6 +18,7 @@ const pausedRun: RunRecord = {
   run_id: "run-paused",
   status: "paused",
   start_time: "2026-08-09T12:00:00Z",
+  finished_at: null,
   workspace_path: "/runs/run-paused",
   phase: "CLAUDE_SCOPE",
   source_name: "source-a",
@@ -56,8 +57,8 @@ it("applies retry to a terminal detail and its sidebar summary", async () => {
   apiMocks.resumeRun.mockResolvedValue({ ...failed, status: "running" })
   useAppStore.getState().showRun(failed)
   useAppStore.setState({
-    streamRunId: failed.run_id,
-    streamEvents: [
+    eventsRunId: failed.run_id,
+    runEvents: [
       {
         type: "failed",
         timestamp: "2026-08-09T12:01:00Z",
@@ -71,8 +72,8 @@ it("applies retry to a terminal detail and its sidebar summary", async () => {
   expect(apiMocks.resumeRun).toHaveBeenCalledWith(failed.run_id, {})
   expect(useAppStore.getState().currentRun?.status).toBe("running")
   expect(useAppStore.getState().runs[0].status).toBe("running")
-  expect(useAppStore.getState().streamRunId).toBeNull()
-  expect(useAppStore.getState().streamEvents).toEqual([])
+  expect(useAppStore.getState().eventsRunId).toBeNull()
+  expect(useAppStore.getState().runEvents).toEqual([])
 })
 
 it("does not apply a stale resume result after another run is selected", async () => {

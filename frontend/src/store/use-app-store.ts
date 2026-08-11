@@ -3,6 +3,7 @@ import { create } from "zustand"
 import {
   cancelRun as requestRunCancel,
   getScopingQuestions,
+  listRunEvents,
   resumeRun as requestRunResume,
   type RunRecord,
   type RunSummary,
@@ -35,8 +36,10 @@ type AppState = {
   runs: RunSummary[]
   historyStatus: "idle" | "loading" | "ready" | "error"
   historyError: string | null
-  streamRunId: string | null
-  streamEvents: WorkflowEvent[]
+  /** Whose events `runEvents` holds, from the socket or from the record. */
+  eventsRunId: string | null
+  runEvents: WorkflowEvent[]
+  eventsError: string | null
   streamStatus: "idle" | "connecting" | "connected" | "disconnected" | "error"
   streamError: string | null
   scoping: ScopingState
@@ -46,6 +49,7 @@ type AppState = {
   startHistoryLoad: () => void
   receiveRuns: (runs: RunSummary[]) => void
   failHistoryLoad: (message: string) => void
+  loadRunEvents: (runId: string) => Promise<void>
   connectRunStream: (runId: string) => void
   disconnectRunStream: () => void
   loadScopingQuestions: (runId: string) => Promise<void>
@@ -123,8 +127,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
   runs: [],
   historyStatus: "idle",
   historyError: null,
-  streamRunId: null,
-  streamEvents: [],
+  eventsRunId: null,
+  runEvents: [],
+  eventsError: null,
   streamStatus: "idle",
   streamError: null,
   scoping: emptyScopingState(),
@@ -152,6 +157,29 @@ export const useAppStore = create<AppState>()((set, get) => ({
     }),
   failHistoryLoad: (message) =>
     set({ historyStatus: "error", historyError: message }),
+  loadRunEvents: async (runId) => {
+    // A run that has stopped has no socket left to listen on, so its
+    // record on disk is the only thing that still knows what happened.
+    // Events already held for this run stay put while the record loads:
+    // a run that finishes under the operator's eyes reads from disk from
+    // then on, and must not blink back to an empty pipeline first.
+    set((state) => ({
+      eventsRunId: runId,
+      runEvents: state.eventsRunId === runId ? state.runEvents : [],
+      eventsError: null,
+    }))
+    try {
+      const events = await listRunEvents(runId)
+      if (get().eventsRunId === runId) set({ runEvents: events })
+    } catch (cause) {
+      if (get().eventsRunId === runId) {
+        set({
+          eventsError:
+            cause instanceof Error ? cause.message : "Unable to load the run log",
+        })
+      }
+    }
+  },
   connectRunStream: (runId) => {
     if (activeSocket !== null) {
       const previous = activeSocket
@@ -160,8 +188,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
     }
 
     set((state) => ({
-      streamRunId: runId,
-      streamEvents: state.streamRunId === runId ? state.streamEvents : [],
+      eventsRunId: runId,
+      // The socket replays the run's history on subscribe, so anything
+      // already held for this run would arrive a second time.
+      runEvents: [],
+      eventsError: null,
       streamStatus: "connecting",
       streamError: null,
       scoping: scopingStateForRun(state.scoping, runId),
@@ -188,13 +219,13 @@ export const useAppStore = create<AppState>()((set, get) => ({
       const details = workflowEventDetails(event)
 
       set((state) => {
-        if (state.streamRunId !== runId) return state
+        if (state.eventsRunId !== runId) return state
         const currentRun =
           state.currentRun?.run_id === runId
             ? runAfterEvent(state.currentRun, event)
             : state.currentRun
         return {
-          streamEvents: [...state.streamEvents, event],
+          runEvents: [...state.runEvents, event],
           currentRun,
           runs: currentRun ? withRunSummary(state.runs, currentRun) : state.runs,
         }
@@ -339,8 +370,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
           runAction: emptyRunActionState(),
           ...(selected
             ? {
-                streamRunId: null,
-                streamEvents: [],
+                eventsRunId: null,
+                runEvents: [],
+                eventsError: null,
                 streamStatus: "idle" as const,
                 streamError: null,
               }

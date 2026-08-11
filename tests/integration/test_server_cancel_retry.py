@@ -144,6 +144,9 @@ def test_retry_resumes_a_cancelled_run_from_its_checkpoint(inputs):
         assert runtime.started.wait(timeout=1)
         assert client.post(f"/api/runs/{created['run_id']}/cancel").status_code == 200
 
+        cancelled_at = client.get(f"/api/runs/{created['run_id']}").json()[
+            "finished_at"
+        ]
         retried = client.post(
             f"/api/runs/{created['run_id']}/resume",
             json={"answers": {}},
@@ -151,6 +154,10 @@ def test_retry_resumes_a_cancelled_run_from_its_checkpoint(inputs):
 
         assert retried.status_code == 202
         assert retried.json()["status"] == "running"
+        # A run that is going again has not finished; keeping the cancelled
+        # run's ending would freeze the clock on the wrong total.
+        assert cancelled_at is not None
+        assert retried.json()["finished_at"] is None
         with client.websocket_connect(f"/ws/runs/{created['run_id']}") as websocket:
             events = read_until_terminal(websocket)
 
@@ -160,6 +167,8 @@ def test_retry_resumes_a_cancelled_run_from_its_checkpoint(inputs):
         )
         assert runtime.filler_calls == 2
         assert audit_status(inputs["runs_root"], created["run_id"]) == "completed"
+        finished = client.get(f"/api/runs/{created['run_id']}").json()["finished_at"]
+        assert finished is not None and finished > cancelled_at
 
 
 def test_retry_loads_a_failed_historical_run_and_resumes_its_checkpoint(inputs):
