@@ -28,6 +28,29 @@ import {
 import { formatBytes } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
+function userFacingArtifacts(items: ArtifactSummary[]) {
+  const byName = new Map(items.map((artifact) => [artifact.name, artifact]))
+  const finalReview = byName.has("review_explorer_v2.html")
+    ? "review_explorer_v2.html"
+    : "review_explorer.html"
+  const finalReviewZh = byName.has("review_explorer_zh_v2.html")
+    ? "review_explorer_zh_v2.html"
+    : "review_explorer_zh.html"
+  const displayOrder = [
+    "final.xlsx",
+    "human_review.md",
+    finalReview,
+    finalReviewZh,
+    "run_summary.md",
+    "evaluation.md",
+  ]
+
+  return displayOrder.flatMap((name) => {
+    const artifact = byName.get(name)
+    return artifact ? [artifact] : []
+  })
+}
+
 function TextArtifactPreview({
   artifact,
   runId,
@@ -192,12 +215,13 @@ function ArtifactViewer({ runId }: { runId: string }) {
     void listArtifacts(runId)
       .then((items) => {
         if (cancelled) return
-        setArtifacts(items)
+        const visibleItems = userFacingArtifacts(items)
+        setArtifacts(visibleItems)
         setError(null)
         setSelectedName((current) =>
-          items.some((artifact) => artifact.name === current)
+          visibleItems.some((artifact) => artifact.name === current)
             ? current
-            : (items[0]?.name ?? null)
+            : (visibleItems[0]?.name ?? null)
         )
       })
       .catch((cause) => {
