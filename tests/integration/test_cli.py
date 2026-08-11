@@ -74,6 +74,23 @@ def test_run_with_preprovided_answers_completes_without_pause(inputs, capsys):
     assert "[workflow] Run complete." in err
 
 
+def test_run_accepts_a_jpeg_task_image(inputs):
+    image = inputs["source"].parent / "layout.jpeg"
+    image.write_bytes(b"jpeg fixture")
+    args = run_args(inputs) + [
+        "--scoping-answers",
+        str(inputs["scoping_answers"]),
+        "--task-image",
+        str(image),
+    ]
+
+    assert main(args) == 0
+
+    workspace = next(inputs["runs_root"].iterdir())
+    copied = workspace / "input/task_images/task-image-1.jpeg"
+    assert copied.read_bytes() == b"jpeg fixture"
+
+
 def test_resume_unknown_run_id_reports_error_and_nonzero_exit(inputs, capsys):
     inputs["runs_root"].mkdir()
     exit_code = main(

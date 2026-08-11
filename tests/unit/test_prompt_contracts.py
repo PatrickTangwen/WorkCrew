@@ -86,3 +86,10 @@ def test_independent_reviewer_keeps_conflicts_open_for_human_judgment():
     assert (
         "blank" in reviewer.lower() and "workbook value is correct" in reviewer.lower()
     )
+
+
+def test_revision_roles_keep_the_operator_task_and_images_in_scope():
+    for name in ("revision_independent.md", "re_review.md"):
+        text = prompt(name)
+        assert "input/task.md" in text
+        assert "attached images" in text.lower()

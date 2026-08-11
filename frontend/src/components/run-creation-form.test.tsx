@@ -123,6 +123,22 @@ describe("RunCreationForm", () => {
     expect(vi.mocked(createRun).mock.calls[0][0].agents).toBeNull()
   })
 
+  it("blocks the run and offers retry when agent options cannot load", async () => {
+    vi.mocked(listAgentOptions)
+      .mockRejectedValueOnce(new Error("agent options unavailable"))
+      .mockResolvedValueOnce(agentOptions)
+    render(<RunCreationForm onCreated={vi.fn()} />)
+    await fillRequiredInputs()
+
+    expect(await screen.findByText("agent options unavailable")).toBeVisible()
+    expect(screen.getByRole("button", { name: "Start run" })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry agent settings" }))
+
+    await screen.findByLabelText("Review effort")
+    expect(screen.getByRole("button", { name: "Start run" })).toBeEnabled()
+  })
+
   it("starts a run from two paths and a task, with no rules", async () => {
     const onCreated = vi.fn()
     render(<RunCreationForm onCreated={onCreated} />)
@@ -149,7 +165,7 @@ describe("RunCreationForm", () => {
     })
   })
 
-  it("names the run when one is given, and previews the id it produces", async () => {
+  it("sends the run name without predicting the server-owned id", async () => {
     const onCreated = vi.fn()
     render(<RunCreationForm onCreated={onCreated} />)
     await fillRequiredInputs()
@@ -157,8 +173,7 @@ describe("RunCreationForm", () => {
     fireEvent.change(screen.getByLabelText("Run name"), {
       target: { value: "Charity 2015 review" },
     })
-    // The preview is the id stem the server will slugify the name into.
-    expect(screen.getByText(/charity-2015-review/)).toBeInTheDocument()
+    expect(screen.queryByText(/charity-2015-review/)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Start run" }))
 
@@ -166,11 +181,14 @@ describe("RunCreationForm", () => {
     expect(vi.mocked(createRun).mock.calls[0][0].name).toBe("Charity 2015 review")
   })
 
-  it("falls back to the source folder for the id when unnamed", async () => {
+  it("explains how an unnamed run is identified", async () => {
     render(<RunCreationForm onCreated={vi.fn()} />)
     await selectPath("Source folder input", "/home/operator/Charity Reports")
 
-    expect(screen.getByText(/charity-reports/)).toBeInTheDocument()
+    expect(
+      screen.getByText("Without a name, the source folder names the run.")
+    ).toBeVisible()
+    expect(screen.queryByText(/charity-reports/)).not.toBeInTheDocument()
   })
 
   it("carries images pasted into the task box, and lets them be removed", async () => {

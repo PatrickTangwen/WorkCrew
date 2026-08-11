@@ -40,7 +40,7 @@ from workflow_app.server import DEFAULT_UI_PORT, run_ui
 from workflow_app.workbook.outline import build_outline
 from workflow_app.workflow.engine import resume_workflow, run_workflow
 from workflow_app.workspace import (
-    IMAGE_SUFFIXES,
+    IMAGE_FILE_SUFFIXES,
     RunInputs,
     TaskImage,
     Workspace,
@@ -86,7 +86,7 @@ DEFAULT_CLAUDE_MODEL = DEFAULT_MODELS[CLAUDE]
 DEFAULT_CODEX_MODEL = DEFAULT_MODELS[CODEX]
 DEFAULT_CODEX_EFFORT = DEFAULT_EFFORTS[CODEX]
 CLAUDE_EFFORT_CHOICES = EFFORT_CHOICES[CLAUDE]
-SUPPORTED_IMAGE_SUFFIXES = frozenset(IMAGE_SUFFIXES.values())
+SUPPORTED_IMAGE_SUFFIXES = IMAGE_FILE_SUFFIXES
 CODEX_EFFORT_CHOICES = EFFORT_CHOICES[CODEX]
 
 
@@ -95,8 +95,7 @@ def role_setting(value):
     role, separator, setting = value.partition("=")
     if not separator or not role or not setting:
         raise argparse.ArgumentTypeError(
-            f"expected role=value, got {value!r};"
-            f" roles are {sorted(ROLE_RUNTIMES)}"
+            f"expected role=value, got {value!r}; roles are {sorted(ROLE_RUNTIMES)}"
         )
     if role not in ROLE_RUNTIMES:
         raise argparse.ArgumentTypeError(
@@ -146,9 +145,7 @@ def recorded_agent_config(args):
     """The agent config a run was started with, for `resume`."""
     if args.command != "resume":
         return None
-    return read_agent_config(
-        Workspace(Path(args.runs_root) / args.run_id).agents_json
-    )
+    return read_agent_config(Workspace(Path(args.runs_root) / args.run_id).agents_json)
 
 
 def ui_port(value):

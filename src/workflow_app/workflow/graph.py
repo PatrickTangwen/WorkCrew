@@ -877,11 +877,19 @@ def build_graph(execution, audit, checkpointer):
         # is written after the run is closed and before the export that
         # carries it out to the operator.
         _write_run_summary(workspace, audit, state["run_id"])
-        destination = workspace.export_deliverables(
-            inputs.source,
-            state["run_id"],
-            [entry.path for entry in deliverable_entries(workspace.root).values()],
-        )
+        try:
+            destination = workspace.export_deliverables(
+                inputs.source,
+                state["run_id"],
+                [entry.path for entry in deliverable_entries(workspace.root).values()],
+            )
+        except BaseException:
+            # Completion includes publishing the deliverables. Keep the
+            # durable summary consistent when that final side effect fails;
+            # the engine will preserve the failed checkpoint for retry.
+            audit.record_run_finished(state["run_id"], "failed")
+            _write_run_summary(workspace, audit, state["run_id"])
+            raise
         progress.emit(f"Deliverables exported to {destination}")
 
     def route_unresolved(state):

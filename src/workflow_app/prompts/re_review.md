@@ -14,6 +14,8 @@ Your working directory is an isolated run workspace. Read
 rebutted cell it carries your original finding and the rebuttal
 decision with its evidence and justification. Then verify against:
 
+- `input/task.md` and its attached images — the operator's statement of
+  intent, which still governs the target workbook during re-review;
 - `input/sources/` — re-open the original source documents yourself;
   do not take either side's account at face value.
 - `input/rules/` — the extraction rules; empty when the operator

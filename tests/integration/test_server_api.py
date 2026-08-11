@@ -106,6 +106,26 @@ def test_run_api_executes_the_real_engine_with_fake_runtimes(inputs):
     ]
 
 
+def test_run_api_rejects_a_runs_root_inside_the_source_before_writing(inputs):
+    nested_runs_root = inputs["source"] / "runs"
+    app = create_app(
+        inputs["source"].parent / "missing-static",
+        options=ServerOptions(runs_root=nested_runs_root),
+    )
+    payload = {
+        "source": str(inputs["source"]),
+        "workbook": str(inputs["workbook"]),
+        "task": inputs["task"],
+        "rules_file": str(inputs["rules_file"]),
+    }
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post("/api/runs", json=payload)
+
+    assert response.status_code == 422
+    assert not nested_runs_root.exists()
+
+
 def test_resume_api_writes_answers_and_restarts_the_real_engine(inputs):
     runtime = FakeAgentRuntime(
         {
@@ -412,9 +432,10 @@ def test_pasted_images_reach_the_workspace_and_the_task(inputs):
     image = workspace / "input" / "task_images" / "task-image-1.png"
     assert image.read_bytes() == b"\x89PNG fake"
     # Named in the task the agents read, not just dropped on disk.
-    assert "input/task_images/task-image-1.png" in (
-        workspace / "input" / "task.md"
-    ).read_text()
+    assert (
+        "input/task_images/task-image-1.png"
+        in (workspace / "input" / "task.md").read_text()
+    )
 
 
 def test_an_unsupported_pasted_type_is_rejected(inputs):

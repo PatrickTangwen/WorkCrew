@@ -1,4 +1,4 @@
-"""Unit tests for the Claude Code adapter's process invocation (ADR 0017).
+"""Unit tests for the Claude Code adapter invocation (ADRs 0017 and 0038).
 
 The adapter's argv encodes policy decisions that nothing else enforces:
 the permission mode a headless run may use, structured-output mode, and
@@ -24,9 +24,7 @@ def launch(monkeypatch):
     def fake_run_process(argv, **kwargs):
         calls.append({"argv": argv, **kwargs})
         payload = {
-            "structured_output": ExtractionResult(
-                proposals=[], merges=[]
-            ).model_dump()
+            "structured_output": ExtractionResult(proposals=[], merges=[]).model_dump()
         }
         return subprocess.CompletedProcess(
             argv, 0, stdout=json.dumps(payload), stderr=""
@@ -46,7 +44,7 @@ def test_headless_runs_use_the_non_blocking_auto_permission_mode(launch, tmp_pat
 
     argv = launch[0]["argv"]
     # A mode that can prompt would hang a --print run; bypassPermissions
-    # would switch the CLI's own guardrails off entirely (ADR 0017).
+    # would switch the CLI's own guardrails off entirely (ADR 0038).
     assert argv[argv.index("--permission-mode") + 1] == "auto"
     assert "bypassPermissions" not in argv
 

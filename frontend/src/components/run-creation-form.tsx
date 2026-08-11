@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { FileSpreadsheet, Folder, Play, X } from "lucide-react"
 
 import { AgentSettings } from "@/components/agent-settings"
@@ -54,16 +54,6 @@ const paths: Array<{
   },
 ]
 
-// Preview only: the server slugifies the run name the same way when it
-// mints the id (engine.slugify), and it owns the final answer.
-const slugPreview = (text: string) =>
-  text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 48)
-    .replace(/^-|-$/g, "")
-
 const rulesModes: Array<{ mode: RulesMode; label: string }> = [
   { mode: "none", label: "No rules" },
   { mode: "text", label: "Describe them" },
@@ -84,8 +74,13 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([])
+  const [agentOptionsStatus, setAgentOptionsStatus] = useState<
+    "loading" | "ready" | "error"
+  >("loading")
+  const [agentOptionsError, setAgentOptionsError] = useState<string | null>(null)
   const [agents, setAgents] = useState<Record<string, AgentSelection>>({})
   const [images, setImages] = useState<TaskImage[]>([])
+  const agentOptionsRequestRef = useRef(0)
 
   // Object URLs back the thumbnails. Removing one image revokes its own
   // URL; the rest are revoked when the form goes away. Keying this on
@@ -121,25 +116,32 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
     })
   }
 
-  useEffect(() => {
-    // The server owns the roles, the defaults and the effort
-    // vocabularies; the form only renders what it is told. A failure
-    // here hides the section rather than blocking the run.
-    let ignore = false
-    void listAgentOptions()
-      .then((options) => {
-        if (!ignore) setAgentOptions(options)
-      })
-      .catch(() => {})
-    return () => {
-      ignore = true
+  const loadAgentSettings = useCallback(async () => {
+    const request = ++agentOptionsRequestRef.current
+    setAgentOptionsStatus("loading")
+    setAgentOptionsError(null)
+    try {
+      const options = await listAgentOptions()
+      if (request !== agentOptionsRequestRef.current) return
+      setAgentOptions(options)
+      setAgentOptionsStatus("ready")
+    } catch (cause) {
+      if (request !== agentOptionsRequestRef.current) return
+      setAgentOptionsError(
+        cause instanceof Error ? cause.message : "Unable to load agent settings"
+      )
+      setAgentOptionsStatus("error")
     }
   }, [])
 
-  // The name leads the id; without one the source folder names the run,
-  // and a name with nothing to slugify falls back the same way.
-  const idStem =
-    slugPreview(name) || slugPreview(values.source.split("/").pop() ?? "")
+  useEffect(() => {
+    // The server owns the roles, defaults and effort vocabularies. Do not
+    // silently run with defaults when that contract could not be loaded.
+    void loadAgentSettings()
+    return () => {
+      agentOptionsRequestRef.current += 1
+    }
+  }, [loadAgentSettings])
 
   const chosenAgents = Object.fromEntries(
     Object.entries(agents).filter(
@@ -151,6 +153,7 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
     Boolean(values.source) &&
     Boolean(values.workbook) &&
     task.trim().length > 0 &&
+    agentOptionsStatus === "ready" &&
     (rulesMode !== "text" || rulesText.trim().length > 0) &&
     (rulesMode !== "file" || Boolean(rulesFile))
 
@@ -302,10 +305,7 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
                 className="mt-3 w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
               />
               <p className="mt-2 text-xs text-muted-foreground">
-                Run id:{" "}
-                <span className="font-mono">
-                  {idStem || "run"}-<span aria-label="date and time">MMDD-HHMM</span>
-                </span>
+                Without a name, the source folder names the run.
               </p>
             </div>
           </CardContent>
@@ -443,13 +443,33 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
           </CardContent>
 
           <CardContent>
-            <AgentSettings
-              options={agentOptions}
-              selections={agents}
-              onChange={(role, selection) =>
-                setAgents((current) => ({ ...current, [role]: selection }))
-              }
-            />
+            {agentOptionsStatus === "ready" ? (
+              <AgentSettings
+                options={agentOptions}
+                selections={agents}
+                onChange={(role, selection) =>
+                  setAgents((current) => ({ ...current, [role]: selection }))
+                }
+              />
+            ) : agentOptionsStatus === "loading" ? (
+              <p className="text-sm text-muted-foreground" role="status">
+                Loading agent settings…
+              </p>
+            ) : (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+                <p className="text-sm text-destructive" role="alert">
+                  {agentOptionsError}
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void loadAgentSettings()}
+                >
+                  Retry agent settings
+                </Button>
+              </div>
+            )}
           </CardContent>
 
           <div className="flex flex-col gap-3 border-t bg-muted/20 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">

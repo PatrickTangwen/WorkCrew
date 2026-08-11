@@ -54,6 +54,8 @@ class TwoResumeWaiters:
 
 
 def run_payload(home):
+    (home / "source").mkdir(exist_ok=True)
+    (home / "template.xlsx").touch()
     return {
         "source": str(home / "source"),
         "workbook": str(home / "template.xlsx"),

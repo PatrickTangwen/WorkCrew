@@ -96,8 +96,7 @@ def build_agent_config(selections=None, base=None):
     for role, selection in (selections or {}).items():
         if role not in config:
             raise ValueError(
-                f"unknown agent role {role!r};"
-                f" known roles are {sorted(ROLE_RUNTIMES)}"
+                f"unknown agent role {role!r}; known roles are {sorted(ROLE_RUNTIMES)}"
             )
         current = config[role]
         model = selection.get("model") if selection else None

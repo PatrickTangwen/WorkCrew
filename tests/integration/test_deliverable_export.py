@@ -8,16 +8,18 @@ on the same folder ingests.
 import json
 from pathlib import Path
 
+import pytest
+
 from tests.integration.conftest import scoping_fixture
 from workflow_app.artifacts import deliverable_entries
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.workflow.engine import run_workflow
-from workflow_app.workspace import OUTPUT_DIR_NAME, RunInputs
+from workflow_app.workspace import OUTPUT_DIR_NAME, RunInputs, Workspace
 
 CONTRACT_FIXTURES = Path(__file__).parent.parent / "fixtures" / "contracts"
 
 
-def start_run(inputs):
+def start_run(inputs, *, runs_root=None, run_id=None):
     proposal = json.loads((CONTRACT_FIXTURES / "cell_proposal.json").read_text())
     outputs = {
         "scoping": scoping_fixture(),
@@ -42,8 +44,9 @@ def start_run(inputs):
             rules_file=inputs["rules_file"],
             scoping_answers=inputs["scoping_answers"],
         ),
-        runs_root=inputs["runs_root"],
+        runs_root=runs_root or inputs["runs_root"],
         runtimes={role: fake for role in outputs},
+        run_id=run_id,
     )
 
 
@@ -77,6 +80,34 @@ def test_each_run_exports_into_its_own_directory(inputs):
         assert (export_dir(inputs, state) / "final.xlsx").is_file()
 
 
+def test_an_existing_run_export_is_never_overwritten(inputs):
+    first = start_run(inputs)
+    exported_workbook = export_dir(inputs, first) / "final.xlsx"
+    exported_workbook.write_bytes(b"prior run output")
+
+    with pytest.raises(FileExistsError, match="deliverable export"):
+        start_run(
+            inputs,
+            runs_root=inputs["source"].parent / "other-runs",
+            run_id=first["run_id"],
+        )
+
+    assert exported_workbook.read_bytes() == b"prior run output"
+
+
+def test_an_export_failure_leaves_a_failed_run_summary(inputs, monkeypatch):
+    def fail_export(*_args, **_kwargs):
+        raise OSError("export unavailable")
+
+    monkeypatch.setattr(Workspace, "export_deliverables", fail_export)
+
+    with pytest.raises(OSError, match="export unavailable"):
+        start_run(inputs)
+
+    workspace = next(inputs["runs_root"].iterdir())
+    assert "Status: failed" in (workspace / "artifacts/run_summary.md").read_text()
+
+
 def test_a_later_run_does_not_ingest_the_previous_run_deliverables(inputs):
     first = start_run(inputs)
     assert export_dir(inputs, first).is_dir()
@@ -92,9 +123,9 @@ def test_a_later_run_does_not_ingest_the_previous_run_deliverables(inputs):
             Path(inputs["runs_root"]) / second["run_id"] / "artifacts" / "manifest.json"
         ).read_text()
     )
-    assert not any(
-        OUTPUT_DIR_NAME in entry["path"] for entry in manifest["files"]
-    ), "a previous run's deliverables must not appear as source documents"
+    assert not any(OUTPUT_DIR_NAME in entry["path"] for entry in manifest["files"]), (
+        "a previous run's deliverables must not appear as source documents"
+    )
 
 
 def test_a_source_directory_named_like_the_export_is_still_ingested(inputs):

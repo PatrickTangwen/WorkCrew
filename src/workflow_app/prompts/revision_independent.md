@@ -16,6 +16,10 @@ Read `agent_outputs/revision/inputs.json` first. It contains the findings,
 the original proposals and provenance for those cells, the mutation
 allowlist, and a pointer to the local rules.
 
+Read `input/task.md` and all attached images it lists. They are the
+operator's statement of intent for the workbook and remain in force during
+revision; use the original sources below as evidence for factual values.
+
 Use the original files under `input/sources/` as the source of truth. Use
 `artifacts/scoping_answers.md`, `artifacts/manifest.json`, and
 `artifacts/workbook_schema.json` to identify the row, source folder, field,

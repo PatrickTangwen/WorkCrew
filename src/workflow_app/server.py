@@ -248,7 +248,10 @@ class RunCoordinator:
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-        record = self._new_record(inputs)
+        try:
+            record = self._new_record(inputs)
+        except (FileNotFoundError, NotADirectoryError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         tracked = TrackedRun(record)
         self.runs[record.run_id] = tracked
         response = record.model_dump()
@@ -356,9 +359,7 @@ class RunCoordinator:
 
     def _new_record(self, inputs):
         runs_root = Path(self.options.runs_root)
-        run_id = new_run_id(
-            name=inputs.name, source=inputs.source, runs_root=runs_root
-        )
+        run_id = new_run_id(name=inputs.name, source=inputs.source, runs_root=runs_root)
         return RunRecord(
             run_id=run_id,
             status="running",
@@ -377,6 +378,7 @@ class RunCoordinator:
             runs_root=Path(self.options.runs_root),
             runtimes=self._runtimes(agents),
             run_id=tracked.record.run_id,
+            workspace_reserved=True,
             agents=agents,
             progress_callback=progress_callback,
             cancellation=tracked.cancellation,

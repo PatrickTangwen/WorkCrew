@@ -5,6 +5,8 @@ so these pin both halves of the contract: it reads as something, and it
 stays safe and unique.
 """
 
+from concurrent.futures import ThreadPoolExecutor
+
 from workflow_app.workflow.engine import SLUG_MAX, new_run_id, slugify
 
 
@@ -38,14 +40,45 @@ def test_long_names_are_capped():
 
 
 def test_a_taken_id_gets_the_next_free_suffix(tmp_path):
-    first = new_run_id(name="daily", source="/data/inbox", runs_root=tmp_path)
-    (tmp_path / first).mkdir()
-    second = new_run_id(name="daily", source="/data/inbox", runs_root=tmp_path)
-    (tmp_path / second).mkdir()
-    third = new_run_id(name="daily", source="/data/inbox", runs_root=tmp_path)
+    source = tmp_path / "inbox"
+    source.mkdir()
+    runs_root = tmp_path / "runs"
+    first = new_run_id(name="daily", source=source, runs_root=runs_root)
+    second = new_run_id(name="daily", source=source, runs_root=runs_root)
+    third = new_run_id(name="daily", source=source, runs_root=runs_root)
 
     assert second == f"{first}-2"
     assert third == f"{first}-3"
+
+
+def test_concurrent_run_id_claims_are_unique(tmp_path):
+    source = tmp_path / "inbox"
+    source.mkdir()
+    runs_root = tmp_path / "runs"
+
+    def claim(_index):
+        return new_run_id(name="daily", source=source, runs_root=runs_root)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        run_ids = list(pool.map(claim, range(8)))
+
+    assert len(set(run_ids)) == 8
+    assert all((runs_root / run_id).is_dir() for run_id in run_ids)
+
+
+def test_concurrent_claims_are_unique_across_runs_roots(tmp_path):
+    source = tmp_path / "inbox"
+    source.mkdir()
+    roots = [tmp_path / f"runs-{index}" for index in range(8)]
+
+    def claim(runs_root):
+        return new_run_id(name="daily", source=source, runs_root=runs_root)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        run_ids = list(pool.map(claim, roots))
+
+    assert len(set(run_ids)) == 8
+    assert all((root / run_id).is_dir() for root, run_id in zip(roots, run_ids))
 
 
 def test_an_unnamed_run_never_reads_as_none():

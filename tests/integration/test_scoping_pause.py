@@ -212,6 +212,38 @@ def test_resume_continues_into_extraction_and_completes(inputs):
     assert stages[-1] == ("FINALIZE", "completed")
 
 
+def test_resume_from_another_cwd_exports_to_the_original_relative_source(
+    inputs, monkeypatch
+):
+    start_dir = inputs["source"].parent
+    monkeypatch.chdir(start_dir)
+    paused = run_workflow(
+        inputs=RunInputs(
+            source=Path("source_documents"),
+            workbook=Path("template.xlsx"),
+            task=inputs["task"],
+            rules_file=Path("rules.txt"),
+        ),
+        runs_root=Path("runs"),
+        runtimes=make_runtimes(),
+    )
+    workspace = inputs["runs_root"] / paused["run_id"]
+    (workspace / "artifacts/scoping_answers.md").write_text(ANSWERS_TEXT)
+
+    resume_dir = start_dir / "resume-from-here"
+    resume_dir.mkdir()
+    monkeypatch.chdir(resume_dir)
+    resume_workflow(
+        run_id=paused["run_id"],
+        runs_root=inputs["runs_root"],
+        runtimes=make_runtimes(scoping=SCOPING_DONE),
+    )
+
+    expected = inputs["source"] / "workcrew-output" / paused["run_id"]
+    assert (expected / "final.xlsx").is_file()
+    assert not (resume_dir / "source_documents").exists()
+
+
 def test_resume_passes_answers_to_filler_and_audits_them(inputs):
     paused = start_paused_run(inputs)
     workspace = workspace_of(inputs, paused)

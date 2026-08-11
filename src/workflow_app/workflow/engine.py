@@ -41,7 +41,7 @@ def slugify(text):
 
 
 def new_run_id(name=None, source=None, runs_root=None):
-    """A readable, unique run id: <name-or-source-folder>-<MMDD-HHMM>.
+    """Claim a readable, unique run id: <name-or-source-folder>-<MMDD-HHMM>.
 
     The operator's run name leads when they gave one; otherwise the
     source folder names the run. Both can slugify to nothing (a name
@@ -56,13 +56,50 @@ def new_run_id(name=None, source=None, runs_root=None):
     base = f"{stem}-{time.strftime('%m%d-%H%M')}"
     if runs_root is None:
         return base
-    # Same name within the same minute; the server admits one run at a
-    # time, so checking the directory is enough to keep ids unique.
+    source, root = _claim_roots(source, runs_root)
+    root.mkdir(parents=True, exist_ok=True)
     candidate, attempt = base, 2
-    while (Path(runs_root) / candidate).exists():
-        candidate = f"{base}-{attempt}"
-        attempt += 1
-    return candidate
+    while True:
+        if _claim_workspace(candidate, source, root) is None:
+            candidate = f"{base}-{attempt}"
+            attempt += 1
+            continue
+        return candidate
+
+
+def _claim_roots(source, runs_root):
+    """Resolve and validate both roots before a claim writes either one."""
+    if source is None:
+        raise ValueError("source is required when claiming a run id")
+    source = Path(source).resolve(strict=True)
+    if not source.is_dir():
+        raise NotADirectoryError(f"source folder not found: {source}")
+    runs_root = Path(runs_root).resolve()
+    if runs_root.is_relative_to(source):
+        raise ValueError(
+            f"the runs root {runs_root} would sit inside the source folder"
+            f" {source}, so copying the sources would recurse."
+            " Choose a runs root outside the source folder."
+        )
+    return source, runs_root
+
+
+def _claim_workspace(run_id, source, runs_root):
+    """Atomically claim both identities, or return None without a claim."""
+    workspace = Workspace((runs_root / run_id).resolve())
+    try:
+        workspace.root.mkdir()
+    except FileExistsError:
+        return None
+    try:
+        workspace.reserve_export(source, run_id)
+    except FileExistsError:
+        workspace.root.rmdir()
+        return None
+    except BaseException:
+        workspace.root.rmdir()
+        raise
+    return workspace
 
 
 @dataclass(frozen=True)
@@ -82,6 +119,7 @@ def run_workflow(
     runtimes,
     *,
     run_id=None,
+    workspace_reserved=False,
     agents=None,
     progress_callback=None,
     cancellation=None,
@@ -90,18 +128,22 @@ def run_workflow(
     cancellation = cancellation or CancellationToken()
     try:
         inputs.validate()
+        inputs = inputs.resolved()
+        _, runs_root = _claim_roots(inputs.source, runs_root)
         # Fail fast on a malformed review policy — before the workspace
         # exists (tickets #3, #11). The schema is no longer checkable here:
         # the scoping pass derives it (ADR 0032), so its own validation and
         # the strict-fields cross-check moved into the LOAD_SCHEMA node.
         load_review_policy(inputs.review_policy)
 
-        run_id = run_id or new_run_id(
-            name=inputs.name, source=inputs.source, runs_root=runs_root
-        )
+        generated_run_id = run_id is None
+        if generated_run_id:
+            run_id = new_run_id(
+                name=inputs.name, source=inputs.source, runs_root=runs_root
+            )
         # Resolved so the paths persisted into checkpointed state stay valid
         # when the run is resumed from a different working directory.
-        workspace = Workspace((Path(runs_root) / run_id).resolve())
+        workspace = Workspace((runs_root / run_id).resolve())
         # A workspace inside the source folder makes copy_inputs copy the
         # sources into their own subdirectory, recursing until the OS
         # refuses the path length. Caught here, before anything is written.
@@ -111,6 +153,18 @@ def run_workflow(
                 f" folder {inputs.source}, so copying the sources would recurse."
                 " Choose a runs root outside the source folder."
             )
+        if generated_run_id or workspace_reserved:
+            if not workspace.root.is_dir():
+                raise FileNotFoundError(
+                    f"reserved run workspace is missing: {workspace.root}"
+                )
+        else:
+            runs_root.mkdir(parents=True, exist_ok=True)
+            claimed = _claim_workspace(run_id, inputs.source, runs_root)
+            if claimed is None:
+                raise FileExistsError(
+                    f"run id or deliverable export is already in use: {run_id}"
+                )
         workspace.create_layout()
         # Recorded with the run's inputs: which model and effort each
         # role ran on is part of what produced these results, and a
@@ -121,7 +175,7 @@ def run_workflow(
             workspace=workspace,
             inputs=inputs,
             runtimes=runtimes,
-            runs_root=Path(runs_root),
+            runs_root=runs_root,
             run_id=run_id,
             progress=progress,
             cancellation=cancellation,

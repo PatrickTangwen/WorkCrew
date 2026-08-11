@@ -7,12 +7,13 @@ folder, under OUTPUT_DIR_NAME (ADR 0035).
 """
 
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 # Deliverables are exported to <source>/<OUTPUT_DIR_NAME>/<run_id>/, so
 # the operator finds the results beside the documents they came from.
 OUTPUT_DIR_NAME = "workcrew-output"
+EXPORT_RESERVATION_DIR_NAME = ".reservations"
 
 
 def validate_task_and_rules(task, rules_text, rules_file):
@@ -36,6 +37,7 @@ IMAGE_SUFFIXES = {
     "image/gif": ".gif",
     "image/webp": ".webp",
 }
+IMAGE_FILE_SUFFIXES = frozenset((*IMAGE_SUFFIXES.values(), ".jpeg"))
 
 
 @dataclass(frozen=True)
@@ -82,6 +84,21 @@ class RunInputs:
                 f"review policy file not found: {self.review_policy}"
             )
 
+    def resolved(self):
+        """Pin filesystem inputs so checkpoints survive a changed cwd."""
+        return replace(
+            self,
+            source=self.source.resolve(),
+            workbook=self.workbook.resolve(),
+            rules_file=None if self.rules_file is None else self.rules_file.resolve(),
+            scoping_answers=None
+            if self.scoping_answers is None
+            else self.scoping_answers.resolve(),
+            review_policy=None
+            if self.review_policy is None
+            else self.review_policy.resolve(),
+        )
+
 
 SUBDIRS = (
     "input/sources",
@@ -125,9 +142,7 @@ class Workspace:
 
     def task_image_paths(self):
         """The task's images, in the order the operator pasted them."""
-        return sorted(
-            path for path in self.task_images_dir.glob("*") if path.is_file()
-        )
+        return sorted(path for path in self.task_images_dir.glob("*") if path.is_file())
 
     @property
     def agents_json(self):
@@ -307,6 +322,53 @@ class Workspace:
         if inputs.review_policy is not None:
             shutil.copy2(inputs.review_policy, self.review_policy_yaml)
 
+    @staticmethod
+    def _export_root(source):
+        source = Path(source).resolve(strict=True)
+        if not source.is_dir():
+            raise NotADirectoryError(
+                f"source folder is no longer a directory: {source}"
+            )
+        output_root = source / OUTPUT_DIR_NAME
+        if output_root.is_symlink():
+            raise ValueError(
+                f"deliverable export root must not be a symlink: {output_root}"
+            )
+        output_root.mkdir(exist_ok=True)
+        return output_root
+
+    def reserve_export(self, source, run_id, *, allow_existing=False):
+        """Atomically reserve a source-side run id for this workspace."""
+        output_root = self._export_root(source)
+        reservations = output_root / EXPORT_RESERVATION_DIR_NAME
+        if reservations.is_symlink():
+            raise ValueError(
+                f"deliverable reservation root must not be a symlink: {reservations}"
+            )
+        reservations.mkdir(exist_ok=True)
+        marker = reservations / run_id
+        owner = str(self.root.resolve())
+        created = False
+        try:
+            with marker.open(
+                "x", encoding="utf-8", errors="strict", newline="\n"
+            ) as file:
+                file.write(owner)
+        except FileExistsError:
+            if not allow_existing or marker.read_text() != owner:
+                raise FileExistsError(
+                    f"deliverable export id is already reserved: {run_id}"
+                ) from None
+        else:
+            created = True
+
+        destination = output_root / run_id
+        if destination.exists() or destination.is_symlink():
+            if created:
+                marker.unlink()
+            raise FileExistsError(f"deliverable export already exists: {destination}")
+        return marker
+
     def export_deliverables(self, source, run_id, artifacts):
         """Copy this run's public artifacts into the source folder.
 
@@ -316,10 +378,22 @@ class Workspace:
         run-scoped: a later run on the same source folder cannot
         silently overwrite an earlier run's deliverables.
         """
-        destination = Path(source) / OUTPUT_DIR_NAME / run_id
-        destination.mkdir(parents=True, exist_ok=True)
-        for artifact in artifacts:
-            shutil.copy2(artifact, destination / artifact.name)
+        marker = self.reserve_export(source, run_id, allow_existing=True)
+        output_root = self._export_root(source)
+        destination = output_root / run_id
+        try:
+            destination.mkdir()
+        except FileExistsError as exc:
+            raise FileExistsError(
+                f"deliverable export already exists: {destination}"
+            ) from exc
+        try:
+            for artifact in artifacts:
+                shutil.copy2(artifact, destination / artifact.name)
+        except BaseException:
+            shutil.rmtree(destination)
+            raise
+        marker.unlink()
         return destination
 
 

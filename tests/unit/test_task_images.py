@@ -68,9 +68,7 @@ def test_a_run_with_no_images_leaves_the_directory_empty(tmp_path):
     workbook.write_bytes(b"x")
     workspace = Workspace(tmp_path / "run")
     workspace.create_layout()
-    workspace.copy_inputs(
-        RunInputs(source=source, workbook=workbook, task="Fill it.")
-    )
+    workspace.copy_inputs(RunInputs(source=source, workbook=workbook, task="Fill it."))
 
     assert workspace.task_images_dir.is_dir()
     assert workspace.task_image_paths() == []
