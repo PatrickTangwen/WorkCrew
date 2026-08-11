@@ -26,12 +26,18 @@ STRINGS = {
         "stat_cells": "cells populated",
         "findings_heading": "Findings for review",
         "qa_revision_heading": "QA review & v2 revision ({date})",
-        "qa_summary_intro": "This V2 incorporates the independent QA review. Summary counts report filled, revised, cleared, and rebutted outcomes; field tags mark revised, cleared, and rebutted exceptions.",
+        "qa_summary_intro": "This V2 incorporates the independent QA review. Summary counts report filled, revised, cleared, and rebutted outcomes; only fields the workflow changed carry a tag, and fields it left as filled keep the plain final view.",
         "outcome_count_filled": "{n} filled",
         "outcome_count_revised": "{n} revised",
         "outcome_count_cleared": "{n} cleared",
         "outcome_count_rebutted_one": "{n} rebuttal",
         "outcome_count_rebutted": "{n} rebuttals",
+        "summary_changes": "Cell changes ({n})",
+        "summary_rebuttals": "Rebuttals ({n})",
+        "summary_unresolved": "Unresolved items ({n})",
+        "col_field": "Field",
+        "col_detail": "Detail",
+        "revision_badge_filled": "FILLED · QA",
         "revision_badge_revised": "REVISED · QA",
         "revision_badge_cleared": "CLEARED · QA",
         "revision_badge_rebutted": "KEPT · REBUTTED",
@@ -98,6 +104,7 @@ STRINGS = {
         "prev": "← Row {n}",
         "next": "Row {n} →",
         "empty_value": "— left blank",
+        "empty_cleared": "— cleared in the v2 revision",
         "show_empty": "Show {n} empty fields",
         "hide_empty": "Hide {n} empty fields",
         "source_note": "",
@@ -118,12 +125,18 @@ STRINGS = {
         "stat_cells": "已填单元格",
         "findings_heading": "待审阅发现",
         "qa_revision_heading": "QA 审阅与 V2 修订（{date}）",
-        "qa_summary_intro": "此 V2 已纳入独立 QA 审阅结果。首页汇总统计填充、修改、清空和反驳结果；字段标签只标记修改、清空和反驳例外。",
+        "qa_summary_intro": "此 V2 已纳入独立 QA 审阅结果。首页汇总统计填充、修改、清空和反驳结果；只有被工作流改动过的字段带标签，未改动的已填字段只保留最终视图。",
         "outcome_count_filled": "填充 {n}",
         "outcome_count_revised": "修改 {n}",
         "outcome_count_cleared": "清空 {n}",
         "outcome_count_rebutted_one": "反驳 {n}",
         "outcome_count_rebutted": "反驳 {n}",
+        "summary_changes": "单元格改动（{n}）",
+        "summary_rebuttals": "反驳（{n}）",
+        "summary_unresolved": "未决事项（{n}）",
+        "col_field": "字段",
+        "col_detail": "详情",
+        "revision_badge_filled": "已填充 · QA",
         "revision_badge_revised": "已修改 · QA",
         "revision_badge_cleared": "已清空 · QA",
         "revision_badge_rebutted": "保留 · 已反驳",
@@ -190,6 +203,7 @@ STRINGS = {
         "prev": "← 第 {n} 行",
         "next": "第 {n} 行 →",
         "empty_value": "—— 留空",
+        "empty_cleared": "—— 已在 v2 修订中清空",
         "show_empty": "显示 {n} 个空字段",
         "hide_empty": "隐藏 {n} 个空字段",
         "source_note": "来源文件为英文原文，证据摘录保留原样。",
@@ -215,6 +229,7 @@ _SHELL = """<!DOCTYPE html>
 :root{--bg:#f6f7f9;--surface:#fff;--border:#e3e6ea;--ink:#1d2430;--muted:#68717e;
 --accent:#2563b0;--accent-soft:#eaf1fa;--accent-border:#c4d7ef;
 --amber-bg:#fff7e6;--amber-border:#f0d9a8;--amber-ink:#8a6116;
+--green-bg:#eefaf1;--green-border:#bfe8cc;--green-ink:#1c7a3d;
 --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);line-height:1.55;
@@ -334,9 +349,15 @@ border-radius:9px;padding:2px 9px}
 .revision-badge{display:inline-block;border-radius:9px;padding:1px 8px;font-size:10.5px;
 font-weight:700;letter-spacing:.02em;background:var(--amber-bg);color:var(--amber-ink);
 border:1px solid var(--amber-border)}
+.revision-badge.revision-filled{background:var(--green-bg);color:var(--green-ink);
+border-color:var(--green-border)}
 .revision-badge.revision-cleared{background:#f0f2f5;color:#4e5868;border-color:#cbd1d9}
 .revision-badge.revision-rebutted{background:var(--accent-soft);color:var(--accent);
 border-color:var(--accent-border)}
+.revision-details{margin-top:10px}
+.revision-details summary{cursor:pointer;font-size:12.5px;font-weight:650;color:var(--muted)}
+.revision-details summary:hover{color:var(--accent)}
+.revision-details table.ovr{margin-top:8px}
 .revision-note{margin-top:5px;padding:6px 10px;border-left:3px solid var(--accent-border);
 font-size:12px;color:var(--muted);line-height:1.5}
 .revision-note .change-values{display:block}
@@ -418,11 +439,11 @@ const proposalMatches = (proposal, needle) => proposal && (
   contains(proposal.confidence, needle) || contains(proposal.review_note, needle) ||
   proposal.rules_applied.some(rule => contains(rule, needle)) ||
   evidenceMatches(proposal.evidence, needle));
+// A field the workflow left exactly as the Filler wrote it is an
+// ordinary final field; only an applied change or a structured
+// rebuttal earns the V2 exception UI.
 function decisionAuditKind(f) {
-  if (f.revision_change &&
-      ['revised', 'cleared'].includes(f.revision_change.kind)) {
-    return f.revision_change.kind;
-  }
+  if (f.revision_change) return f.revision_change.kind;
   if (f.revision && f.revision.action === 'REBUT') return 'rebutted';
   return null;
 }
@@ -509,7 +530,11 @@ const pillsHtml = values => values
   .map(part => '<span class="pill">' + hl(part) + '</span>').join('');
 
 function valueHtml(f) {
-  if (f.value === null) return '<div class="fvalue empty">' + esc(STRINGS.empty_value) + '</div>';
+  if (f.value === null) {
+    const cleared = VERSION && f.revision_change && f.revision_change.kind === 'cleared';
+    return '<div class="fvalue empty">' +
+      esc(cleared ? STRINGS.empty_cleared : STRINGS.empty_value) + '</div>';
+  }
   if (f.pill_values) return '<div class="fvalue">' + pillsHtml(f.pill_values) + '</div>';
   return '<div class="fvalue">' + hl(f.value) + '</div>';
 }
@@ -572,7 +597,9 @@ function compactRevisionHtml(f) {
   const badge = '<span class="revision-badge revision-' + esc(kind) + '">' +
     esc(STRINGS['revision_badge_' + kind]) + '</span>';
   const parts = [];
-  if (f.revision_change) {
+  // A filled cell has no prior value to contrast, and its after value
+  // is the final value already displayed above this note.
+  if (f.revision_change && f.revision_change.before !== null) {
     const value = item => item === null ? '—' : hl(item);
     parts.push('<span class="change-values"><b>' + esc(STRINGS.before_value) + ':</b> ' +
       value(f.revision_change.before) + ' → <b>' + esc(STRINGS.after_value) + ':</b> ' +
@@ -697,6 +724,44 @@ function renderRow(r) {
   });
 }
 
+const changeDetailHtml = change => {
+  const value = item => item === null ? '—' : hl(item);
+  const transition = change.before === null
+    ? value(change.after) : value(change.before) + ' → ' + value(change.after);
+  return '<span class="revision-badge revision-' + esc(change.kind) + '">' +
+    esc(STRINGS['revision_badge_' + change.kind]) + '</span> ' + transition;
+};
+
+// The overview index is the entry point into the exceptions: every
+// field that carries V2 audit UI is reachable from here by one click.
+function exceptionIndex() {
+  const changes = [], rebuttals = [], unresolved = [];
+  for (const row of DATA.rows) {
+    for (const f of row.fields) {
+      const entry = detail => ({row: row.row, name: f.name, detail});
+      if (f.revision_change) changes.push(entry(changeDetailHtml(f.revision_change)));
+      if (f.revision && f.revision.action === 'REBUT') {
+        rebuttals.push(entry('<span class="revision-badge revision-rebutted">' +
+          esc(STRINGS.revision_badge_rebutted) + '</span> ' + hl(f.revision.justification)));
+      }
+      if (f.unresolved_reason) unresolved.push(entry(hl(f.unresolved_reason)));
+    }
+  }
+  return {changes, rebuttals, unresolved};
+}
+
+function exceptionTableHtml(key, items) {
+  if (!items.length) return '';
+  const headers = [STRINGS.col_row, STRINGS.col_field, STRINGS.col_detail]
+    .map(label => '<th>' + esc(label) + '</th>').join('');
+  const body = items.map(item =>
+    '<tr class="clickable" data-row="' + item.row + '"><td class="rownum">' + item.row +
+    '</td><td>' + hl(item.name) + '</td><td>' + item.detail + '</td></tr>').join('');
+  return '<details class="revision-details"><summary>' +
+    esc(t(key, {n: items.length})) + '</summary><table class="ovr"><thead><tr>' +
+    headers + '</tr></thead><tbody>' + body + '</tbody></table></details>';
+}
+
 function qualitySummaryHtml() {
   const cycle = DATA.review_cycle;
   if (!VERSION || !cycle) return '';
@@ -707,11 +772,14 @@ function qualitySummaryHtml() {
     return '<span class="revision-chip">' +
     esc(t(key, {n: counts[kind] || 0})) + '</span>';
   }).join('');
+  const index = exceptionIndex();
   return '<h2 class="sec">' +
     esc(t('qa_revision_heading', {date: cycle.review_date || '—'})) + '</h2>' +
     '<section class="revision-summary"><div class="revision-summary-copy">' +
     esc(STRINGS.qa_summary_intro) + '</div><div class="revision-chips">' + chips +
-    '</div></section>';
+    '</div>' + exceptionTableHtml('summary_changes', index.changes) +
+    exceptionTableHtml('summary_rebuttals', index.rebuttals) +
+    exceptionTableHtml('summary_unresolved', index.unresolved) + '</section>';
 }
 
 function renderOverview() {

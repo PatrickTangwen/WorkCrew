@@ -2,6 +2,9 @@
 
 Date: 2026-08-10
 
+Status: the `filled` exclusion below is superseded by ADR 0034; the
+exception-only principle stands.
+
 ## Context
 
 ADR 0029 introduced a compact V2 review layer while retaining the complete

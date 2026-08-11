@@ -183,9 +183,9 @@ def test_shell_exposes_proposal_and_final_audit_layers():
     assert "Proposal value" in en
     assert "QA review & v2 revision ({date})" in en
     assert "This V2 incorporates the independent QA review." in en
-    assert "field tags mark revised, cleared, and rebutted exceptions" in en
+    assert "only fields the workflow changed carry a tag" in en
     assert "QA 审阅与 V2 修订（{date}）" in zh
-    assert "字段标签只标记修改、清空和反驳例外" in zh
+    assert "只有被工作流改动过的字段带标签" in zh
     assert "contains(proposal.value, needle)" in en
     assert "return evidenceHtml(f.sources, STRINGS.current_provenance)" in en
     assert "auditBadge('verdict', f.review.verdict)" in en
@@ -208,15 +208,35 @@ def test_shell_exposes_proposal_and_final_audit_layers():
     assert strings["show_audit"] == "显示决策审计"
 
 
-def test_v2_field_audit_is_limited_to_revised_cleared_or_rebutted_fields():
+def test_v2_field_audit_is_limited_to_fields_the_workflow_changed():
     en = render_explorer_html(DATA, "en", version="v2")
-    strings = embedded(en, "STRINGS")
+    zh = render_explorer_html(DATA, "zh", version="v2")
 
-    assert "revision_badge_filled" not in strings
+    for kind in ("filled", "revised", "cleared", "rebutted"):
+        assert embedded(en, "STRINGS")["revision_badge_" + kind]
     assert "function decisionAuditKind(f)" in en
-    assert "['revised', 'cleared'].includes(f.revision_change.kind)" in en
+    assert "if (f.revision_change) return f.revision_change.kind;" in en
     assert "f.revision.action === 'REBUT'" in en
     assert "if (!kind) return ''" in en
     assert "VERSION && decisionAuditKind(f) === null" in en
     assert "visibleDecisionAuditMatches(f, needle)" in en
     assert "r.fields.some(f => decisionAuditKind(f) !== null)" in en
+    # A filled cell repeats neither an absent before value nor the
+    # final value shown directly above its note.
+    assert "f.revision_change && f.revision_change.before !== null" in en
+    # A cleared cell reads as cleared, not as an ordinary blank.
+    assert "f.revision_change.kind === 'cleared'" in en
+    assert embedded(en, "STRINGS")["empty_cleared"] == "— cleared in the v2 revision"
+    assert embedded(zh, "STRINGS")["empty_cleared"] == "—— 已在 v2 修订中清空"
+
+
+def test_v2_overview_indexes_every_exception_field():
+    en = render_explorer_html(DATA, "en", version="v2")
+
+    assert "function exceptionIndex()" in en
+    assert "changes.push(entry(changeDetailHtml(f.revision_change)))" in en
+    assert "rebuttals.push(entry(" in en
+    assert "unresolved.push(entry(hl(f.unresolved_reason)))" in en
+    for key in ("summary_changes", "summary_rebuttals", "summary_unresolved"):
+        assert f"exceptionTableHtml('{key}'" in en
+    assert 'tr class="clickable" data-row=' in en
