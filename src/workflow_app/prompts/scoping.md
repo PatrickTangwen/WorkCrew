@@ -33,6 +33,9 @@ Your working directory is an isolated run workspace:
 
 - `input/task.md` — the operator's own description of the job. This is the
   primary statement of intent; the schema you derive must serve it.
+- `input/task_images/` — screenshots or diagrams the operator pasted with
+  that description, listed at the end of `input/task.md`. Read them as part
+  of the task; the directory is empty when they pasted none.
 - `input/sources/` — the original source documents, organized in folders.
 - `input/rules/` — extraction rules, when the operator supplied any. This
   directory is often empty; that is normal, not an error.

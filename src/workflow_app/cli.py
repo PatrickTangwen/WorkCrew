@@ -17,6 +17,17 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 
+from workflow_app.agent_config import (
+    CLAUDE,
+    CODEX,
+    DEFAULT_EFFORTS,
+    DEFAULT_MODELS,
+    EFFORT_CHOICES,
+    ROLE_RUNTIMES,
+    build_agent_config,
+    default_agent_config,
+    read_agent_config,
+)
 from workflow_app.benchmark.kleister import build_benchmark
 from workflow_app.evaluation.evaluate import evaluate_run
 from workflow_app.evaluation.labels import load_labels
@@ -28,7 +39,12 @@ from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.server import DEFAULT_UI_PORT, run_ui
 from workflow_app.workbook.outline import build_outline
 from workflow_app.workflow.engine import resume_workflow, run_workflow
-from workflow_app.workspace import RunInputs
+from workflow_app.workspace import (
+    IMAGE_SUFFIXES,
+    RunInputs,
+    TaskImage,
+    Workspace,
+)
 
 # Degenerate walking-skeleton payloads: one placeholder scoping
 # question, an empty fill, and an all-clear review, so a pure fake run
@@ -63,23 +79,76 @@ FAKE_OUTPUTS = {
 }
 
 
-# Product default models and review effort (ADR 0020). Pinned so a CLI
-# upgrade or account-default change never silently shifts engine
-# behavior; overridable per run via the CLI flags below.
-DEFAULT_CLAUDE_MODEL = "claude-opus-4-6[1m]"
-DEFAULT_CODEX_MODEL = "gpt-5.6-sol"
-DEFAULT_CODEX_EFFORT = "high"
+# Models and effort are product configuration (ADR 0020), now per role
+# and shared with the server (ADR 0036); workflow_app.agent_config owns
+# the defaults and vocabularies these flags resolve against.
+DEFAULT_CLAUDE_MODEL = DEFAULT_MODELS[CLAUDE]
+DEFAULT_CODEX_MODEL = DEFAULT_MODELS[CODEX]
+DEFAULT_CODEX_EFFORT = DEFAULT_EFFORTS[CODEX]
+CLAUDE_EFFORT_CHOICES = EFFORT_CHOICES[CLAUDE]
+SUPPORTED_IMAGE_SUFFIXES = frozenset(IMAGE_SUFFIXES.values())
+CODEX_EFFORT_CHOICES = EFFORT_CHOICES[CODEX]
 
-CODEX_EFFORT_CHOICES = (
-    "none",
-    "minimal",
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-    "max",
-    "ultra",
-)
+
+def role_setting(value):
+    """Parse a `role=value` per-role override."""
+    role, separator, setting = value.partition("=")
+    if not separator or not role or not setting:
+        raise argparse.ArgumentTypeError(
+            f"expected role=value, got {value!r};"
+            f" roles are {sorted(ROLE_RUNTIMES)}"
+        )
+    if role not in ROLE_RUNTIMES:
+        raise argparse.ArgumentTypeError(
+            f"unknown role {role!r}; roles are {sorted(ROLE_RUNTIMES)}"
+        )
+    return role, setting
+
+
+def agent_config_from_args(args, base=None):
+    """Runtime-wide flags first, then per-role overrides on top.
+
+    Unset flags leave `base` alone — the product defaults for a new run,
+    the run's recorded config for a resume.
+    """
+    selections = {
+        role: {
+            "model": args.claude_model if runtime == CLAUDE else args.codex_model,
+            "effort": args.claude_effort if runtime == CLAUDE else args.codex_effort,
+        }
+        for role, runtime in ROLE_RUNTIMES.items()
+    }
+    for role, model in getattr(args, "agent_model", None) or []:
+        selections[role]["model"] = model
+    for role, effort in getattr(args, "agent_effort", None) or []:
+        selections[role]["effort"] = effort
+    return build_agent_config(selections, base=base)
+
+
+def read_task_images(paths):
+    """Task images given as files, in the order the operator listed them."""
+    images = []
+    for raw in paths or []:
+        path = Path(raw)
+        suffix = path.suffix.lower()
+        if suffix not in SUPPORTED_IMAGE_SUFFIXES:
+            raise ValueError(
+                f"unsupported task image {path};"
+                f" supported suffixes are {sorted(SUPPORTED_IMAGE_SUFFIXES)}"
+            )
+        if not path.is_file():
+            raise FileNotFoundError(f"task image not found: {path}")
+        images.append(TaskImage(suffix=suffix, data=path.read_bytes()))
+    return tuple(images)
+
+
+def recorded_agent_config(args):
+    """The agent config a run was started with, for `resume`."""
+    if args.command != "resume":
+        return None
+    return read_agent_config(
+        Workspace(Path(args.runs_root) / args.run_id).agents_json
+    )
 
 
 def ui_port(value):
@@ -113,14 +182,8 @@ def fake_workbook_for(args):
     return copies[0] if copies else None
 
 
-def build_runtimes(
-    choice,
-    claude_model=DEFAULT_CLAUDE_MODEL,
-    codex_model=DEFAULT_CODEX_MODEL,
-    codex_effort=DEFAULT_CODEX_EFFORT,
-    workbook=None,
-    resuming=False,
-):
+def build_runtimes(choice, agents=None, workbook=None, resuming=False):
+    """Agent runtimes per role, built from the run's agent config."""
     if choice == "fake":
         emit("Using fake agent runtimes (walking-skeleton fixtures).")
         outputs = deepcopy(FAKE_OUTPUTS)
@@ -135,17 +198,27 @@ def build_runtimes(
                 step["workbook_schema"] = schema
         fake = FakeAgentRuntime(outputs)
         return {role: fake for role in outputs}
-    emit(f"Claude model: {claude_model}")
-    emit(f"Codex model: {codex_model} (reasoning effort: {codex_effort})")
-    claude = ClaudeCodeRuntime(model=claude_model)
-    codex = CodexRuntime(model=codex_model, effort=codex_effort)
-    return {
-        "scoping": claude,
-        "filler": claude,
-        "revision": claude,
-        "reviewer": codex,
-        "re_review": codex,
-    }
+
+    config = agents or default_agent_config()
+    # Roles sharing a runtime, model and effort share one adapter, so an
+    # unchanged config still constructs (and announces) two adapters.
+    built, runtimes = {}, {}
+    for role, choice_for_role in config.items():
+        emit(
+            f"{role}: {choice_for_role.runtime} {choice_for_role.model}"
+            f" (reasoning effort: {choice_for_role.effort or 'CLI default'})"
+        )
+        key = (choice_for_role.runtime, choice_for_role.model, choice_for_role.effort)
+        if key not in built:
+            built[key] = _live_runtime(choice_for_role)
+        runtimes[role] = built[key]
+    return runtimes
+
+
+def _live_runtime(choice):
+    if choice.runtime == CLAUDE:
+        return ClaudeCodeRuntime(model=choice.model, effort=choice.effort)
+    return CodexRuntime(model=choice.model, effort=choice.effort)
 
 
 def build_parser():
@@ -171,6 +244,17 @@ def build_parser():
         required=True,
         help="what the run should accomplish, in your own words;"
         " the scoping pass derives the workbook schema from it",
+    )
+    run.add_argument(
+        "--name",
+        help="name this run; it leads the run id (default: the source folder name)",
+    )
+    run.add_argument(
+        "--task-image",
+        action="append",
+        metavar="PATH",
+        help="image belonging to the task description (png/jpeg/gif/webp);"
+        " repeatable, order preserved",
     )
     rules = run.add_mutually_exclusive_group()
     rules.add_argument("--rules-text", help="extraction rules as prose")
@@ -238,9 +322,12 @@ def build_parser():
                 " walking-skeleton fixtures"
             ),
         )
+        # These default to None, not to the product default: an
+        # unflagged resume continues on the models the run recorded,
+        # while an explicit flag overrides them (runtime choice is
+        # per-invocation, ADR 0019).
         subparser.add_argument(
             "--claude-model",
-            default=DEFAULT_CLAUDE_MODEL,
             help=(
                 "model for the Claude roles (scoping/fill/revision);"
                 f" a [1m] suffix selects 1M context (default: {DEFAULT_CLAUDE_MODEL})"
@@ -248,20 +335,39 @@ def build_parser():
         )
         subparser.add_argument(
             "--codex-model",
-            default=DEFAULT_CODEX_MODEL,
             help=(
                 "model for the Codex roles (review/re-review)"
                 f" (default: {DEFAULT_CODEX_MODEL})"
             ),
         )
         subparser.add_argument(
+            "--claude-effort",
+            choices=CLAUDE_EFFORT_CHOICES,
+            help="Claude reasoning effort for the Claude roles"
+            " (default: the CLI's own)",
+        )
+        subparser.add_argument(
             "--codex-effort",
             choices=CODEX_EFFORT_CHOICES,
-            default=DEFAULT_CODEX_EFFORT,
             help=(
                 "Codex reasoning effort for the review roles"
                 f" (default: {DEFAULT_CODEX_EFFORT})"
             ),
+        )
+        subparser.add_argument(
+            "--agent-model",
+            action="append",
+            type=role_setting,
+            metavar="ROLE=MODEL",
+            help="model for one role, overriding the runtime-wide flag; repeatable",
+        )
+        subparser.add_argument(
+            "--agent-effort",
+            action="append",
+            type=role_setting,
+            metavar="ROLE=LEVEL",
+            help="reasoning effort for one role, overriding the runtime-wide"
+            " flag; repeatable",
         )
     return parser
 
@@ -312,11 +418,10 @@ def main(argv=None):
             )
             return 0
 
+        agents = agent_config_from_args(args, base=recorded_agent_config(args))
         runtimes = build_runtimes(
             args.runtimes,
-            claude_model=args.claude_model,
-            codex_model=args.codex_model,
-            codex_effort=args.codex_effort,
+            agents=agents,
             workbook=fake_workbook_for(args),
             resuming=args.command == "resume",
         )
@@ -325,6 +430,8 @@ def main(argv=None):
                 source=Path(args.source),
                 workbook=Path(args.workbook),
                 task=args.task,
+                name=args.name,
+                task_images=read_task_images(args.task_image),
                 rules_text=args.rules_text,
                 rules_file=None if args.rules_file is None else Path(args.rules_file),
                 scoping_answers=None
@@ -334,7 +441,12 @@ def main(argv=None):
                 if args.review_policy is None
                 else Path(args.review_policy),
             )
-            run_workflow(inputs=inputs, runs_root=args.runs_root, runtimes=runtimes)
+            run_workflow(
+                inputs=inputs,
+                runs_root=args.runs_root,
+                runtimes=runtimes,
+                agents=agents,
+            )
         else:
             resume_workflow(
                 run_id=args.run_id, runs_root=args.runs_root, runtimes=runtimes

@@ -12,6 +12,8 @@ Read `input/task.md`, `agent_outputs/filler/inputs.json`,
 `artifacts/scoping_answers.md`, `artifacts/manifest.json`, and
 `artifacts/workbook_schema.json` first. They define the operator's goal, the
 source inventory, row assignment, target fields, and valid output shapes.
+When `input/task.md` lists attached images, open them too: they are part of
+the operator's description, not decoration.
 
 Use files under `input/sources/` as the source of truth. Open a file under
 `input/rules/` when its rule is relevant to the field you are filling; that

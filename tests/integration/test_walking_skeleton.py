@@ -13,7 +13,7 @@ import pytest
 from tests.integration.conftest import scoping_fixture
 from workflow_app.runtimes.fake import FakeAgentRuntime
 from workflow_app.workflow.engine import run_workflow
-from workflow_app.workspace import RunInputs
+from workflow_app.workspace import OUTPUT_DIR_NAME, RunInputs
 
 CONTRACT_FIXTURES = Path(__file__).parent.parent / "fixtures" / "contracts"
 
@@ -112,6 +112,13 @@ def test_creates_full_workspace_layout(inputs):
         assert (workspace / subdir).is_dir(), f"missing {subdir}"
 
 
+def test_the_run_id_names_the_workspace_after_the_source_folder(inputs):
+    state = start_run(inputs)
+
+    assert state["run_id"].startswith("source-documents-")
+    assert (Path(inputs["runs_root"]) / state["run_id"]).is_dir()
+
+
 def test_copies_inputs_into_workspace(inputs):
     state = start_run(inputs)
     workspace = workspace_of(inputs, state)
@@ -148,9 +155,19 @@ def test_never_modifies_original_inputs(inputs):
     before_rules = inputs["rules_file"].read_text()
     before_workbook = inputs["workbook"].read_bytes()
 
-    start_run(inputs)
+    state = start_run(inputs)
 
-    assert snapshot_tree(inputs["source"]) == before_sources
+    # The run adds its deliverables to the source folder (ADR 0035) and
+    # changes nothing that was already there.
+    after_sources = snapshot_tree(inputs["source"])
+    export_root = Path(OUTPUT_DIR_NAME) / state["run_id"]
+    kept = {
+        path: content
+        for path, content in after_sources.items()
+        if not path.is_relative_to(export_root)
+    }
+    assert kept == before_sources
+    assert len(after_sources) > len(before_sources)
     assert inputs["rules_file"].read_text() == before_rules
     assert inputs["workbook"].read_bytes() == before_workbook
 

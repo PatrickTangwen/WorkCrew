@@ -90,10 +90,56 @@ export type ArtifactSummary = {
 
 export type RulesMode = "none" | "text" | "file"
 
+export type AgentRole =
+  | "scoping"
+  | "filler"
+  | "revision"
+  | "reviewer"
+  | "re_review"
+
+/** What the operator may choose for one role, and its defaults. */
+export type AgentOption = {
+  role: AgentRole
+  runtime: string
+  model: string
+  model_suggestions: string[]
+  effort: string | null
+  effort_choices: string[]
+}
+
+export type AgentSelection = { model: string | null; effort: string | null }
+
+/** An image pasted into the task description, carried as content. */
+export type TaskImageUpload = { content_type: string; data: string }
+
+export const SUPPORTED_IMAGE_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+]
+
+/** Read a pasted image into the base64 payload the API takes. */
+export async function readTaskImage(file: File) {
+  const buffer = await file.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+  let binary = ""
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return { content_type: file.type, data: btoa(binary) }
+}
+
+export async function listAgentOptions() {
+  const response = await fetch("/api/agents")
+  return readResponse<AgentOption[]>(response)
+}
+
 export type CreateRunInput = {
   source: string
   workbook: string
   task: string
+  name: string | null
+  agents: Record<string, AgentSelection> | null
+  task_images: TaskImageUpload[]
   rules_text: string | null
   rules_file: string | null
   scoping_answers: string | null

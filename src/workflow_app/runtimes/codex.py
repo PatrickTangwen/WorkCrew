@@ -20,6 +20,7 @@ from workflow_app.cancellation import run_process
 from workflow_app.models.review import ReReviewResult, ReviewResult
 from workflow_app.progress import emit
 from workflow_app.runtimes.base import AgentResult
+from workflow_app.workspace import Workspace
 
 # Subscription auth is runtime-enforced through auth.json (plan
 # section 10): with these env credentials cleared, the CLI can only
@@ -141,6 +142,11 @@ class CodexRuntime:
                 argv += ["--model", self._model]
             if self._effort is not None:
                 argv += ["-c", f'model_reasoning_effort="{self._effort}"']
+            # Codex reads images only when they are attached to the
+            # prompt; the read-only sandbox lets it open the files, but
+            # not see them (ADR 0037).
+            for image in Workspace(Path(request.workspace_path)).task_image_paths():
+                argv += ["--image", str(image)]
 
             process = run_process(
                 argv,

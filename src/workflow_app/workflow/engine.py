@@ -6,15 +6,16 @@ state persists through a SqliteSaver checkpoint database inside the
 run's state/ directory (plan section 30), keyed by run id.
 """
 
+import re
 import sqlite3
 import time
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
+from workflow_app.agent_config import default_agent_config, write_agent_config
 from workflow_app.audit.db import AuditStore
 from workflow_app.cancellation import CancellationToken, WorkflowCancelled
 from workflow_app.progress import ProgressReporter
@@ -22,9 +23,46 @@ from workflow_app.review_policy import load_review_policy
 from workflow_app.workflow.graph import build_graph
 from workflow_app.workspace import RunInputs, Workspace
 
+SLUG_MAX = 48
 
-def new_run_id():
-    return f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+
+def slugify(text):
+    """ASCII slug for a run id.
+
+    A run id is a directory name, a URL segment, and a SQLite key at
+    once, so it stays ASCII: a Unicode id would have to survive
+    filesystem normalization (NFC/NFD) and URL encoding intact on every
+    path it travels. Text with nothing to slugify yields "".
+    """
+    if text is None:
+        return ""
+    slug = re.sub(r"[^a-z0-9]+", "-", str(text).lower()).strip("-")
+    return slug[:SLUG_MAX].strip("-")
+
+
+def new_run_id(name=None, source=None, runs_root=None):
+    """A readable, unique run id: <name-or-source-folder>-<MMDD-HHMM>.
+
+    The operator's run name leads when they gave one; otherwise the
+    source folder names the run. Both can slugify to nothing (a name
+    written entirely in non-Latin script, say), which is what the
+    generic stem covers.
+    """
+    stem = (
+        slugify(name)
+        or slugify(Path(source).name if source is not None else "")
+        or "run"
+    )
+    base = f"{stem}-{time.strftime('%m%d-%H%M')}"
+    if runs_root is None:
+        return base
+    # Same name within the same minute; the server admits one run at a
+    # time, so checking the directory is enough to keep ids unique.
+    candidate, attempt = base, 2
+    while (Path(runs_root) / candidate).exists():
+        candidate = f"{base}-{attempt}"
+        attempt += 1
+    return candidate
 
 
 @dataclass(frozen=True)
@@ -44,6 +82,7 @@ def run_workflow(
     runtimes,
     *,
     run_id=None,
+    agents=None,
     progress_callback=None,
     cancellation=None,
 ):
@@ -57,7 +96,9 @@ def run_workflow(
         # the strict-fields cross-check moved into the LOAD_SCHEMA node.
         load_review_policy(inputs.review_policy)
 
-        run_id = run_id or new_run_id()
+        run_id = run_id or new_run_id(
+            name=inputs.name, source=inputs.source, runs_root=runs_root
+        )
         # Resolved so the paths persisted into checkpointed state stay valid
         # when the run is resumed from a different working directory.
         workspace = Workspace((Path(runs_root) / run_id).resolve())
@@ -71,6 +112,10 @@ def run_workflow(
                 " Choose a runs root outside the source folder."
             )
         workspace.create_layout()
+        # Recorded with the run's inputs: which model and effort each
+        # role ran on is part of what produced these results, and a
+        # resume in a later process reads it back.
+        write_agent_config(workspace.agents_json, agents or default_agent_config())
         progress.emit(f"Starting run {run_id}...")
         execution = WorkflowExecution(
             workspace=workspace,

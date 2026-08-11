@@ -1,6 +1,8 @@
 """Local web server for the WorkCrew browser UI."""
 
 import asyncio
+import base64
+import binascii
 import errno
 import socket
 import webbrowser
@@ -16,6 +18,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, model_validator
 
+from workflow_app.agent_config import (
+    agent_options,
+    build_agent_config,
+    read_agent_config,
+)
 from workflow_app.artifacts import (
     ArtifactCatalog,
     ArtifactNotFoundError,
@@ -31,7 +38,13 @@ from workflow_app.reports import (
     replace_scoping_round,
 )
 from workflow_app.workflow.engine import new_run_id, resume_workflow, run_workflow
-from workflow_app.workspace import RunInputs, Workspace, validate_task_and_rules
+from workflow_app.workspace import (
+    IMAGE_SUFFIXES,
+    RunInputs,
+    TaskImage,
+    Workspace,
+    validate_task_and_rules,
+)
 
 UI_HOST = "127.0.0.1"
 DEFAULT_UI_PORT = 8470
@@ -39,10 +52,44 @@ DEFAULT_STATIC_DIR = Path(__file__).parent / "static"
 RunStatus = Literal["running", "paused", "completed", "failed", "cancelled"]
 
 
+class AgentSelection(BaseModel):
+    model: str | None = None
+    effort: str | None = None
+
+
+# A pasted image has no file on the operator's disk, so it travels as
+# content. The cap is generous for screenshots and small enough that a
+# stray paste cannot exhaust the local server's memory.
+MAX_TASK_IMAGE_BYTES = 12 * 1024 * 1024
+
+
+class TaskImageUpload(BaseModel):
+    content_type: str
+    data: str  # base64
+
+    def decoded(self):
+        suffix = IMAGE_SUFFIXES.get(self.content_type)
+        if suffix is None:
+            raise ValueError(
+                f"unsupported image type {self.content_type!r};"
+                f" supported types are {sorted(IMAGE_SUFFIXES)}"
+            )
+        try:
+            data = base64.b64decode(self.data, validate=True)
+        except binascii.Error as exc:
+            raise ValueError("task image is not valid base64") from exc
+        return TaskImage(suffix=suffix, data=data)
+
+
 class CreateRunRequest(BaseModel):
     source: str
     workbook: str
     task: str
+    name: str | None = None
+    # Per-role model and effort; an absent role keeps the default.
+    agents: dict[str, AgentSelection] | None = None
+    # Images pasted into the task description, in paste order.
+    task_images: list[TaskImageUpload] = []
     rules_text: str | None = None
     rules_file: str | None = None
     scoping_answers: str | None = None
@@ -164,10 +211,24 @@ class RunCoordinator:
         ):
             raise HTTPException(status_code=409, detail="A run is already active")
 
+        try:
+            images = tuple(upload.decoded() for upload in request.task_images)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        total = sum(len(image.data) for image in images)
+        if total > MAX_TASK_IMAGE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"task images total {total} bytes;"
+                f" the limit is {MAX_TASK_IMAGE_BYTES}",
+            )
+
         inputs = RunInputs(
             source=Path(request.source),
             workbook=Path(request.workbook),
             task=request.task,
+            name=request.name,
+            task_images=images,
             rules_text=request.rules_text,
             rules_file=None if request.rules_file is None else Path(request.rules_file),
             scoping_answers=None
@@ -177,12 +238,24 @@ class RunCoordinator:
             if request.review_policy is None
             else Path(request.review_policy),
         )
+        try:
+            agents = build_agent_config(
+                {
+                    role: selection.model_dump()
+                    for role, selection in (request.agents or {}).items()
+                }
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
         record = self._new_record(inputs)
         tracked = TrackedRun(record)
         self.runs[record.run_id] = tracked
         response = record.model_dump()
         progress_callback = self._progress_callback(tracked)
-        self._schedule(tracked, self._execute(tracked, inputs, progress_callback))
+        self._schedule(
+            tracked, self._execute(tracked, inputs, agents, progress_callback)
+        )
         return response
 
     async def resume(self, run_id, request):
@@ -282,8 +355,10 @@ class RunCoordinator:
         ]
 
     def _new_record(self, inputs):
-        run_id = new_run_id()
         runs_root = Path(self.options.runs_root)
+        run_id = new_run_id(
+            name=inputs.name, source=inputs.source, runs_root=runs_root
+        )
         return RunRecord(
             run_id=run_id,
             status="running",
@@ -294,25 +369,34 @@ class RunCoordinator:
             workbook_name=inputs.workbook.name,
         )
 
-    async def _execute(self, tracked, inputs, progress_callback):
+    async def _execute(self, tracked, inputs, agents, progress_callback):
         await self._run_operation(
             tracked,
             self.options.runner,
             inputs=inputs,
             runs_root=Path(self.options.runs_root),
-            runtimes=self._runtimes(),
+            runtimes=self._runtimes(agents),
             run_id=tracked.record.run_id,
+            agents=agents,
             progress_callback=progress_callback,
             cancellation=tracked.cancellation,
         )
 
     async def _resume(self, tracked, progress_callback):
+        # A resume continues on the models the run started with; the
+        # server has no way to ask again for a run it may not have
+        # started (ADR 0036).
+        agents = read_agent_config(
+            Workspace(
+                (Path(self.options.runs_root) / tracked.record.run_id).resolve()
+            ).agents_json
+        )
         await self._run_operation(
             tracked,
             self.options.resumer,
             run_id=tracked.record.run_id,
             runs_root=Path(self.options.runs_root),
-            runtimes=self._runtimes(),
+            runtimes=self._runtimes(agents),
             progress_callback=progress_callback,
             cancellation=tracked.cancellation,
         )
@@ -333,12 +417,12 @@ class RunCoordinator:
         if record.status == "completed":
             tracked.finished_at = datetime.now(UTC).isoformat()
 
-    def _runtimes(self):
+    def _runtimes(self, agents):
         if self.options.runtimes is not None:
             return self.options.runtimes
         from workflow_app.cli import build_runtimes
 
-        return build_runtimes("live")
+        return build_runtimes("live", agents=agents)
 
     def _progress_callback(self, tracked):
         loop = asyncio.get_running_loop()
@@ -489,6 +573,11 @@ def create_app(static_dir=DEFAULT_STATIC_DIR, require_frontend=False, options=No
     coordinator = RunCoordinator(options)
     history = RunHistory(options.runs_root)
     artifacts = ArtifactCatalog(options.runs_root)
+
+    @app.get("/api/agents")
+    async def list_agent_options():
+        """What the operator may choose per role, and the defaults."""
+        return agent_options()
 
     @app.post("/api/runs", status_code=201)
     async def create_run(request: CreateRunRequest):

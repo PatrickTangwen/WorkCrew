@@ -15,6 +15,10 @@ rules, and source folders.
 The workspace also contains `artifacts/scoping_answers.md`. Use it when an
 answer changes how a field should be interpreted or reviewed.
 
+`input/task.md` states what the operator asked for. Any images they pasted
+with it are attached to this prompt and listed at the end of that file; they
+carry the same intent the words do.
+
 The original files under `input/sources/` are the source of truth. Treat the
 Filler output and handoff as claims to verify. Open only the local rules
 relevant to the cells you review.

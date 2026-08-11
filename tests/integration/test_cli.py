@@ -128,11 +128,54 @@ def test_live_runtimes_are_the_default(inputs):
 
 def test_pinned_model_defaults(inputs):
     # Models and review effort are pinned (ADR 0020) so CLI upgrades or
-    # account-default changes never silently shift engine behavior.
+    # account-default changes never silently shift engine behavior. The
+    # flags themselves default to None (ADR 0036) — the resolved config
+    # is where the pinning lives.
     args = build_parser().parse_args(run_args(inputs)[:-2])
-    assert args.claude_model == "claude-opus-4-6[1m]"
-    assert args.codex_model == "gpt-5.6-sol"
-    assert args.codex_effort == "high"
+    config = cli.agent_config_from_args(args)
+
+    assert config["filler"].model == "claude-opus-4-6[1m]"
+    assert config["filler"].effort is None
+    assert config["reviewer"].model == "gpt-5.6-sol"
+    assert config["reviewer"].effort == "high"
+
+
+def test_per_role_flags_override_the_runtime_wide_ones(inputs):
+    args = build_parser().parse_args(
+        [
+            *run_args(inputs)[:-2],
+            "--claude-effort",
+            "high",
+            "--agent-effort",
+            "reviewer=max",
+            "--agent-model",
+            "filler=claude-sonnet-5",
+        ]
+    )
+    config = cli.agent_config_from_args(args)
+
+    assert config["filler"].model == "claude-sonnet-5"
+    assert config["filler"].effort == "high"
+    # Untouched Claude roles still take the runtime-wide effort.
+    assert config["scoping"].model == "claude-opus-4-6[1m]"
+    assert config["scoping"].effort == "high"
+    assert config["reviewer"].effort == "max"
+
+
+def test_unflagged_resume_keeps_the_models_the_run_started_with(inputs):
+    recorded = cli.build_agent_config({"filler": {"model": "claude-sonnet-5"}})
+    args = build_parser().parse_args(run_args(inputs)[:-2])
+
+    config = cli.agent_config_from_args(args, base=recorded)
+
+    assert config["filler"].model == "claude-sonnet-5"
+
+
+def test_an_unknown_role_in_a_per_role_flag_is_rejected(inputs):
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(
+            [*run_args(inputs)[:-2], "--agent-model", "typo=claude-sonnet-5"]
+        )
 
 
 def test_ui_command_starts_the_web_server_on_the_default_port(monkeypatch):

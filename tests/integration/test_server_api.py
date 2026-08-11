@@ -1,3 +1,6 @@
+import base64
+import json
+
 from fastapi.testclient import TestClient
 
 from tests.integration.conftest import WORKBOOK_SCHEMA_CONFIG, scoping_fixture
@@ -282,3 +285,156 @@ def test_a_note_that_looks_like_the_next_heading_does_not_block_resume(inputs):
     ).read_text()
     assert "## Round 2\nThis is still free prose." in answers
     assert "Use the broader mapping." in answers
+
+
+def test_agent_options_describe_the_choices_the_form_offers(inputs):
+    app = create_app(
+        inputs["runs_root"] / "missing-static",
+        options=ServerOptions(
+            home_dir=inputs["source"].parent, runs_root=inputs["runs_root"]
+        ),
+    )
+
+    with TestClient(app) as client:
+        options = client.get("/api/agents").json()
+
+    by_role = {entry["role"]: entry for entry in options}
+    assert set(by_role) == {"scoping", "filler", "revision", "reviewer", "re_review"}
+    assert by_role["filler"]["runtime"] == "claude"
+    assert by_role["reviewer"]["effort"] == "high"
+    assert "ultra" in by_role["reviewer"]["effort_choices"]
+
+
+def test_a_run_records_the_agent_choices_it_was_started_with(inputs):
+    runtime = FakeAgentRuntime(
+        {
+            "scoping": scoping_fixture(),
+            "filler": {"proposals": []},
+            "reviewer": {"findings": []},
+        }
+    )
+    app = create_app(
+        inputs["runs_root"] / "missing-static",
+        options=ServerOptions(
+            home_dir=inputs["source"].parent,
+            runs_root=inputs["runs_root"],
+            runtimes={"scoping": runtime, "filler": runtime, "reviewer": runtime},
+        ),
+    )
+    payload = {
+        "source": str(inputs["source"]),
+        "workbook": str(inputs["workbook"]),
+        "task": inputs["task"],
+        "rules_file": str(inputs["rules_file"]),
+        "scoping_answers": str(inputs["scoping_answers"]),
+        "review_policy": None,
+        "agents": {"filler": {"model": "claude-sonnet-5", "effort": "max"}},
+    }
+
+    with TestClient(app) as client:
+        created = client.post("/api/runs", json=payload)
+        run_id = created.json()["run_id"]
+        with client.websocket_connect(f"/ws/runs/{run_id}") as websocket:
+            events = []
+            while not events or events[-1]["type"] != "completed":
+                events.append(websocket.receive_json())
+
+    # Recorded with the inputs, so a resume in a later process runs the
+    # same models (ADR 0036).
+    recorded = json.loads(
+        (inputs["runs_root"] / run_id / "input" / "agents.json").read_text()
+    )
+    assert recorded["filler"] == {"model": "claude-sonnet-5", "effort": "max"}
+    assert recorded["reviewer"] == {"model": "gpt-5.6-sol", "effort": "high"}
+
+
+def test_a_mistyped_agent_choice_is_rejected_with_422(inputs):
+    app = create_app(
+        inputs["runs_root"] / "missing-static",
+        options=ServerOptions(
+            home_dir=inputs["source"].parent, runs_root=inputs["runs_root"]
+        ),
+    )
+    payload = {
+        "source": str(inputs["source"]),
+        "workbook": str(inputs["workbook"]),
+        "task": inputs["task"],
+        "agents": {"filler": {"effort": "ultra"}},
+    }
+
+    with TestClient(app) as client:
+        response = client.post("/api/runs", json=payload)
+
+    assert response.status_code == 422
+    assert "unknown effort" in response.json()["detail"]
+
+
+def test_pasted_images_reach_the_workspace_and_the_task(inputs):
+    runtime = FakeAgentRuntime(
+        {
+            "scoping": scoping_fixture(),
+            "filler": {"proposals": []},
+            "reviewer": {"findings": []},
+        }
+    )
+    app = create_app(
+        inputs["runs_root"] / "missing-static",
+        options=ServerOptions(
+            home_dir=inputs["source"].parent,
+            runs_root=inputs["runs_root"],
+            runtimes={"scoping": runtime, "filler": runtime, "reviewer": runtime},
+        ),
+    )
+    payload = {
+        "source": str(inputs["source"]),
+        "workbook": str(inputs["workbook"]),
+        "task": inputs["task"],
+        "rules_file": str(inputs["rules_file"]),
+        "scoping_answers": str(inputs["scoping_answers"]),
+        "review_policy": None,
+        "task_images": [
+            {
+                "content_type": "image/png",
+                "data": base64.b64encode(b"\x89PNG fake").decode(),
+            }
+        ],
+    }
+
+    with TestClient(app) as client:
+        created = client.post("/api/runs", json=payload)
+        run_id = created.json()["run_id"]
+        with client.websocket_connect(f"/ws/runs/{run_id}") as websocket:
+            events = []
+            while not events or events[-1]["type"] != "completed":
+                events.append(websocket.receive_json())
+
+    workspace = inputs["runs_root"] / run_id
+    image = workspace / "input" / "task_images" / "task-image-1.png"
+    assert image.read_bytes() == b"\x89PNG fake"
+    # Named in the task the agents read, not just dropped on disk.
+    assert "input/task_images/task-image-1.png" in (
+        workspace / "input" / "task.md"
+    ).read_text()
+
+
+def test_an_unsupported_pasted_type_is_rejected(inputs):
+    app = create_app(
+        inputs["runs_root"] / "missing-static",
+        options=ServerOptions(
+            home_dir=inputs["source"].parent, runs_root=inputs["runs_root"]
+        ),
+    )
+    payload = {
+        "source": str(inputs["source"]),
+        "workbook": str(inputs["workbook"]),
+        "task": inputs["task"],
+        "task_images": [
+            {"content_type": "image/tiff", "data": base64.b64encode(b"x").decode()}
+        ],
+    }
+
+    with TestClient(app) as client:
+        response = client.post("/api/runs", json=payload)
+
+    assert response.status_code == 422
+    assert "unsupported image type" in response.json()["detail"]
