@@ -1,12 +1,12 @@
 # WorkCrew — Full Frontend Component Reference for Redesign
 
-WorkCrew is a **local-first document-to-workbook workflow desk**. An operator picks a folder of source documents and an Excel workbook template, writes a sentence describing the task, and optionally supplies extraction rules; the backend then runs a multi-stage agent pipeline (Scoping → Filler → Review → Revision → Re-review → Finalize) that fills the workbook and produces auditable artifacts. The workbook's field schema is derived by the scoping pass, not uploaded. The UI is served by a local Python server on loopback and opened in the operator's own browser — there is no cloud, no login, no multi-user state.
+WorkCrew is a **local-first document-to-workbook workflow desk**. An operator picks a folder of source documents and an Excel workbook template, writes a sentence describing the task (optionally pasting screenshots into it), and optionally supplies extraction rules; the backend then runs a multi-stage agent pipeline (Scoping → Filler → Review → Revision → Re-review → Finalize) that fills the workbook and produces auditable artifacts. The workbook's field schema is derived by the scoping pass, not uploaded. The UI is served by a local Python server on loopback and opened in the operator's own browser — there is no cloud, no login, no multi-user state.
 
-**Tech stack**: React 19, TypeScript, Vite 8, Tailwind CSS v4 (`@theme inline`, no config file), shadcn/ui (only Badge/Button/Card vendored), Radix UI primitives, lucide-react icons, Zustand 5, react-markdown, Geist Variable font.
+**Tech stack**: React 19.2, TypeScript 6, Vite 8, Tailwind CSS v4 (`@theme inline`, no config file), shadcn/ui (only Badge/Button/Card vendored), Radix UI primitives, lucide-react icons, Zustand 5, react-markdown 10, Geist Variable font.
 
 **Styling idiom**: utility classes only. There are **no CSS modules and no styled-components** — every component is styled with Tailwind utilities that resolve to the semantic token set defined in `src/index.css`. `cn()` (clsx + tailwind-merge) merges conditional classes. Component variants use `class-variance-authority` (`cva`).
 
-**Visual character**: near-monochrome. The entire chrome is built from `oklch` greys with `--radius: 0.625rem`; the only saturated colors in the app are the five run-status accents (emerald / amber / sky / red / stone) and `--destructive`. Headings use `font-heading` (aliased to Geist), identifiers and paths use `font-mono`. Surfaces are layered by opacity (`bg-muted/18`, `bg-muted/20`, `bg-muted/30`, `bg-muted/35`) rather than by distinct color values.
+**Visual character**: near-monochrome. The entire chrome is built from `oklch` greys with `--radius: 0.625rem`; the only saturated colors in the app are the five run-status accents (emerald / amber / sky / red / stone) and `--destructive`. Headings use `font-heading` (aliased to Geist), identifiers and paths use `font-mono`. Surfaces are layered by opacity (`bg-muted/18`, `bg-muted/20`, `bg-muted/30`, `bg-muted/45`) rather than by distinct color values. Cards are separated from the page by a hairline ring (`ring-1 ring-foreground/10`) plus a very soft shadow (`shadow-lg shadow-black/4`), never by a heavy border.
 
 ---
 
@@ -48,6 +48,33 @@ Inside `view === "run"`, the right pane stacks three cards vertically with `gap-
 └──────────────────────────────────────────────┘
 ```
 
+### Component tree
+
+```
+main (grid)
+├── RunSidebar
+│   ├── brand block (PanelsTopLeft mark + wordmark + "Local" badge on small screens)
+│   ├── Button "New run"
+│   ├── ul[aria-label="Runs"] → run cards → RunStatusBadge
+│   └── footer Badge "Local only" (lg only)
+└── section
+    ├── RunCreationForm        (view === "new-run")
+    │   └── Card
+    │       ├── source folder / workbook pickers
+    │       ├── run name input
+    │       ├── task textarea + pasted-image thumbnails
+    │       ├── rules segmented control (none / text / file)
+    │       ├── AgentSettings (<details>)
+    │       └── footer bar: status line + "Start run"
+    ├── RunDetail              (view === "run")
+    │   ├── header Card
+    │   ├── ScopingQuestionForm | WorkflowProgress
+    │   │   ├── StagePipeline (6 chips)
+    │   │   └── LogStream (max-h-64, autoscroll)
+    │   └── ArtifactViewer | empty artifacts Card
+    └── empty state            (view === "empty")
+```
+
 ---
 
 ## 1. App Shell: `App.tsx`
@@ -67,8 +94,6 @@ import { getRun, listRuns, type RunSummary } from "@/lib/api"
 import { useAppStore } from "@/store/use-app-store"
 
 function App() {
-  // Individually-selected store slices: view, currentRun, runs, historyStatus,
-  // historyError, openNewRun, showRun, startHistoryLoad, receiveRuns, failHistoryLoad
   const view = useAppStore((state) => state.view)
   const currentRun = useAppStore((state) => state.currentRun)
   const runs = useAppStore((state) => state.runs)
@@ -81,24 +106,31 @@ function App() {
   const failHistoryLoad = useAppStore((state) => state.failHistoryLoad)
 
   useEffect(() => {
-    // Fetches GET /api/runs once on mount, guarded by an `ignore` flag.
     let ignore = false
     startHistoryLoad()
     void listRuns()
-      .then((history) => { if (!ignore) receiveRuns(history) })
+      .then((history) => {
+        if (!ignore) receiveRuns(history)
+      })
       .catch((cause: unknown) => {
         if (!ignore) {
-          failHistoryLoad(cause instanceof Error ? cause.message : "Unable to load run history")
+          failHistoryLoad(
+            cause instanceof Error ? cause.message : "Unable to load run history"
+          )
         }
       })
-    return () => { ignore = true }
+    return () => {
+      ignore = true
+    }
   }, [failHistoryLoad, receiveRuns, startHistoryLoad])
 
   async function selectRun(run: RunSummary) {
     try {
       showRun(await getRun(run.run_id))
     } catch (cause) {
-      failHistoryLoad(cause instanceof Error ? cause.message : "Unable to open the selected run")
+      failHistoryLoad(
+        cause instanceof Error ? cause.message : "Unable to open the selected run"
+      )
     }
   }
 
@@ -145,11 +177,13 @@ function App() {
 export default App
 ```
 
+**Empty state anatomy** — a 56px rounded-2xl bordered square holding a `Files` icon, a 3xl heading, a muted one-liner, and a primary button. Vertically centered in the remaining viewport height (the `calc()` accounts for the collapsed top bar below `lg`).
+
 ---
 
 ## 2. Left Rail: `run-sidebar.tsx`
 
-Brand block, the primary "New run" CTA, the run history list, and a persistent "Local only" trust badge. Handles four history states (loading / error / empty / populated).
+The persistent run history. Three visual zones separated by hairline borders: brand header → New-run action → scrollable run list, with a pinned "Local only" footer on large screens.
 
 ```tsx
 // frontend/src/components/run-sidebar.tsx
@@ -170,16 +204,33 @@ type RunSidebarProps = {
   onSelect: (run: RunSummary) => void
 }
 
-// formatDuration(seconds) → "42s" | "3m 5s" | "1h 20m"
-// formatStartTime(iso)    → Intl.DateTimeFormat(month:"short", day:"numeric", hour:"numeric", minute:"2-digit")
+function formatDuration(seconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(seconds))
+  if (totalSeconds < 60) return `${totalSeconds}s`
+  const minutes = Math.floor(totalSeconds / 60)
+  const remainingSeconds = totalSeconds % 60
+  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`
+  const hours = Math.floor(minutes / 60)
+  return `${hours}h ${minutes % 60}m`
+}
 
-function RunSidebar({ runs, selectedRunId, historyStatus, historyError, onNewRun, onSelect }: RunSidebarProps) {
+function formatStartTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value))
+}
+
+function RunSidebar({
+  runs, selectedRunId, historyStatus, historyError, onNewRun, onSelect,
+}: RunSidebarProps) {
   return (
     <aside
       aria-label="Run history"
       className="flex min-w-0 flex-col border-b bg-background lg:min-h-svh lg:border-r lg:border-b-0"
     >
-      {/* Brand block */}
       <div className="flex items-center gap-3 border-b px-4 py-3 lg:px-5 lg:py-5">
         <div className="grid size-9 place-items-center rounded-lg bg-foreground text-background">
           <PanelsTopLeft className="size-4" aria-hidden="true" />
@@ -193,14 +244,12 @@ function RunSidebar({ runs, selectedRunId, historyStatus, historyError, onNewRun
         </Badge>
       </div>
 
-      {/* Primary CTA */}
       <div className="p-3 lg:p-4">
         <Button onClick={onNewRun} className="w-full">
           <Plus /> New run
         </Button>
       </div>
 
-      {/* Run history */}
       <div className="min-h-0 flex-1 px-3 pb-3">
         <div className="flex items-center justify-between px-2 pb-2">
           <p className="text-[10px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
@@ -268,7 +317,6 @@ function RunSidebar({ runs, selectedRunId, historyStatus, historyError, onNewRun
         )}
       </div>
 
-      {/* Trust footer — desktop only */}
       <div className="hidden border-t p-4 lg:block">
         <Badge variant="outline" className="gap-1.5 bg-background">
           <ShieldCheck /> Local only
@@ -281,41 +329,46 @@ function RunSidebar({ runs, selectedRunId, historyStatus, historyError, onNewRun
 export { RunSidebar }
 ```
 
-**Run card anatomy** (the densest repeated element in the app):
+**Run card anatomy** (three rows inside a `rounded-xl border p-3` button):
 
-```
-┌────────────────────────────────────────┐
-│ 20260810-215131-7d550b   [● Running]   │  ← font-mono id + status badge
-│ charity-reports → charities.xlsx       │  ← truncated source → workbook
-│ Aug 10, 9:51 PM             ⏱ 3m 5s    │  ← time + monospace duration
-└────────────────────────────────────────┘
-   rounded-xl border · hover:bg-muted/35 · selected: bg-muted/45 + shadow-sm
-```
+1. `run_id` in mono semibold (truncating) + `RunStatusBadge` pushed right.
+2. `source_name → workbook_name` in 12px medium, truncating.
+3. Localized start time (`Intl.DateTimeFormat`, e.g. "Aug 11, 2:05 PM") + a `Clock3` icon with humanized duration (`45s` / `3m 12s` / `1h 04m`), both 11px muted.
+
+**Selected state**: `border-foreground/25 bg-muted/45 shadow-sm` plus `aria-current="true"`. Hover is a lighter version of the same idea (`hover:border-foreground/20 hover:bg-muted/35`). Empty and loading states are dashed-border placeholder blocks; the error state is a `bg-destructive/8` pill.
 
 ---
 
 ## 3. New Run Form: `run-creation-form.tsx`
 
-Four inputs in one card: two native path pickers (required), a free-text task description (required), and a rules block with a three-way source toggle (optional). Nothing is uploaded — the operator picks host paths through the backend's native chooser (`POST /api/pick`), so the form only ever holds absolute path strings.
+Six stacked field groups inside one Card, each a `rounded-xl border bg-muted/18 p-3` panel with a title + `Required`/`Optional` micro-caps tag + one-line explanation. The card footer is a `bg-muted/20` bar with a live status line on the left and the submit button on the right.
 
 ```tsx
 // frontend/src/components/run-creation-form.tsx
-import { useState, type FormEvent } from "react"
-import { FileSpreadsheet, Folder, Play } from "lucide-react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
+import { FileSpreadsheet, Folder, Play, X } from "lucide-react"
 
+import { AgentSettings } from "@/components/agent-settings"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { createRun, pickPath, type CreateRunInput, type PickMode, type RulesMode, type RunRecord } from "@/lib/api"
+import {
+  createRun, listAgentOptions, pickPath, readTaskImage, SUPPORTED_IMAGE_TYPES,
+  type AgentOption, type AgentSelection, type CreateRunInput, type PickMode,
+  type RulesMode, type RunRecord, type TaskImageUpload,
+} from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 type PathKey = "source" | "workbook"
 
-const paths: Array<{ key: PathKey; label: string; description: string; mode: PickMode; icon: typeof Folder }> = [
+/** A pasted image: what the operator sees, and what the API takes. */
+type TaskImage = { preview: string; upload: TaskImageUpload }
+
+const paths = [
   { key: "source",   label: "Source folder", description: "Documents the workflow will read", mode: "directory", icon: Folder },
   { key: "workbook", label: "Workbook",      description: "Excel template to fill",           mode: "file",      icon: FileSpreadsheet },
 ]
 
-const rulesModes: Array<{ mode: RulesMode; label: string }> = [
+const rulesModes = [
   { mode: "none", label: "No rules" },
   { mode: "text", label: "Describe them" },
   { mode: "file", label: "Use a text file" },
@@ -324,25 +377,90 @@ const rulesModes: Array<{ mode: RulesMode; label: string }> = [
 function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void }) {
   const [values, setValues] = useState<Record<PathKey, string>>({ source: "", workbook: "" })
   const [task, setTask] = useState("")
+  const [name, setName] = useState("")
   const [rulesMode, setRulesMode] = useState<RulesMode>("none")
   const [rulesText, setRulesText] = useState("")
   const [rulesFile, setRulesFile] = useState("")
   const [pickingKey, setPickingKey] = useState<PathKey | "rules" | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [agentOptions, setAgentOptions] = useState<AgentOption[]>([])
+  const [agentOptionsStatus, setAgentOptionsStatus] =
+    useState<"loading" | "ready" | "error">("loading")
+  const [agentOptionsError, setAgentOptionsError] = useState<string | null>(null)
+  const [agents, setAgents] = useState<Record<string, AgentSelection>>({})
+  const [images, setImages] = useState<TaskImage[]>([])
+  const agentOptionsRequestRef = useRef(0)
 
-  // The submit button unlocks only when both paths are picked, the task is
-  // non-empty, and the chosen rules mode has its own input satisfied.
+  // Object URLs back the thumbnails. Removing one image revokes its own
+  // URL; the rest are revoked when the form goes away. Keying this on
+  // `images` would revoke the URLs of thumbnails still on screen.
+  const imagesRef = useRef(images)
+  imagesRef.current = images
+  useEffect(() => () => {
+    for (const image of imagesRef.current) URL.revokeObjectURL(image.preview)
+  }, [])
+
+  async function addPastedImages(files: File[]) {
+    const supported = files.filter((file) => SUPPORTED_IMAGE_TYPES.includes(file.type))
+    if (supported.length === 0) return
+    setError(null)
+    const added = await Promise.all(
+      supported.map(async (file) => ({
+        preview: URL.createObjectURL(file),
+        upload: await readTaskImage(file),
+      }))
+    )
+    setImages((current) => [...current, ...added])
+  }
+
+  function removeImage(index: number) {
+    setImages((current) => {
+      URL.revokeObjectURL(current[index].preview)
+      return current.filter((_, position) => position !== index)
+    })
+  }
+
+  const loadAgentSettings = useCallback(async () => {
+    const request = ++agentOptionsRequestRef.current
+    setAgentOptionsStatus("loading")
+    setAgentOptionsError(null)
+    try {
+      const options = await listAgentOptions()
+      if (request !== agentOptionsRequestRef.current) return
+      setAgentOptions(options)
+      setAgentOptionsStatus("ready")
+    } catch (cause) {
+      if (request !== agentOptionsRequestRef.current) return
+      setAgentOptionsError(
+        cause instanceof Error ? cause.message : "Unable to load agent settings"
+      )
+      setAgentOptionsStatus("error")
+    }
+  }, [])
+
+  useEffect(() => {
+    // The server owns the roles, defaults and effort vocabularies. Do not
+    // silently run with defaults when that contract could not be loaded.
+    void loadAgentSettings()
+    return () => { agentOptionsRequestRef.current += 1 }
+  }, [loadAgentSettings])
+
+  const chosenAgents = Object.fromEntries(
+    Object.entries(agents).filter(
+      ([, selection]) => selection.model !== null || selection.effort !== null
+    )
+  )
+
   const ready =
     Boolean(values.source) &&
     Boolean(values.workbook) &&
     task.trim().length > 0 &&
+    agentOptionsStatus === "ready" &&
     (rulesMode !== "text" || rulesText.trim().length > 0) &&
     (rulesMode !== "file" || Boolean(rulesFile))
 
   async function choose(key: PathKey | "rules", mode: PickMode, prompt: string) {
-    // Opens the host's native chooser via POST /api/pick; a cancel resolves
-    // to null and leaves the current value alone.
     setPickingKey(key)
     setError(null)
     try {
@@ -366,13 +484,18 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
       source: values.source,
       workbook: values.workbook,
       task: task.trim(),
+      name: name.trim() || null,
+      // Only what the operator actually chose; the server resolves the
+      // rest against its own pinned defaults.
+      agents: Object.keys(chosenAgents).length > 0 ? chosenAgents : null,
+      task_images: images.map((image) => image.upload),
       rules_text: rulesMode === "text" ? rulesText.trim() : null,
       rules_file: rulesMode === "file" ? rulesFile : null,
       scoping_answers: null,
       review_policy: null,
     }
     try {
-      onCreated(await createRun(input))   // POST /api/runs → switches the view to the new run
+      onCreated(await createRun(input))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to start the run")
     } finally {
@@ -382,10 +505,13 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
 
   return (
     <div className="mx-auto w-full max-w-4xl">
-      {/* Page heading */}
       <div className="mb-6">
-        <p className="text-xs font-semibold tracking-[0.18em] text-muted-foreground uppercase">New run</p>
-        <h1 className="mt-2 font-heading text-3xl font-semibold tracking-tight">Assemble the working set.</h1>
+        <p className="text-xs font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+          New run
+        </p>
+        <h1 className="mt-2 font-heading text-3xl font-semibold tracking-tight">
+          Assemble the working set.
+        </h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Point WorkCrew at your documents and workbook, then say what you want done.
           The scoping pass reads the workbook and derives the field schema itself.
@@ -402,14 +528,18 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
             </CardDescription>
           </CardHeader>
 
-          {/* Two path pickers, side by side on sm+ */}
+          {/* ── 1. Path pickers, two-up on sm and wider ───────────────── */}
           <CardContent className="grid gap-3 sm:grid-cols-2">
             {paths.map((field) => {
               const Icon = field.icon
               const value = values[field.key]
               return (
-                <div key={field.key} role="group" aria-label={`${field.label} input`}
-                     className="rounded-xl border bg-muted/18 p-3">
+                <div
+                  key={field.key}
+                  role="group"
+                  aria-label={`${field.label} input`}
+                  className="rounded-xl border bg-muted/18 p-3"
+                >
                   <div className="flex items-start gap-3">
                     <div className="grid size-9 shrink-0 place-items-center rounded-lg border bg-background">
                       <Icon className="size-4" aria-hidden="true" />
@@ -425,12 +555,17 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
                     </div>
                   </div>
                   <div className="mt-3 flex items-center gap-2">
-                    <div title={value || undefined}
-                         className="min-w-0 flex-1 truncate rounded-md border bg-background px-2.5 py-2 font-mono text-xs text-muted-foreground">
+                    <div
+                      title={value || undefined}
+                      className="min-w-0 flex-1 truncate rounded-md border bg-background px-2.5 py-2 font-mono text-xs text-muted-foreground"
+                    >
                       {value || "Nothing selected"}
                     </div>
-                    <Button size="sm" variant="outline" type="button" disabled={pickingKey !== null}
-                            onClick={() => void choose(field.key, field.mode, `Choose ${field.label.toLowerCase()}`)}>
+                    <Button
+                      size="sm" variant="outline" type="button"
+                      disabled={pickingKey !== null}
+                      onClick={() => void choose(field.key, field.mode, `Choose ${field.label.toLowerCase()}`)}
+                    >
                       {pickingKey === field.key ? "Choosing…" : "Choose"}
                     </Button>
                   </div>
@@ -439,35 +574,95 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
             })}
           </CardContent>
 
-          {/* Task — the sentence the whole run is derived from */}
+          {/* ── 2. Run name (optional) ────────────────────────────────── */}
+          <CardContent>
+            <div role="group" aria-label="Run name input" className="rounded-xl border bg-muted/18 p-3">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium">Run name</p>
+                <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                  Optional
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Names the run, so its id reads as more than a timestamp.
+              </p>
+              <input
+                aria-label="Run name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="e.g. charity 2015 review"
+                className="mt-3 w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+              />
+              <p className="mt-2 text-xs text-muted-foreground">
+                Without a name, the source folder names the run.
+              </p>
+            </div>
+          </CardContent>
+
+          {/* ── 3. Task + pasted images ───────────────────────────────── */}
           <CardContent>
             <div role="group" aria-label="Task input" className="rounded-xl border bg-muted/18 p-3">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-medium">Task</p>
-                <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Required</span>
+                <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                  Required
+                </span>
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                What should this run produce? The workbook schema is derived from this.
+                What should this run produce? The workbook schema is derived from
+                this. Paste screenshots straight into the box — the agents read
+                them with your words.
               </p>
               <textarea
                 aria-label="Task"
                 value={task}
                 onChange={(event) => setTask(event.target.value)}
+                onPaste={(event) => {
+                  const files = Array.from(event.clipboardData.files)
+                  if (files.length === 0) return
+                  // Keep the pasted image out of the text box itself.
+                  event.preventDefault()
+                  void addPastedImages(files)
+                }}
                 rows={4}
                 placeholder="e.g. Fill one row per charity folder from the annual reports, keyed by registration number."
                 className="mt-3 w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
               />
+
+              {images.length > 0 && (
+                <ul aria-label="Task images" className="mt-3 flex flex-wrap gap-2">
+                  {images.map((image, index) => (
+                    <li key={image.preview} className="relative">
+                      <img
+                        src={image.preview}
+                        alt={`Task image ${index + 1}`}
+                        className="size-20 rounded-lg border object-cover"
+                      />
+                      <button
+                        type="button"
+                        aria-label={`Remove task image ${index + 1}`}
+                        onClick={() => removeImage(index)}
+                        className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full border bg-background text-xs shadow-sm hover:bg-muted"
+                      >
+                        <X className="size-3" aria-hidden="true" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </CardContent>
 
-          {/* Rules — segmented toggle reveals a textarea or a file picker */}
+          {/* ── 4. Rules: segmented control + conditional editor ──────── */}
           <CardContent>
             <div role="group" aria-label="Rules input" className="rounded-xl border bg-muted/18 p-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium">Rules</p>
-                    <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Optional</span>
+                    <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                      Optional
+                    </span>
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     Extraction conventions the agents should follow
@@ -507,12 +702,17 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
 
               {rulesMode === "file" && (
                 <div className="mt-3 flex items-center gap-2">
-                  <div title={rulesFile || undefined}
-                       className="min-w-0 flex-1 truncate rounded-md border bg-background px-2.5 py-2 font-mono text-xs text-muted-foreground">
+                  <div
+                    title={rulesFile || undefined}
+                    className="min-w-0 flex-1 truncate rounded-md border bg-background px-2.5 py-2 font-mono text-xs text-muted-foreground"
+                  >
                     {rulesFile || "Nothing selected"}
                   </div>
-                  <Button size="sm" variant="outline" type="button" disabled={pickingKey !== null}
-                          onClick={() => void choose("rules", "file", "Choose rules file")}>
+                  <Button
+                    size="sm" variant="outline" type="button"
+                    disabled={pickingKey !== null}
+                    onClick={() => void choose("rules", "file", "Choose rules file")}
+                  >
                     {pickingKey === "rules" ? "Choosing…" : "Choose"}
                   </Button>
                 </div>
@@ -520,7 +720,31 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
             </div>
           </CardContent>
 
-          {/* Sticky-feeling footer bar: live readiness copy on the left, submit on the right */}
+          {/* ── 5. Agents (loading / ready / error) ───────────────────── */}
+          <CardContent>
+            {agentOptionsStatus === "ready" ? (
+              <AgentSettings
+                options={agentOptions}
+                selections={agents}
+                onChange={(role, selection) =>
+                  setAgents((current) => ({ ...current, [role]: selection }))
+                }
+              />
+            ) : agentOptionsStatus === "loading" ? (
+              <p className="text-sm text-muted-foreground" role="status">
+                Loading agent settings…
+              </p>
+            ) : (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+                <p className="text-sm text-destructive" role="alert">{agentOptionsError}</p>
+                <Button type="button" size="sm" variant="outline" onClick={() => void loadAgentSettings()}>
+                  Retry agent settings
+                </Button>
+              </div>
+            )}
+          </CardContent>
+
+          {/* ── 6. Footer bar ─────────────────────────────────────────── */}
           <div className="flex flex-col gap-3 border-t bg-muted/20 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div aria-live="polite" className="text-sm">
               {error ? (
@@ -546,13 +770,131 @@ function RunCreationForm({ onCreated }: { onCreated: (run: RunRecord) => void })
 export { RunCreationForm }
 ```
 
-**Input group anatomy** — every one of the three groups shares the same shell: `rounded-xl border bg-muted/18 p-3`, a `text-sm font-medium` label paired with a tiny uppercase `Required`/`Optional` tag, a `text-xs text-muted-foreground` description, then the control. Path controls pair a truncating monospace "value well" with a `size="sm" variant="outline"` **Choose** button that reads `Choosing…` while the native dialog is open (all pickers disable while any one is open).
+### Behaviours a redesign must preserve
+
+- **Path pickers are not file inputs.** `Choose` posts to `/api/pick`, which opens the *host OS* native chooser; the returned absolute path is shown in a read-only mono chip that truncates with a `title` tooltip. While a chooser is open, *all* Choose buttons disable (`pickingKey !== null`) and the active one reads `Choosing…`.
+- **Screenshots paste into the task box.** `onPaste` intercepts `clipboardData.files`, calls `preventDefault()` so the image never lands in the textarea, filters to `SUPPORTED_IMAGE_TYPES`, and appends 80px `object-cover` thumbnails below the textarea. Each thumbnail has a 20px circular remove button overhanging its top-right corner (`-top-1.5 -right-1.5`). Previews are object URLs, revoked individually on removal and en masse on unmount.
+- **Agent settings gate readiness.** If `/api/agents` fails, the form is *not* submittable — `ready` requires `agentOptionsStatus === "ready"`. The error state is a destructive-tinted panel with a `Retry agent settings` button. Stale responses are discarded via a monotonically increasing request ref.
+- **Only explicit agent choices are sent.** `chosenAgents` filters out roles where both `model` and `effort` are `null`; if nothing was changed, `agents: null` goes over the wire and the server applies its pinned defaults.
+- **The footer status line is the only validation surface** — there are no per-field error messages. It is `aria-live="polite"` and swaps between the muted hint, the ready message, and a destructive error.
 
 ---
 
-## 4. Run Detail: `run-detail.tsx`
+## 4. Agent Settings: `agent-settings.tsx`
 
-The run header card plus the two swappable body sections. Opens a WebSocket while the run is streamable and tears it down on unmount.
+A native `<details>` disclosure, collapsed by default, holding one row per pipeline role. The summary carries a right-aligned counter that reads `Defaults` or `N changed`.
+
+```tsx
+// frontend/src/components/agent-settings.tsx
+import type { AgentOption, AgentSelection } from "@/lib/api"
+
+const ROLE_LABELS: Record<string, string> = {
+  scoping: "Scoping",
+  filler: "Filler",
+  revision: "Revision",
+  reviewer: "Review",
+  re_review: "Re-review",
+}
+
+type AgentSettingsProps = {
+  options: AgentOption[]
+  selections: Record<string, AgentSelection>
+  onChange: (role: string, selection: AgentSelection) => void
+}
+
+/** Per-role model and reasoning effort, collapsed until asked for. */
+function AgentSettings({ options, selections, onChange }: AgentSettingsProps) {
+  if (options.length === 0) return null
+
+  const changed = options.filter((option) => {
+    const selection = selections[option.role]
+    return Boolean(selection?.model) || Boolean(selection?.effort)
+  }).length
+
+  return (
+    <details className="rounded-xl border bg-muted/18 p-3">
+      <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+        Agents
+        <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+          Optional
+        </span>
+        <span className="ml-auto text-xs font-normal text-muted-foreground">
+          {changed === 0 ? "Defaults" : `${changed} changed`}
+        </span>
+      </summary>
+
+      <p className="mt-2 text-xs text-muted-foreground">
+        Model and reasoning effort per role. Leave a field alone to keep the
+        pinned default.
+      </p>
+
+      <div className="mt-3 grid gap-2">
+        {options.map((option) => {
+          const selection = selections[option.role] ?? { model: null, effort: null }
+          const modelListId = `models-${option.role}`
+          return (
+            <div
+              key={option.role}
+              role="group"
+              aria-label={`${ROLE_LABELS[option.role] ?? option.role} agent`}
+              className="grid gap-2 rounded-lg border bg-background p-2.5 sm:grid-cols-[8rem_minmax(0,1fr)_9rem] sm:items-center"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">
+                  {ROLE_LABELS[option.role] ?? option.role}
+                </p>
+                <p className="font-mono text-[10px] text-muted-foreground">{option.runtime}</p>
+              </div>
+
+              <input
+                aria-label={`${ROLE_LABELS[option.role] ?? option.role} model`}
+                list={modelListId}
+                value={selection.model ?? ""}
+                placeholder={option.model}
+                onChange={(event) =>
+                  onChange(option.role, { ...selection, model: event.target.value.trim() || null })
+                }
+                className="min-w-0 rounded-md border bg-background px-2.5 py-1.5 font-mono text-xs outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+              />
+              <datalist id={modelListId}>
+                {option.model_suggestions.map((model) => (
+                  <option key={model} value={model} />
+                ))}
+              </datalist>
+
+              <select
+                aria-label={`${ROLE_LABELS[option.role] ?? option.role} effort`}
+                value={selection.effort ?? ""}
+                onChange={(event) =>
+                  onChange(option.role, { ...selection, effort: event.target.value || null })
+                }
+                className="rounded-md border bg-background px-2 py-1.5 text-xs outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+              >
+                <option value="">
+                  {option.effort ? `Default (${option.effort})` : "Default"}
+                </option>
+                {option.effort_choices.map((level) => (
+                  <option key={level} value={level}>{level}</option>
+                ))}
+              </select>
+            </div>
+          )
+        })}
+      </div>
+    </details>
+  )
+}
+
+export { AgentSettings, ROLE_LABELS }
+```
+
+**Row layout**: `sm:grid-cols-[8rem_minmax(0,1fr)_9rem]` — a fixed label column (role name + runtime in 10px mono), a flexible model combobox (free-text `<input list>` backed by a `<datalist>` of suggestions; the server default shows as the *placeholder*, so an empty field means "keep the default"), and a fixed effort `<select>` whose first option reads `Default (high)`. Below `sm` the three cells stack.
+
+---
+
+## 5. Run Detail: `run-detail.tsx`
+
+Composes the three stacked cards and owns the WebSocket lifecycle for the selected run.
 
 ```tsx
 // frontend/src/components/run-detail.tsx
@@ -569,11 +911,20 @@ import type { RunRecord } from "@/lib/api"
 import { useAppStore } from "@/store/use-app-store"
 
 function RunDetail({ run }: { run: RunRecord }) {
-  // Store slices: streamRunId, streamEvents, connectRunStream, disconnectRunStream,
-  // scoping, resumeRun, cancelRun, retryRun, runAction
+  const streamRunId = useAppStore((state) => state.streamRunId)
+  const streamEvents = useAppStore((state) => state.streamEvents)
+  const connectRunStream = useAppStore((state) => state.connectRunStream)
+  const disconnectRunStream = useAppStore((state) => state.disconnectRunStream)
+  const scoping = useAppStore((state) => state.scoping)
+  const resumeRun = useAppStore((state) => state.resumeRun)
+  const cancelRun = useAppStore((state) => state.cancelRun)
+  const retryRun = useAppStore((state) => state.retryRun)
+  const runAction = useAppStore((state) => state.runAction)
   const events = streamRunId === run.run_id ? streamEvents : []
-  const streamable = run.status === "running" || run.status === "paused" || run.status === "failed"
-  const streamLifecycle = run.status === "failed" ? "failed" : streamable ? "active" : "inactive"
+  const streamable =
+    run.status === "running" || run.status === "paused" || run.status === "failed"
+  const streamLifecycle =
+    run.status === "failed" ? "failed" : streamable ? "active" : "inactive"
 
   useEffect(() => {
     if (!streamable) return
@@ -586,7 +937,6 @@ function RunDetail({ run }: { run: RunRecord }) {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
-      {/* Header card */}
       <Card className="bg-background shadow-lg shadow-black/4">
         <CardContent className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
           <div className="min-w-0">
@@ -609,15 +959,21 @@ function RunDetail({ run }: { run: RunRecord }) {
               </span>
             </div>
             {run.status === "running" && (
-              <Button aria-label="Cancel run" variant="outline" size="sm" disabled={actionPending}
-                      className="text-destructive hover:bg-destructive/8"
-                      onClick={() => void cancelRun(run.run_id)}>
+              <Button
+                aria-label="Cancel run" variant="outline" size="sm"
+                disabled={actionPending}
+                className="text-destructive hover:bg-destructive/8"
+                onClick={() => void cancelRun(run.run_id)}
+              >
                 <Ban /> {actionPending ? "Cancelling…" : "Cancel"}
               </Button>
             )}
             {(run.status === "failed" || run.status === "cancelled") && (
-              <Button aria-label="Retry run" size="sm" disabled={actionPending}
-                      onClick={() => void retryRun(run.run_id)}>
+              <Button
+                aria-label="Retry run" size="sm"
+                disabled={actionPending}
+                onClick={() => void retryRun(run.run_id)}
+              >
                 <RotateCcw /> {actionPending ? "Retrying…" : "Retry"}
               </Button>
             )}
@@ -628,7 +984,6 @@ function RunDetail({ run }: { run: RunRecord }) {
         </CardContent>
       </Card>
 
-      {/* Body: questions when paused, live progress otherwise */}
       {run.status === "paused" ? (
         <ScopingQuestionForm
           questions={scoping.runId === run.run_id ? scoping.questions : []}
@@ -640,7 +995,6 @@ function RunDetail({ run }: { run: RunRecord }) {
         <WorkflowProgress run={run} events={events} />
       )}
 
-      {/* Artifacts: real viewer only once completed */}
       {run.status === "completed" ? (
         <ArtifactViewer runId={run.run_id} />
       ) : (
@@ -664,13 +1018,13 @@ function RunDetail({ run }: { run: RunRecord }) {
 export { RunDetail }
 ```
 
-Action affordances are status-exclusive: **Cancel** (outline button tinted `text-destructive`) only while `running`; **Retry** (solid button) only when `failed` or `cancelled`; neither while `paused` or `completed`.
+**Header card layout**: `sm:grid-cols-[minmax(0,1fr)_auto]`. Left column = status badge + mono run id on one row, then a truncating 2xl `font-heading` title `source → workbook`. Right column = right-aligned metadata (start time with a `Clock3` icon, workspace path in mono with a `title` tooltip), then the single contextual action button, then any action error in destructive 12px.
+
+**Action affordances by status** — `running` → outline `Cancel` tinted destructive on hover; `failed` / `cancelled` → primary `Retry`; `paused` / `completed` → no button (the scoping form or artifact viewer is the action). Buttons swap their label to a present-participle while pending.
 
 ---
 
-## 5. Stage Pipeline + Log Stream: `workflow-progress.tsx`
-
-Two stacked sub-components inside one card: a six-cell stage strip and an auto-scrolling timestamped log. Both are driven by the same `WorkflowEvent[]`, so they never disagree.
+## 6. Stage Pipeline + Log Stream: `workflow-progress.tsx`
 
 ```tsx
 // frontend/src/components/workflow-progress.tsx
@@ -684,7 +1038,6 @@ import { workflowEventDetails } from "@/lib/workflow-events"
 
 const stages = ["Scoping", "Filler", "Review", "Revision", "Re-review", "Finalize"]
 
-// Backend phase name → stage index. Several phases collapse into one cell.
 const phaseStage: Record<string, number> = {
   INITIALIZING: 0, INIT: 0, PREPARE_WORKSPACE: 0, BUILD_MANIFEST: 0,
   OUTLINE_WORKBOOK: 0, LOAD_SCHEMA: 0, CLAUDE_SCOPE: 0, AWAIT_SCOPING_ANSWERS: 0,
@@ -697,15 +1050,17 @@ const phaseStage: Record<string, number> = {
 
 type StageStatus = "pending" | "active" | "completed" | "failed"
 
-// Everything before the current stage is completed, everything after is pending;
-// the current cell is active, completed, or failed depending on the latest event.
 function stageStatuses(run: RunRecord, events: WorkflowEvent[]): StageStatus[] {
-  if (run.status === "completed" ||
-      events.some((event) => workflowEventDetails(event).runStatus === "completed")) {
+  if (
+    run.status === "completed" ||
+    events.some((event) => workflowEventDetails(event).runStatus === "completed")
+  ) {
     return stages.map(() => "completed")
   }
 
-  const phaseEvent = [...events].reverse().map(workflowEventDetails)
+  const phaseEvent = [...events]
+    .reverse()
+    .map(workflowEventDetails)
     .find((event) => event.phaseStatus !== null)
   const phase = phaseEvent?.phase ?? run.phase
   const current = phaseStage[phase] ?? 0
@@ -715,7 +1070,9 @@ function stageStatuses(run: RunRecord, events: WorkflowEvent[]): StageStatus[] {
     phaseEvent?.phaseStatus === "failed"
   const currentStatus: StageStatus = failed
     ? "failed"
-    : phaseEvent?.phaseStatus === "completed" ? "completed" : "active"
+    : phaseEvent?.phaseStatus === "completed"
+      ? "completed"
+      : "active"
 
   return stages.map((_, index) => {
     if (index < current) return "completed"
@@ -763,12 +1120,16 @@ function StagePipeline({ run, events }: { run: RunRecord; events: WorkflowEvent[
 function LogStream({ events }: { events: WorkflowEvent[] }) {
   const end = useRef<HTMLDivElement>(null)
 
-  // Every new event pins the view to the bottom of the log.
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }) }, [events])
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" })
+  }, [events])
 
   return (
-    <div aria-label="Run log" aria-live="polite"
-         className="max-h-64 overflow-y-auto rounded-xl border bg-muted/20">
+    <div
+      aria-label="Run log"
+      aria-live="polite"
+      className="max-h-64 overflow-y-auto rounded-xl border bg-muted/20"
+    >
       {events.length === 0 ? (
         <p className="px-4 py-6 text-sm text-muted-foreground">Waiting for workflow events…</p>
       ) : (
@@ -782,10 +1143,12 @@ function LogStream({ events }: { events: WorkflowEvent[] }) {
                     hour: "2-digit", minute: "2-digit", second: "2-digit",
                   })}
                 </time>
-                <span className={cn(
-                  "min-w-0 break-words",
-                  (details.error !== null || details.phaseStatus === "failed") && "text-destructive"
-                )}>
+                <span
+                  className={cn(
+                    "min-w-0 break-words",
+                    (details.error !== null || details.phaseStatus === "failed") && "text-destructive"
+                  )}
+                >
                   {details.logMessage}
                 </span>
               </li>
@@ -822,45 +1185,66 @@ function WorkflowProgress({ run, events }: { run: RunRecord; events: WorkflowEve
 export { LogStream, StagePipeline, WorkflowProgress }
 ```
 
-Stage strip responsive shape: **1 column** on mobile → `sm:grid-cols-3` (two rows of three) → `xl:grid-cols-6` (one row). The active cell is the only inverted surface in the app (`bg-foreground text-background`), which makes "where are we" readable at a glance.
+**Pipeline visual**: six equal chips, `1 → 3 → 6` columns across breakpoints (never a connector-line stepper — they are independent bordered pills, each `rounded-xl px-3 py-3` with a 14px icon and a 12px medium label). The *active* chip is the only inverted surface in the app (`bg-foreground text-background`) and spins a `LoaderCircle`. Completed = emerald tint, failed = red tint, pending = plain background with muted text.
+
+**Log stream**: a bordered `bg-muted/20` scroll region capped at `max-h-64`, rows `divide-y font-mono text-xs`, each row a fixed-width `HH:MM:SS` timestamp plus a wrapping message. Failure rows turn `text-destructive`. A sentinel `<div>` at the end is scrolled into view on every event batch. The engine's own failure text is *also* surfaced above the log as a destructive panel so it is visible without scrolling.
 
 ### Event → UI mapping (`lib/workflow-events.ts`)
 
-One pure function turns each socket event into the four things the UI needs, so no component branches on `event.type` itself.
+One pure function normalizes the five event shapes into what the UI needs, so no component branches on `event.type`.
 
 ```ts
 // frontend/src/lib/workflow-events.ts
+import type { RunStatus, WorkflowEvent } from "@/lib/api"
+
+type PhaseStatus = "active" | "completed" | "failed"
+
 type WorkflowEventDetails = {
   phase: string | null
-  phaseStatus: "active" | "completed" | "failed" | null
+  phaseStatus: PhaseStatus | null
   runStatus: RunStatus | null
   logMessage: string
   error: string | null
 }
 
 function workflowEventDetails(event: WorkflowEvent): WorkflowEventDetails {
-  if (event.type === "progress")
+  if (event.type === "progress") {
     return { phase: event.phase, phaseStatus: null, runStatus: null, logMessage: event.message, error: null }
-  if (event.type === "phase_change")
-    return { phase: event.phase, phaseStatus: event.status, runStatus: null,
-             logMessage: `${event.phase} ${event.status === "active" ? "started" : event.status}`, error: null }
-  if (event.type === "paused")
+  }
+  if (event.type === "phase_change") {
+    return {
+      phase: event.phase,
+      phaseStatus: event.status,
+      runStatus: null,
+      logMessage: `${event.phase} ${event.status === "active" ? "started" : event.status}`,
+      error: null,
+    }
+  }
+  if (event.type === "paused") {
     return { phase: null, phaseStatus: null, runStatus: "paused", logMessage: event.reason, error: null }
-  if (event.type === "completed")
-    return { phase: "FINALIZE", phaseStatus: null, runStatus: "completed",
-             logMessage: `Run completed: ${event.final_xlsx}`, error: null }
-  if (event.reason === "cancelled")
-    // A cancel is a stop, not a fault: no red styling, no failure banner.
+  }
+  if (event.type === "completed") {
+    return {
+      phase: "FINALIZE", phaseStatus: null, runStatus: "completed",
+      logMessage: `Run completed: ${event.final_xlsx}`, error: null,
+    }
+  }
+  if (event.reason === "cancelled") {
     return { phase: null, phaseStatus: null, runStatus: "cancelled", logMessage: event.error, error: null }
+  }
   return { phase: null, phaseStatus: null, runStatus: "failed", logMessage: event.error, error: event.error }
 }
+
+export { workflowEventDetails }
 ```
+
+Note the distinction: a *cancelled* run carries `error: null`, so it renders as an ordinary muted log line, not as a red failure panel.
 
 ---
 
-## 6. Scoping Questions: `scoping-question-form.tsx`
+## 7. Scoping Questions: `scoping-question-form.tsx`
 
-Replaces the progress card while the run is `paused`. The backend asks in rounds; each round is a fresh set of questions of four possible types, and every non-text question gets an optional free-text note beside it.
+Replaces the progress card whenever `status === "paused"`. Four question types dispatch through a lookup table of control components; every non-text question also gets an optional free-text note.
 
 ```tsx
 // frontend/src/components/scoping-question-form.tsx
@@ -869,28 +1253,48 @@ import { CircleHelp, Send } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import type { ScopingAnswers, ScopingAnswerValue, ScopingQuestion, ScopingQuestionType } from "@/lib/api"
+import type {
+  ScopingAnswers, ScopingAnswerValue, ScopingQuestion, ScopingQuestionType,
+} from "@/lib/api"
 
 type FormStatus = "idle" | "loading" | "ready" | "submitting" | "error"
 
-// Shared option renderer for radio/checkbox questions: two columns on sm+.
-function ChoiceList({ questionId, inputType, choices }: {
-  questionId: string
-  inputType: "radio" | "checkbox"
-  choices: Array<{ key: string; value: string; label: string; checked: boolean; onChange: (checked: boolean) => void }>
-}) {
+type Choice = {
+  key: string
+  value: string
+  label: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}
+
+function ChoiceList({
+  questionId, inputType, choices,
+}: { questionId: string; inputType: "radio" | "checkbox"; choices: Choice[] }) {
   return (
     <div className="mt-3 grid gap-2 sm:grid-cols-2">
       {choices.map((choice) => (
-        <label key={choice.key}
-               className="flex cursor-pointer items-center gap-3 rounded-lg border bg-background px-3 py-2.5 text-sm">
-          <input type={inputType} name={questionId} value={choice.value} checked={choice.checked}
-                 onChange={(event) => choice.onChange(event.target.checked)} />
+        <label
+          key={choice.key}
+          className="flex cursor-pointer items-center gap-3 rounded-lg border bg-background px-3 py-2.5 text-sm"
+        >
+          <input
+            type={inputType}
+            name={questionId}
+            value={choice.value}
+            checked={choice.checked}
+            onChange={(event) => choice.onChange(event.target.checked)}
+          />
           {choice.label}
         </label>
       ))}
     </div>
   )
+}
+
+function answered(answer: ScopingAnswerValue | undefined) {
+  if (Array.isArray(answer)) return answer.length > 0
+  if (typeof answer === "string") return answer.trim().length > 0
+  return typeof answer === "boolean"
 }
 
 function TextQuestion({ question, answer, onChange }: QuestionControlProps) {
@@ -905,9 +1309,9 @@ function TextQuestion({ question, answer, onChange }: QuestionControlProps) {
   )
 }
 
-// SingleSelectQuestion → ChoiceList with radios over question.options
-// MultiSelectQuestion  → ChoiceList with checkboxes; toggles into/out of an array
-// ConfirmQuestion      → ChoiceList with radios over a fixed Yes / No pair (boolean answer)
+// SingleSelectQuestion → ChoiceList with radios, checked={answer === option.value}
+// MultiSelectQuestion  → ChoiceList with checkboxes over a string[] answer
+// ConfirmQuestion      → ChoiceList with radios over a fixed Yes/No pair (boolean answer)
 
 const questionControls: Record<ScopingQuestionType, ComponentType<QuestionControlProps>> = {
   text: TextQuestion,
@@ -928,6 +1332,11 @@ function ScopingQuestionForm({ questions, status, error, onSubmit }: ScopingQues
     setNotes({})
     setValidationError(null)
   }, [questions])
+
+  function setValue(id: string, value: ScopingAnswerValue) {
+    setValues((current) => ({ ...current, [id]: value }))
+    setValidationError(null)
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -975,8 +1384,6 @@ function ScopingQuestionForm({ questions, status, error, onSubmit }: ScopingQues
                     onChange={(value) => setValue(question.id, value)}
                   />
 
-                  {/* Options can never cover everything — every non-text question
-                      carries a free-text note beside it. */}
                   {type !== "text" && (
                     <label className="mt-3 block">
                       <span className="text-xs text-muted-foreground">
@@ -986,7 +1393,8 @@ function ScopingQuestionForm({ questions, status, error, onSubmit }: ScopingQues
                         aria-label={`Note for ${question.question}`}
                         value={notes[question.id] ?? ""}
                         onChange={(event) =>
-                          setNotes((current) => ({ ...current, [question.id]: event.target.value }))}
+                          setNotes((current) => ({ ...current, [question.id]: event.target.value }))
+                        }
                         rows={2}
                         className="mt-1.5 w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
                       />
@@ -1014,13 +1422,15 @@ function ScopingQuestionForm({ questions, status, error, onSubmit }: ScopingQues
 export { ScopingQuestionForm }
 ```
 
-Each question is a `<fieldset>` on the same `rounded-xl border bg-muted/18` surface as the creation-form groups, numbered by a monospace index inside the `<legend>`. Validation is all-or-nothing: one inline `role="alert"` line, no per-field error states.
+**Question anatomy**: a real `<fieldset>` on `bg-muted/18` with a `<legend>` carrying a mono index number then the question text. Choices render two-up on `sm+` as full-width bordered `<label>` rows with a native radio/checkbox — the whole row is the hit target. Validation is all-or-nothing at submit time, surfaced as one destructive line above the right-aligned submit button.
+
+**Multi-round**: the same component is reused for round 2, 3, … — the `useEffect` keyed on `questions` clears all local answers so the previous round's input never leaks forward.
 
 ---
 
-## 7. Artifact Viewer: `artifact-viewer.tsx`
+## 8. Artifact Viewer: `artifact-viewer.tsx`
 
-Shown only once the run completes. A master–detail split: a file list on the left, a type-aware preview on the right. Three preview modes — HTML in a resizable iframe, Markdown/JSON as text, and the final `.xlsx` as a download panel.
+Two-pane browser: a fixed 17rem list on the left, a preview pane on the right. Only a curated set of artifacts is shown, in a fixed presentation order.
 
 ```tsx
 // frontend/src/components/artifact-viewer.tsx
@@ -1035,14 +1445,44 @@ import { artifactUrl, listArtifacts, readArtifactText, type ArtifactSummary } fr
 import { formatBytes } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-// Fetches the artifact body as text, then renders Markdown through react-markdown
-// with a typographic utility set, or JSON in a monospace <pre>.
+function userFacingArtifacts(items: ArtifactSummary[]) {
+  const byName = new Map(items.map((artifact) => [artifact.name, artifact]))
+  const finalReview = byName.has("review_explorer_v2.html")
+    ? "review_explorer_v2.html"
+    : "review_explorer.html"
+  const finalReviewZh = byName.has("review_explorer_zh_v2.html")
+    ? "review_explorer_zh_v2.html"
+    : "review_explorer_zh.html"
+  const displayOrder = [
+    "final.xlsx",
+    "human_review.md",
+    finalReview,
+    finalReviewZh,
+    "run_summary.md",
+    "evaluation.md",
+  ]
+
+  return displayOrder.flatMap((name) => {
+    const artifact = byName.get(name)
+    return artifact ? [artifact] : []
+  })
+}
+
 function TextArtifactPreview({ artifact, runId }: { artifact: ArtifactSummary; runId: string }) {
   const [text, setText] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => { /* readArtifactText(runId, artifact.name), cancelled-flag guarded */ },
-    [artifact.name, runId])
+  useEffect(() => {
+    let cancelled = false
+    setText(null)
+    setError(null)
+    void readArtifactText(runId, artifact.name)
+      .then((content) => { if (!cancelled) setText(content) })
+      .catch((cause) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : "Unable to read artifact")
+      })
+    return () => { cancelled = true }
+  }, [artifact.name, runId])
 
   if (error) {
     return (
@@ -1065,7 +1505,9 @@ function TextArtifactPreview({ artifact, runId }: { artifact: ArtifactSummary; r
       </article>
     )
   }
-  return <pre className="overflow-x-auto rounded-lg bg-muted p-4 font-mono text-xs leading-6">{text}</pre>
+  return (
+    <pre className="overflow-x-auto rounded-lg bg-muted p-4 font-mono text-xs leading-6">{text}</pre>
+  )
 }
 
 function ArtifactPreview({ artifact, runId }: { artifact: ArtifactSummary; runId: string }) {
@@ -1075,26 +1517,33 @@ function ArtifactPreview({ artifact, runId }: { artifact: ArtifactSummary; runId
 
   useEffect(() => setCopyStatus("idle"), [artifact.name])
 
-  // HTML → live iframe with a height slider and an "open in new tab" escape hatch
   if (artifact.type === "html") {
     return (
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="flex items-center gap-3 text-xs text-muted-foreground">
             Preview height
-            <input type="range" aria-label="Preview height" min="320" max="900" step="20"
-                   value={previewHeight}
-                   onChange={(event) => setPreviewHeight(Number(event.target.value))} />
+            <input
+              type="range" aria-label="Preview height"
+              min="320" max="900" step="20"
+              value={previewHeight}
+              onChange={(event) => setPreviewHeight(Number(event.target.value))}
+            />
             <span className="w-12 font-mono">{previewHeight}px</span>
           </label>
-          <a href={url} target="_blank" rel="noreferrer"
-             className="inline-flex items-center gap-1.5 text-xs font-medium underline underline-offset-4">
+          <a
+            href={url} target="_blank" rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-medium underline underline-offset-4"
+          >
             <ExternalLink /> Open in new tab
           </a>
         </div>
-        <iframe title={`${artifact.name} preview`} src={url}
-                className="w-full rounded-lg border bg-white"
-                style={{ height: `${previewHeight}px` }} />
+        <iframe
+          title={`${artifact.name} preview`}
+          src={url}
+          className="w-full rounded-lg border bg-white"
+          style={{ height: `${previewHeight}px` }}
+        />
       </div>
     )
   }
@@ -1112,7 +1561,6 @@ function ArtifactPreview({ artifact, runId }: { artifact: ArtifactSummary; runId
     }
   }
 
-  // xlsx → dashed download panel with the host path and a copy-path action
   return (
     <div className="grid min-h-56 place-items-center rounded-xl border border-dashed bg-muted/18 p-6 text-center">
       <div>
@@ -1122,8 +1570,11 @@ function ArtifactPreview({ artifact, runId }: { artifact: ArtifactSummary; runId
           {artifact.path}
         </p>
         <div className="mt-4 flex flex-wrap justify-center gap-2">
-          <a href={url} download={artifact.name} aria-label={`Download ${artifact.name}`}
-             className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/88">
+          <a
+            href={url} download={artifact.name}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/88"
+            aria-label={`Download ${artifact.name}`}
+          >
             <Download /> Download {artifact.name}
           </a>
           <Button variant="outline" onClick={() => void copyPath()}>
@@ -1143,9 +1594,30 @@ function ArtifactViewer({ runId }: { runId: string }) {
   const [selectedName, setSelectedName] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Lists artifacts for the run and keeps the selection valid, defaulting to
-  // the first item; cancelled-flag guarded.
-  useEffect(() => { /* listArtifacts(runId) → setArtifacts / setSelectedName / setError */ }, [runId])
+  useEffect(() => {
+    let cancelled = false
+    setArtifacts(null)
+    setSelectedName(null)
+    setError(null)
+    void listArtifacts(runId)
+      .then((items) => {
+        if (cancelled) return
+        const visibleItems = userFacingArtifacts(items)
+        setArtifacts(visibleItems)
+        setError(null)
+        setSelectedName((current) =>
+          visibleItems.some((artifact) => artifact.name === current)
+            ? current
+            : (visibleItems[0]?.name ?? null)
+        )
+      })
+      .catch((cause) => {
+        if (!cancelled) {
+          setError(cause instanceof Error ? cause.message : "Unable to list artifacts")
+        }
+      })
+    return () => { cancelled = true }
+  }, [runId])
 
   const selected = artifacts?.find((artifact) => artifact.name === selectedName)
 
@@ -1175,7 +1647,6 @@ function ArtifactViewer({ runId }: { runId: string }) {
         )}
         {artifacts && artifacts.length > 0 && (
           <div className="grid min-h-80 lg:grid-cols-[17rem_minmax(0,1fr)]">
-            {/* Master list */}
             <ul aria-label="Artifacts" className="border-b p-2 lg:border-r lg:border-b-0">
               {artifacts.map((artifact) => (
                 <li key={artifact.name}>
@@ -1195,16 +1666,16 @@ function ArtifactViewer({ runId }: { runId: string }) {
                         {formatBytes(artifact.size)}
                       </span>
                     </span>
-                    <Badge variant="outline"
-                           className={cn("uppercase",
-                             artifact.name === selectedName && "border-background/35 text-background")}>
+                    <Badge
+                      variant="outline"
+                      className={cn("uppercase", artifact.name === selectedName && "border-background/35 text-background")}
+                    >
                       {artifact.type}
                     </Badge>
                   </button>
                 </li>
               ))}
             </ul>
-            {/* Detail pane */}
             <section className="min-w-0 p-4" aria-live="polite">
               {selected && <ArtifactPreview artifact={selected} runId={runId} />}
             </section>
@@ -1218,13 +1689,26 @@ function ArtifactViewer({ runId }: { runId: string }) {
 export { ArtifactViewer }
 ```
 
-The selected list row is inverted (`bg-foreground text-background`), and its type badge flips to `border-background/35 text-background` so it stays legible on the dark row. Below `lg` the split stacks: the list becomes a full-width block with a bottom border, the preview follows underneath.
+### Curation rule
+
+The backend writes many intermediate files; the viewer shows **only six**, always in this order: `final.xlsx`, `human_review.md`, the review explorer (preferring the `_v2` variant when present), its Chinese counterpart, `run_summary.md`, `evaluation.md`. Anything else in the run workspace is hidden from the operator. Missing entries are simply skipped, so the list is variable-length.
+
+### Preview modes by `artifact.type`
+
+| type | preview |
+|---|---|
+| `html` | sandboxed-looking `<iframe>` on a white background, with a **range slider** (320–900px, step 20) controlling its height and a mono readout, plus an "Open in new tab" link |
+| `md` | `react-markdown` rendered inside an `<article>` whose typography comes entirely from arbitrary child selectors (`[&_h1]:…`, `[&_pre]:…`) — there is no `@tailwindcss/typography` plugin |
+| `json` | raw text in a `bg-muted` `<pre>` block |
+| `xlsx` | not previewable: a dashed-border drop-zone-styled panel with a big `Download` glyph, the absolute path in mono, a primary download anchor, and a "Copy file path" button that flips its icon to `Check` for the copied state |
+
+**List item anatomy**: 16px `File` icon, then a two-line stack (truncating filename in 14px medium, size via `formatBytes` in 11px mono at 65% opacity), then an uppercase outline `Badge` with the type. The selected row inverts to `bg-foreground text-background`, and the badge's border/text flip to `background/35` so it stays legible on the dark row.
 
 ---
 
-## 8. Status Badge: `run-status-badge.tsx` + `lib/run-status.ts`
+## 9. Status Badge: `run-status-badge.tsx` + `lib/run-status.ts`
 
-One presentation map is the single source of truth for every status color in the app — badge classes, the pulse dot, and the longer detail-view copy and icon.
+A single presentation table drives every status surface, so the five states are never re-described inline.
 
 ```tsx
 // frontend/src/components/run-status-badge.tsx
@@ -1248,6 +1732,19 @@ export { RunStatusBadge }
 
 ```ts
 // frontend/src/lib/run-status.ts
+import { Ban, CheckCircle2, CirclePause, LoaderCircle, TriangleAlert, type LucideIcon } from "lucide-react"
+import type { RunStatus } from "@/lib/api"
+
+type RunStatusPresentation = {
+  label: string
+  badgeClassName: string
+  dotClassName: string
+  detailTitle: string
+  detailDescription: string
+  detailIcon: LucideIcon
+  detailIconClassName: string
+}
+
 const runStatusPresentation: Record<RunStatus, RunStatusPresentation> = {
   running: {
     label: "Running",
@@ -1295,20 +1792,21 @@ const runStatusPresentation: Record<RunStatus, RunStatusPresentation> = {
     detailIconClassName: "text-stone-500",
   },
 }
+
+export { runStatusPresentation }
 ```
 
-`running` is the only status with motion: a pulsing dot in the badge and a spinning icon in detail contexts.
+Badge shape: 20px tall, fully rounded (`rounded-4xl`), a 6px status dot, then the label. `running` is the only animated one (`animate-pulse` dot). The `detail*` fields exist in the table for status surfaces beyond the badge.
 
 ---
 
-## 9. UI Primitives (`components/ui/`)
+## 10. UI Primitives (`components/ui/`)
 
-Only three shadcn components are vendored. Everything else in the app is raw elements plus utilities.
+Only three shadcn components are vendored. Everything else is hand-written markup.
 
 ### Button
 
 ```tsx
-// frontend/src/components/ui/button.tsx
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 rounded-lg text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:size-4",
   {
@@ -1334,12 +1832,11 @@ function Button({ className, variant, size, type = "button", ...props }:
 }
 ```
 
-Icons are passed as children (`<Button><Plus /> New run</Button>`) and auto-sized to `size-4` by the base class. `type` defaults to `"button"`, so only explicit `type="submit"` buttons submit a form.
+Note `type = "button"` by default — submit buttons must opt in explicitly. Icons are auto-sized to 16px by the `[&_svg]:size-4` selector, so call sites write `<Plus />` with no className.
 
 ### Badge
 
 ```tsx
-// frontend/src/components/ui/badge.tsx
 const badgeVariants = cva(
   "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-4xl border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3!",
   {
@@ -1357,52 +1854,57 @@ const badgeVariants = cva(
   }
 )
 
-function Badge({ className, variant = "default", asChild = false, ...props }:
-  React.ComponentProps<"span"> & VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+function Badge({ className, variant = "default", asChild = false, ...props }) {
   const Comp = asChild ? Slot.Root : "span"
   return <Comp data-slot="badge" data-variant={variant} className={cn(badgeVariants({ variant }), className)} {...props} />
 }
 ```
 
-Every badge in the app uses `variant="outline"` plus a caller-supplied color class — a 20px pill (`h-5`, `rounded-4xl`) with 12px `size-3` icons.
+Every badge in WorkCrew uses `variant="outline"` and overrides the colors via `className`. Badge icons are 12px.
 
 ### Card
 
-`Card` is a `data-slot`-driven set with a `--card-spacing` custom property (`--spacing(4)`, or `--spacing(3)` at `size="sm"`) that drives padding and gaps consistently across header/content/footer.
+Cards are driven by a `--card-spacing` custom property (16px default, 12px at `size="sm"`), which every sub-slot consumes for its padding. That is why `CardHeader className="border-b"` picks up bottom padding automatically — the `[.border-b]:pb-(--card-spacing)` selector.
 
 ```tsx
-// frontend/src/components/ui/card.tsx
 function Card({ className, size = "default", ...props }) {
   return (
-    <div data-slot="card" data-size={size}
+    <div
+      data-slot="card" data-size={size}
       className={cn(
         "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl bg-card py-(--card-spacing) text-sm text-card-foreground ring-1 ring-foreground/10 [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
-        className)}
-      {...props} />
+        className
+      )}
+      {...props}
+    />
   )
 }
 
 function CardHeader({ className, ...props }) {
   return (
-    <div data-slot="card-header"
+    <div
+      data-slot="card-header"
       className={cn(
         "group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-xl px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)",
-        className)}
-      {...props} />
+        className
+      )}
+      {...props}
+    />
   )
 }
 
 function CardTitle({ className, ...props }) {
-  return <div data-slot="card-title"
-    className={cn("font-heading text-base leading-snug font-medium group-data-[size=sm]/card:text-sm", className)} {...props} />
+  return (
+    <div
+      data-slot="card-title"
+      className={cn("font-heading text-base leading-snug font-medium group-data-[size=sm]/card:text-sm", className)}
+      {...props}
+    />
+  )
 }
 
 function CardDescription({ className, ...props }) {
   return <div data-slot="card-description" className={cn("text-sm text-muted-foreground", className)} {...props} />
-}
-
-function CardAction({ className, ...props }) {
-  return <div data-slot="card-action" className={cn("col-start-2 row-span-2 row-start-1 self-start justify-self-end", className)} {...props} />
 }
 
 function CardContent({ className, ...props }) {
@@ -1410,22 +1912,41 @@ function CardContent({ className, ...props }) {
 }
 
 function CardFooter({ className, ...props }) {
-  return <div data-slot="card-footer"
-    className={cn("flex items-center rounded-b-xl border-t bg-muted/50 p-(--card-spacing)", className)} {...props} />
+  return (
+    <div
+      data-slot="card-footer"
+      className={cn("flex items-center rounded-b-xl border-t bg-muted/50 p-(--card-spacing)", className)}
+      {...props}
+    />
+  )
 }
 ```
 
-Cards are separated from the page by a hairline **ring** (`ring-1 ring-foreground/10`), not a border. Adding `className="border-b"` to a `CardHeader` is the app's idiom for a divider under a card title — the `[.border-b]:pb-(--card-spacing)` selector supplies the matching padding.
+`CardAction` also exists (right-aligned slot in the header grid) but is currently unused.
 
 ---
 
-## 10. Client State: `store/use-app-store.ts` (Zustand)
+## 11. Client State: `store/use-app-store.ts` (Zustand)
 
-One flat store holds view state, run history, the live event stream, the scoping round, and the pending run action. There is no context provider and no reducer — components select individual slices.
+One flat store. No middleware, no persistence — reloading the page re-fetches history from the local server.
 
 ```ts
-// frontend/src/store/use-app-store.ts
 type AppView = "empty" | "new-run" | "run"
+type ScopingStatus = "idle" | "loading" | "ready" | "submitting" | "error"
+
+type ScopingState = {
+  runId: string | null
+  questions: ScopingQuestion[]
+  status: ScopingStatus
+  error: string | null
+}
+
+type RunActionState = {
+  runId: string | null
+  kind: "cancel" | "retry" | null
+  status: "idle" | "submitting" | "error"
+  error: string | null
+}
 
 type AppState = {
   view: AppView
@@ -1437,11 +1958,8 @@ type AppState = {
   streamEvents: WorkflowEvent[]
   streamStatus: "idle" | "connecting" | "connected" | "disconnected" | "error"
   streamError: string | null
-  scoping: { runId: string | null; questions: ScopingQuestion[]
-             status: "idle" | "loading" | "ready" | "submitting" | "error"; error: string | null }
-  runAction: { runId: string | null; kind: "cancel" | "retry" | null
-               status: "idle" | "submitting" | "error"; error: string | null }
-
+  scoping: ScopingState
+  runAction: RunActionState
   openNewRun: () => void
   showRun: (run: RunRecord) => void
   startHistoryLoad: () => void
@@ -1454,12 +1972,24 @@ type AppState = {
   cancelRun: (runId: string) => Promise<void>
   retryRun: (runId: string) => Promise<void>
 }
+```
 
-// A single module-level socket; opening a new one always closes the old.
-let activeSocket: WebSocket | null = null
+### The live stream
+
+A **module-level `activeSocket`** guarantees exactly one open WebSocket. Every callback checks `activeSocket === socket` before writing state, so a socket that lost the race can never clobber the current run's view.
+
+```ts
+function websocketUrl(runId: string) {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
+  return `${protocol}//${window.location.host}/ws/runs/${encodeURIComponent(runId)}`
+}
 
 connectRunStream: (runId) => {
-  if (activeSocket !== null) { const previous = activeSocket; activeSocket = null; previous.close() }
+  if (activeSocket !== null) {
+    const previous = activeSocket
+    activeSocket = null
+    previous.close()
+  }
 
   set((state) => ({
     streamRunId: runId,
@@ -1468,134 +1998,246 @@ connectRunStream: (runId) => {
     streamError: null,
     scoping: scopingStateForRun(state.scoping, runId),
   }))
-  const socket = new WebSocket(websocketUrl(runId))   // ws(s)://<host>/ws/runs/<id>
+  const socket = new WebSocket(websocketUrl(runId))
   activeSocket = socket
 
   socket.onopen = () => { if (activeSocket === socket) set({ streamStatus: "connected" }) }
   socket.onmessage = (message) => {
     if (activeSocket !== socket) return
     let event: WorkflowEvent
-    try { event = JSON.parse(message.data) as WorkflowEvent }
-    catch { set({ streamStatus: "error", streamError: "The run stream returned invalid JSON" }); return }
+    try {
+      event = JSON.parse(message.data) as WorkflowEvent
+    } catch {
+      set({ streamStatus: "error", streamError: "The run stream returned invalid JSON" })
+      return
+    }
 
     const details = workflowEventDetails(event)
-    // Each event appends to the log AND advances the run's phase/status, so the
-    // sidebar card and the stage strip update from the same message.
+
     set((state) => {
       if (state.streamRunId !== runId) return state
-      const currentRun = state.currentRun?.run_id === runId
-        ? runAfterEvent(state.currentRun, event) : state.currentRun
+      const currentRun =
+        state.currentRun?.run_id === runId
+          ? runAfterEvent(state.currentRun, event)
+          : state.currentRun
       return {
         streamEvents: [...state.streamEvents, event],
         currentRun,
         runs: currentRun ? withRunSummary(state.runs, currentRun) : state.runs,
       }
     })
-    if (details.runStatus === "paused") void get().loadScopingQuestions(runId)
+    if (details.runStatus === "paused") {
+      void get().loadScopingQuestions(runId)
+    }
   }
-  socket.onerror = () => { /* streamStatus: "error" */ }
-  socket.onclose = () => { /* streamStatus: "disconnected" unless already "error" */ }
-}
-
-loadScopingQuestions: async (runId) => {
-  // Only an in-flight load short-circuits. A "ready" one must not: every pause
-  // is a new round of questions, and skipping the fetch would leave the form
-  // showing the previous round's.
-  if (current.scoping.runId === runId && current.scoping.status === "loading") return
-  // → GET the run's scoping_questions.json artifact, then status: "ready"
-}
-
-retryRun: async (runId) => {
-  // Retry is a resume with no answers; when the retried run is the selected
-  // one, the event log is cleared so the new attempt starts from a blank slate.
+  socket.onerror = () => {
+    if (activeSocket === socket) {
+      set({ streamStatus: "error", streamError: "Run stream connection failed" })
+    }
+  }
+  socket.onclose = () => {
+    if (activeSocket === socket) {
+      activeSocket = null
+      set((state) => ({
+        streamStatus: state.streamStatus === "error" ? "error" : "disconnected",
+      }))
+    }
+  }
 }
 ```
 
-Derivation helpers: `summaryOf(run, duration)` projects a `RunRecord` down to a `RunSummary`; `withRunSummary(runs, run)` upserts it and re-sorts `newestFirst` (descending `started_at`); `runAfterEvent` folds an event's phase/status into the current run; `runAfterResume` keeps a terminal status from being overwritten by a stale resume response.
+Each event mutates three things at once: the appended log, the live `currentRun` (phase + status), and the matching sidebar summary — which is why the sidebar card's badge changes in real time while the run detail is open.
+
+### Derivation helpers
+
+```ts
+function summaryOf(run: RunRecord, duration = 0): RunSummary {
+  return {
+    run_id: run.run_id, status: run.status, started_at: run.start_time,
+    duration, source_name: run.source_name, workbook_name: run.workbook_name,
+  }
+}
+
+function newestFirst(runs: RunSummary[]) {
+  return [...runs].sort((left, right) => right.started_at.localeCompare(left.started_at))
+}
+
+function withRunSummary(runs: RunSummary[], run: RunRecord) {
+  const existing = runs.find((item) => item.run_id === run.run_id)
+  return newestFirst([
+    summaryOf(run, existing?.duration),
+    ...runs.filter((item) => item.run_id !== run.run_id),
+  ])
+}
+
+function runAfterEvent(run: RunRecord, event: WorkflowEvent) {
+  const details = workflowEventDetails(event)
+  return { ...run, phase: details.phase ?? run.phase, status: details.runStatus ?? run.status }
+}
+
+function runAfterResume(current: RunRecord | null, resumed: RunRecord) {
+  if (current?.run_id !== resumed.run_id) return current
+  if (["completed", "failed", "cancelled"].includes(current.status)) return current
+  return { ...resumed, phase: current.phase }
+}
+```
+
+Sorting is always newest-first by ISO `started_at` string comparison.
+
+### Scoping rounds
+
+`loadScopingQuestions` short-circuits **only** on an in-flight load, never on a `ready` one — each pause is a *new round* of questions, and skipping the fetch would leave the form showing the previous round's. `retryRun` reuses the resume endpoint with an empty answer map and clears the stream so the log restarts clean.
 
 ---
 
 ## Data Model Summary
 
+Everything the UI renders comes from these types (`lib/api.ts`). Mock data for a redesign should match these shapes.
+
 ```ts
-// frontend/src/lib/api.ts
-export type RunStatus = "running" | "paused" | "completed" | "failed" | "cancelled"
 export type PickMode = "directory" | "file"
-export type RulesMode = "none" | "text" | "file"
-export type ArtifactType = "html" | "md" | "xlsx" | "json"
+
+export type RunStatus = "running" | "paused" | "completed" | "failed" | "cancelled"
+
+export type RunSummary = {
+  run_id: string          // e.g. "20260811-140512-charity-2015-review"
+  status: RunStatus
+  started_at: string      // ISO 8601
+  duration: number        // seconds
+  source_name: string     // folder basename
+  workbook_name: string   // xlsx basename
+}
+
+export type RunRecord = {
+  run_id: string
+  status: RunStatus
+  start_time: string      // ISO 8601
+  workspace_path: string  // absolute path
+  phase: string           // e.g. "CLAUDE_FILL"
+  source_name: string
+  workbook_name: string
+}
+
+export type WorkflowEvent =
+  | { timestamp: string; type: "progress";     phase: string; message: string }
+  | { timestamp: string; type: "phase_change"; phase: string; status: "active" | "completed" | "failed" }
+  | { timestamp: string; type: "paused";       reason: string; questions_artifact: string }
+  | { timestamp: string; type: "completed";    final_xlsx: string }
+  | { timestamp: string; type: "failed";       error: string; reason?: "cancelled" }
+
 export type ScopingQuestionType = "text" | "single_select" | "multi_select" | "confirm"
+
+export type ScopingQuestion = {
+  id: string
+  question: string
+  type?: ScopingQuestionType            // defaults to "text"
+  options?: { value: string; label: string }[] | null
+}
+
 export type ScopingAnswerValue = string | string[] | boolean
+
+/** The chosen value, plus whatever the operator wanted to add beside it. */
+export type ScopingAnswer = { value: ScopingAnswerValue; note?: string | null }
+
+export type ScopingAnswers = Record<string, ScopingAnswer>
+
+export type ScopingQuestions = {
+  round: number
+  placeholder_token: string
+  questions: ScopingQuestion[]
+}
+
+export type ArtifactType = "html" | "md" | "xlsx" | "json"
+
+export type ArtifactSummary = {
+  name: string   // "final.xlsx"
+  type: ArtifactType
+  size: number   // bytes
+  path: string   // absolute path on the operator's machine
+}
+
+export type RulesMode = "none" | "text" | "file"
+
+export type AgentRole = "scoping" | "filler" | "revision" | "reviewer" | "re_review"
+
+/** What the operator may choose for one role, and its defaults. */
+export type AgentOption = {
+  role: AgentRole
+  runtime: string             // e.g. "claude_code" | "codex"
+  model: string               // server default, shown as placeholder
+  model_suggestions: string[] // datalist entries
+  effort: string | null       // server default effort, if any
+  effort_choices: string[]    // e.g. ["low", "medium", "high"]
+}
+
+export type AgentSelection = { model: string | null; effort: string | null }
+
+/** An image pasted into the task description, carried as content. */
+export type TaskImageUpload = { content_type: string; data: string }  // data is base64
+
+export const SUPPORTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
+
+export type CreateRunInput = {
+  source: string
+  workbook: string
+  task: string
+  name: string | null
+  agents: Record<string, AgentSelection> | null
+  task_images: TaskImageUpload[]
+  rules_text: string | null
+  rules_file: string | null
+  scoping_answers: string | null
+  review_policy: string | null
+}
 ```
-
-A **`RunSummary`** (sidebar card) contains:
-
-- `run_id: string` — timestamped id, e.g. `20260810-215131-7d550b`; always rendered monospace
-- `status: RunStatus` — drives the badge color
-- `started_at: string` — ISO timestamp
-- `duration: number` — seconds, rendered as `42s` / `3m 5s` / `1h 20m`
-- `source_name: string`, `workbook_name: string` — basenames shown as `source → workbook`
-
-A **`RunRecord`** (detail view) contains:
-
-- `run_id`, `status`, `source_name`, `workbook_name` — as above
-- `start_time: string` — ISO timestamp
-- `workspace_path: string` — absolute host path, truncated monospace with a `title` tooltip
-- `phase: string` — backend phase name, mapped to a stage index by `phaseStage`
-
-A **`WorkflowEvent`** is a discriminated union on `type`, all sharing `timestamp: string`:
-
-- `progress` — `phase`, `message`
-- `phase_change` — `phase`, `status: "active" | "completed" | "failed"`
-- `paused` — `reason`, `questions_artifact`
-- `completed` — `final_xlsx`
-- `failed` — `error`, optional `reason: "cancelled"`
-
-A **`ScopingQuestion`** contains:
-
-- `id: string` — form field name and answer key
-- `question: string` — the prompt text
-- `type?: ScopingQuestionType` — defaults to `text`
-- `options?: { value: string; label: string }[] | null` — for the two select types
-
-A **`ScopingAnswer`** is `{ value: ScopingAnswerValue; note?: string | null }`, and `ScopingAnswers` is `Record<questionId, ScopingAnswer>`. `ScopingQuestions` (the artifact payload) adds `round: number` and `placeholder_token: string`.
-
-An **`ArtifactSummary`** contains:
-
-- `name: string` — file name, e.g. `review_explorer_v2.html`
-- `type: ArtifactType` — chooses the preview mode
-- `size: number` — bytes, rendered `B` / `KB` / `MB`
-- `path: string` — absolute host path, copyable
-
-A **`CreateRunInput`** contains `source` and `workbook` (absolute paths), `task` (free text), and four nullable fields: `rules_text`, `rules_file`, `scoping_answers`, `review_policy`.
 
 ### API surface
 
-All calls are same-origin against the local server; dev runs proxy `/api` to `http://127.0.0.1:8470`.
+| call | endpoint |
+|---|---|
+| `pickPath(mode, prompt)` | `POST /api/pick` → `{ path: string \| null }` (null = operator cancelled the native chooser) |
+| `listAgentOptions()` | `GET /api/agents` → `AgentOption[]` |
+| `createRun(input)` | `POST /api/runs` → `RunRecord` |
+| `listRuns()` | `GET /api/runs` → `RunSummary[]` |
+| `getRun(runId)` | `GET /api/runs/{id}` → `RunRecord` |
+| `listArtifacts(runId)` | `GET /api/runs/{id}/artifacts` → `ArtifactSummary[]` |
+| `artifactUrl(runId, name)` | `GET /api/runs/{id}/artifacts/{name}` (raw bytes; also the `iframe`/download src) |
+| `readArtifactText(runId, name)` | same URL, read as text |
+| `getScopingQuestions(runId)` | artifact `scoping_questions.json` → `ScopingQuestions` |
+| `resumeRun(runId, answers)` | `POST /api/runs/{id}/resume` → `RunRecord` |
+| `cancelRun(runId)` | `POST /api/runs/{id}/cancel` → `RunRecord` |
+| live events | `WS /ws/runs/{id}` → a stream of `WorkflowEvent` |
 
-| Function                          | Call                                                                              |
-| --------------------------------- | --------------------------------------------------------------------------------- |
-| `pickPath(mode, prompt)`        | `POST /api/pick` → `{ path: string \| null }` (null = operator cancelled) |
-| `createRun(input)`              | `POST /api/runs` → `RunRecord`                                           |
-| `listRuns()`                    | `GET /api/runs` → `RunSummary[]`                                         |
-| `getRun(runId)`                 | `GET /api/runs/{id}` → `RunRecord`                                       |
-| `listArtifacts(runId)`          | `GET /api/runs/{id}/artifacts` → `ArtifactSummary[]`                     |
-| `artifactUrl(runId, name)`      | `/api/runs/{id}/artifacts/{name}` (iframe src, download href)                   |
-| `readArtifactText(runId, name)` | same URL, read as text                                                            |
-| `getScopingQuestions(runId)`    | reads the `scoping_questions.json` artifact → `ScopingQuestions`          |
-| `resumeRun(runId, answers)`     | `POST /api/runs/{id}/resume` → `RunRecord`                               |
-| `cancelRun(runId)`              | `POST /api/runs/{id}/cancel` → `RunRecord`                               |
-| live events                       | `WebSocket ws(s)://<host>/ws/runs/{id}` → `WorkflowEvent`                |
+Errors are normalized: a non-OK response is parsed as `{ detail?: string }` and thrown as `new Error(detail ?? "Request failed with status N")`, which is what every red message in the UI displays.
 
-Errors are normalized: a non-OK response is thrown as `new Error(body.detail ?? "Request failed with status <code>")`, which is what every inline error string in the UI displays.
+```ts
+async function responseError(response: Response) {
+  const body = (await response.json()) as { detail?: string }
+  return new Error(body.detail ?? `Request failed with status ${response.status}`)
+}
+
+async function readResponse<T>(response: Response) {
+  if (response.ok) return (await response.json()) as T
+  throw await responseError(response)
+}
+
+/** Read a pasted image into the base64 payload the API takes. */
+export async function readTaskImage(file: File) {
+  const buffer = await file.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+  let binary = ""
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return { content_type: file.type, data: btoa(binary) }
+}
+```
 
 ---
 
 ## Design Tokens (CSS Variables)
 
-The whole palette is `oklch` and, apart from `--destructive`, fully desaturated. Tailwind v4 maps the raw variables to utility namespaces inside `@theme inline`, so `bg-muted`, `text-muted-foreground`, `rounded-xl` etc. all resolve to these values.
+The whole file is `src/index.css` — there is no `tailwind.config.js`. Tailwind v4's `@theme inline` maps semantic color/radius names onto the raw custom properties below.
 
 ```css
-/* frontend/src/index.css */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -1716,40 +2358,46 @@ The whole palette is `oklch` and, apart from `--destructive`, fully desaturated.
 }
 
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
-    }
-  body {
-    @apply min-w-80 bg-background text-foreground antialiased;
-    }
-  html {
-    @apply font-sans;
-    }
+  * { @apply border-border outline-ring/50; }
+  body { @apply min-w-80 bg-background text-foreground antialiased; }
+  html { @apply font-sans; }
 }
 ```
 
-**Notes for a redesign:**
+**Notes for a redesign**
 
-- A `.dark` block exists and every token has a dark value, but nothing in the app toggles the class today — dark mode is defined, not exposed.
-- The status accents (`emerald` / `amber` / `sky` / `red` / `stone`) are **not** tokens; they are literal Tailwind palette classes living in `lib/run-status.ts` and `workflow-progress.tsx`. Any recolor should start there.
-- Surface hierarchy is expressed as opacity on one token: page `bg-muted/30`, group panels `bg-muted/18`, footer bars `bg-muted/20`, log body `bg-muted/20`, hover `bg-muted/35`, selected `bg-muted/45`.
-- `body` has `min-w-80` (320px), so the layout never collapses below that.
+- The `.dark` block exists but **nothing toggles it** — there is no theme switcher, and `<html>` never gets the `dark` class. The app ships light-only today.
+- `--radius: 0.625rem` (10px) is the base; `rounded-lg` = 10px, `rounded-xl` = 14px, `rounded-2xl` = 18px, `rounded-4xl` = 26px (used for pill badges).
+- Every neutral is fully desaturated `oklch(L 0 0)`. The only chroma in the base palette is `--destructive`.
+- Status accents are **plain Tailwind palette classes**, not tokens: `emerald-50/200/500/700`, `amber-*`, `sky-*`, `red-*`, `stone-*`. A redesign that introduces a token for status color would need to touch `lib/run-status.ts` and `workflow-progress.tsx`'s `statusStyle`.
+- `min-w-80` on `<body>` is the hard floor for narrow windows.
+- Font stack: a single variable font (Geist) serves both `font-sans` and `font-heading`; `font-mono` falls back to the Tailwind default mono stack (run ids, paths, sizes, timestamps, model names).
+
+### Spacing / sizing conventions observed
+
+| context | value |
+|---|---|
+| main pane padding | `p-5` → `sm:p-8` → `lg:p-10` |
+| card stack gap (run detail) | `gap-4` |
+| field panel | `rounded-xl border bg-muted/18 p-3` |
+| inner control | `rounded-lg border bg-background px-3 py-2 text-sm` |
+| path chip | `rounded-md border px-2.5 py-2 font-mono text-xs` |
+| icon tile | `size-9 rounded-lg` (brand mark, field icons) |
+| micro-caps tag | `text-[10px] font-medium tracking-wide uppercase text-muted-foreground` |
+| section eyebrow | `text-xs font-semibold tracking-[0.18em] uppercase` |
+| page title | `font-heading text-3xl font-semibold tracking-tight` |
+| focus ring | `focus:ring-2 focus:ring-ring/20` (inputs) / `focus-visible:ring-2 ring-ring/50` (buttons) |
 
 ---
 
 ## Interaction Patterns
 
-- **View switching** — no router. `openNewRun()` sets `view: "new-run"`; selecting a run fetches its record and sets `view: "run"`. Browser back/forward do nothing.
-- **Selection** — the selected sidebar card gets `border-foreground/25 bg-muted/45 shadow-sm` and `aria-current="true"`; hover on the others is `hover:border-foreground/20 hover:bg-muted/35`. Selected artifact rows and the active pipeline stage instead **invert** (`bg-foreground text-background`).
-- **Native pickers** — "Choose" round-trips to the OS dialog through the backend. While one dialog is open, the button reads `Choosing…` and *all* pickers in the form are disabled. Cancelling changes nothing.
-- **Live streaming** — a WebSocket opens when the run is `running` / `paused` / `failed` and closes on unmount. Each event appends to the log *and* advances the pipeline and the sidebar card in the same `set()`.
-- **Auto-scroll** — the log pins to the bottom on every new event via a trailing sentinel `<div ref={end}>` and `scrollIntoView({ block: "end" })`.
-- **Pause → resume** — a `paused` event triggers a fetch of that round's questions; the progress card is replaced by the question form. Submitting resumes the run, and the form clears itself when the next round's questions arrive.
-- **Optional note beside every choice** — non-text scoping questions render an extra "Add anything the options do not cover" textarea, so an operator is never forced into a wrong option.
-- **All-or-nothing validation** — the question form blocks submit until every question is answered, showing one `role="alert"` line rather than per-field errors.
-- **Status-exclusive actions** — Cancel appears only while `running`, Retry only when `failed` or `cancelled`. Both show a pending label and surface their error inline.
-- **Retry clears the log** — retrying the currently-open run resets `streamEvents` so the new attempt starts from a blank timeline.
-- **Artifact preview** — master/detail with a type switch: HTML in an iframe with a 320–900px height range slider plus "Open in new tab", Markdown/JSON as styled text, `.xlsx` as a download panel with a "Copy file path" button that flips its icon to a check on success.
-- **Loading and empty states are per-region**, never a full-page spinner: sidebar history, artifact list, artifact preview, and question form each own theirs.
-- **Focus visibility** — every custom control carries `focus-visible:ring-2 focus-visible:ring-ring/50` (buttons use `ring-3`); nothing relies on the default outline.
-- **Truncation over wrapping** — run ids, paths, and file names truncate with a `title` tooltip; only log messages wrap (`break-words`).
+1. **Native OS choosers, not web file inputs.** Paths are absolute strings from the host machine. Buttons show `Choosing…` and every picker disables while one chooser is open.
+2. **Paste-to-attach.** Screenshots pasted into the task textarea become base64 uploads with 80px thumbnails; the text box never receives the image.
+3. **Progressive disclosure.** Rules editors appear only for the matching segmented-control mode; agent settings live in a collapsed `<details>` that reports `Defaults` / `N changed` without being opened.
+4. **Live WebSocket stream.** Opened for `running` / `paused` / `failed` runs, closed on unmount or status change. Exactly one socket at a time. Log auto-scrolls to the newest line.
+5. **Status drives the layout.** `paused` swaps the progress card for the question form; `completed` swaps the empty artifacts card for the two-pane viewer; `running` shows Cancel; `failed`/`cancelled` shows Retry.
+6. **Multi-round scoping.** The question form resets on every new `questions` array, so round 2 starts blank.
+7. **Optimistic in-place updates.** Every event updates the run detail *and* its sidebar card at once; there is no polling and no refresh button.
+8. **Errors are inline and local.** Sidebar errors, form footer errors, action errors, artifact errors, and stream errors each render next to their own surface — there are no toasts, modals, or a global error banner anywhere in the app.
+9. **Accessibility conventions to keep**: `role="group"` + `aria-label` per field panel, `aria-live="polite"` on the form status line / log / preview pane, `aria-current` on the selected run, `role="radiogroup"` + `role="radio"` + `aria-checked` on the rules segmented control, real `<fieldset>`/`<legend>` for scoping questions, and `aria-label` on every icon-only control.

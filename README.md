@@ -9,6 +9,14 @@ runtimes.
 Authoritative architecture plan: [`project_plan_v3.md`](project_plan_v3.md).
 Spec and tickets: GitHub issues (#1 is the spec).
 
+## Demo
+
+[Open the interactive WorkCrew demo](https://patricktangwen.github.io/WorkCrew/).
+
+The demo is a static product walkthrough published from
+[`WorkCrew Demo.html`](WorkCrew%20Demo.html). It demonstrates the workflow UI
+without connecting to a local WorkCrew backend or modifying any files.
+
 ## Usage
 
 ```bash

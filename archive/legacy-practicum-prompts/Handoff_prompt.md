@@ -1,36 +1,58 @@
-
 > Archived historical prompt. Not used by the WorkCrew runtime; see `README.md`.
 
-## 生成 Handoff 审查文档
+# Generate a Handoff Review Document
 
-你刚完成了 "7) Practicum Courses" 的填写工作。
-现在需要生成一份结构化的 handoff 文档，
-交给另一个 agent 对你的填写进行逐字段审查。
+You have just completed filling in **"7) Practicum Courses"**.
 
-### 文档结构
+Now, generate a structured handoff document for another agent to conduct a field-by-field review of your work.
 
-**1. 任务摘要**（3-5 句）
+## Document Structure
 
-- 做了什么、数据来源是哪些 folders、输出在哪
-  **2. 填写决策记录**（按 program 分组，逐字段）
-  对每个 program entry（如 India 2008），列出：| 列名            | 填写值 | 依据来源                         | 置信度 | 审查备注                           |
-  | --------------- | ------ | -------------------------------- | ------ | ---------------------------------- |
-  | Project ID      | ...    | 参照 6) Engagement Projects 格式 | 高     | —                                 |
-  | Main Issue Area | ...    | [文件名] 具体理由                | 中     | 原文用词为 "X"，映射为 "Y"，需确认 |
-  | 其中：          |        |                                  |        |                                    |
-- **置信度**：高（原文直接写明）/ 中（需推断或映射）/ 低（信息不足，勉强填写）
-- **审查备注**：仅在置信度为 中/低 时填写，
-  说明不确定的原因和建议审查方向
-  **3. 未填写字段清单**
-  列出所有留空的 cell 及留空原因
-  **4. 需要人工判断的问题**
-  在填写过程中遇到的无法自动决策的问题，如：
-- 分类映射模糊的案例
-- folder 内文档相互矛盾的情况
-- 命名/拼写异常（如 "Inida 2017"）
+### 1. Task Summary
 
-### 格式要求
+Write a 3–5 sentence summary covering:
 
-- 输出为 Markdown 文件
-- 每个 program 一个二级标题，方便审查 agent 定位跳转
-- 表格内引用文件名时使用完整相对路径（如 India 2008/xxx.pdf）
+* What work was completed
+* Which folders were used as data sources
+* Where the output is located
+
+### 2. Filling Decision Log
+
+Group the decision log by program and document each populated field.
+
+For each program entry (e.g., **India 2008**), include a table in the following format:
+
+| Column          | Filled Value | Supporting Source                                | Confidence | Review Notes                                                |
+| --------------- | ------------ | ------------------------------------------------ | ---------- | ----------------------------------------------------------- |
+| Project ID      | ...          | Based on the format in`6) Engagement Projects` | High       | —                                                          |
+| Main Issue Area | ...          | `[filename]` Specific justification            | Medium     | Original wording is "X"; mapped to "Y". Needs confirmation. |
+
+Definitions:
+
+* **Confidence**
+
+  * **High** — Explicitly stated in the source material
+  * **Medium** — Requires inference or category mapping
+  * **Low** — Insufficient information; value was filled in with significant uncertainty
+* **Review Notes**
+
+  * Complete this field only when confidence is **Medium** or **Low**.
+  * Explain the reason for the uncertainty and suggest what the reviewing agent should verify.
+
+### 3. List of Unfilled Fields
+
+List every cell that was left blank and explain why it was not filled.
+
+### 4. Issues Requiring Human Judgment
+
+Document any issues encountered during the filling process that could not be resolved automatically, such as:
+
+* Ambiguous classification mappings
+* Conflicting information across documents within the same folder
+* Naming or spelling anomalies (e.g., `"Inida 2017"`)
+
+## Formatting Requirements
+
+* Output the handoff document as a **Markdown (`.md`) file**.
+* Use a **second-level heading (`##`) for each program** so the reviewing agent can quickly navigate to individual programs.
+* When citing files in tables, use the **full relative file path**, for example: `India 2008/xxx.pdf`.
