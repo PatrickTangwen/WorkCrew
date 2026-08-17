@@ -6,9 +6,14 @@
   <img src="./assets/readme/hero.zh-CN.svg" width="100%" alt="WorkCrew 将源文件夹转换为经复核、可追溯的工作簿">
 </p>
 
-<p align="center">
-  <a href="https://patricktangwen.github.io/WorkCrew/?lang=zh"><strong>打开交互式演示 →</strong></a>
+<h3 align="center">
+  ▶&nbsp;&nbsp;打开交互式演示：&nbsp;
+  <a href="https://patricktangwen.github.io/WorkCrew/?lang=zh">简体中文</a>
   &nbsp;·&nbsp;
+  <a href="https://patricktangwen.github.io/WorkCrew/?lang=en">English</a>
+</h3>
+
+<p align="center">
   <a href="#快速开始">快速开始</a>
   &nbsp;·&nbsp;
   <a href="#工作流程">工作流程</a>
@@ -39,21 +44,22 @@ Excel 模板和一段自然语言任务描述，它会先明确任务范围，�
 
 <p align="center">
   <a href="https://patricktangwen.github.io/WorkCrew/?lang=zh">
-    <img src="./assets/readme/demo.png" width="100%" alt="WorkCrew 本地 Web UI 正在执行一次文档到工作簿任务">
+    <img src="./assets/readme/demo.zh-CN.png" width="100%" alt="WorkCrew 本地 Web UI 正在执行一次文档到工作簿任务">
   </a>
 </p>
 
 公开演示是一个不依赖后端的本地工作台 walkthrough，展示运行历史、阶段进度、
 生命周期控制和产物交付；它不会调用 WorkCrew 后端，也不会修改任何文件。
 
-演示页提供英文和简体中文两个版本，由 `lang` 参数决定语言，因此下面每个链接
-都会按它标注的语言打开，可以直接复制转发；页头的 `EN / 中文` 开关会把地址栏
-同步成当前显示的语言。不带该参数时，页面跟随访问者的浏览器语言。
+演示页提供英文和简体中文两个版本，由 `lang` 参数决定语言，因此每个链接都会按
+它标注的语言打开，可以直接复制转发；页头的 `EN / 中文` 开关会把地址栏同步成
+当前显示的语言。不带该参数时，页面跟随访问者的浏览器语言。
 
-| 链接 | 打开语言 |
-| --- | --- |
-| <https://patricktangwen.github.io/WorkCrew/?lang=zh> | 简体中文 |
-| <https://patricktangwen.github.io/WorkCrew/?lang=en> | English |
+<h3 align="center">
+  <a href="https://patricktangwen.github.io/WorkCrew/?lang=zh">▶&nbsp;&nbsp;简体中文演示</a>
+  &nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+  <a href="https://patricktangwen.github.io/WorkCrew/?lang=en">▶&nbsp;&nbsp;English demo</a>
+</h3>
 
 ## 工作流程
 

@@ -6,9 +6,14 @@
   <img src="./assets/readme/hero.svg" width="100%" alt="WorkCrew turns source folders into reviewed, traceable workbooks">
 </p>
 
-<p align="center">
-  <a href="https://patricktangwen.github.io/WorkCrew/?lang=en"><strong>Open the interactive walkthrough →</strong></a>
+<h3 align="center">
+  ▶&nbsp;&nbsp;Open the interactive walkthrough:&nbsp;
+  <a href="https://patricktangwen.github.io/WorkCrew/?lang=en">English</a>
   &nbsp;·&nbsp;
+  <a href="https://patricktangwen.github.io/WorkCrew/?lang=zh">简体中文</a>
+</h3>
+
+<p align="center">
   <a href="#quick-start">Quick start</a>
   &nbsp;·&nbsp;
   <a href="#how-it-works">How it works</a>
@@ -52,15 +57,16 @@ desk. It demonstrates run history, stage progress, lifecycle controls, and
 artifact delivery without calling a WorkCrew backend or modifying files.
 
 The walkthrough ships in English and Simplified Chinese. The `lang` parameter
-picks the language, so each link below opens in the language it names and can
-be shared as-is; the `EN / 中文` switch in the page header rewrites the address
-bar to match whatever is on screen. Without the parameter the page follows the
+picks the language, so each link opens in the language it names and can be
+shared as-is; the `EN / 中文` switch in the page header rewrites the address bar
+to match whatever is on screen. Without the parameter the page follows the
 reader's browser language.
 
-| Link | Opens in |
-| --- | --- |
-| <https://patricktangwen.github.io/WorkCrew/?lang=en> | English |
-| <https://patricktangwen.github.io/WorkCrew/?lang=zh> | 简体中文 |
+<h3 align="center">
+  <a href="https://patricktangwen.github.io/WorkCrew/?lang=en">▶&nbsp;&nbsp;English demo</a>
+  &nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+  <a href="https://patricktangwen.github.io/WorkCrew/?lang=zh">▶&nbsp;&nbsp;简体中文演示</a>
+</h3>
 
 ## How it works
 
