@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://patricktangwen.github.io/WorkCrew/"><strong>Open the interactive walkthrough →</strong></a>
+  <a href="https://patricktangwen.github.io/WorkCrew/?lang=en"><strong>Open the interactive walkthrough →</strong></a>
   &nbsp;·&nbsp;
   <a href="#quick-start">Quick start</a>
   &nbsp;·&nbsp;
@@ -42,7 +42,7 @@ silently filled.
 ## See the workflow
 
 <p align="center">
-  <a href="https://patricktangwen.github.io/WorkCrew/">
+  <a href="https://patricktangwen.github.io/WorkCrew/?lang=en">
     <img src="./assets/readme/demo.png" width="100%" alt="WorkCrew local web UI showing a document-to-workbook run in progress">
   </a>
 </p>
@@ -50,6 +50,17 @@ silently filled.
 The public demo is a backend-independent walkthrough of the local workflow
 desk. It demonstrates run history, stage progress, lifecycle controls, and
 artifact delivery without calling a WorkCrew backend or modifying files.
+
+The walkthrough ships in English and Simplified Chinese. The `lang` parameter
+picks the language, so each link below opens in the language it names and can
+be shared as-is; the `EN / 中文` switch in the page header rewrites the address
+bar to match whatever is on screen. Without the parameter the page follows the
+reader's browser language.
+
+| Link | Opens in |
+| --- | --- |
+| <https://patricktangwen.github.io/WorkCrew/?lang=en> | English |
+| <https://patricktangwen.github.io/WorkCrew/?lang=zh> | 简体中文 |
 
 ## How it works
 
