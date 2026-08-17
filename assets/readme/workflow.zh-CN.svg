@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="390" viewBox="0 0 1200 390" role="img" aria-labelledby="title desc">
+  <title id="title">WorkCrew 工作流程</title>
+  <desc id="desc">四个阶段：明确任务、生成结构化提案、执行受控写入与独立复核，最后交付带证据和人工兜底的工作簿。</desc>
+
+  <rect width="1200" height="390" rx="26" fill="#f7f5f1"/>
+  <path d="M70 74H1130" stroke="#dedad2" stroke-width="2"/>
+  <circle cx="70" cy="74" r="7" fill="#d97757"/>
+  <circle cx="1130" cy="74" r="7" fill="#5f806b"/>
+  <text x="70" y="47" fill="#8d8982" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="17" font-weight="700" letter-spacing="2">一次可恢复的运行</text>
+
+  <g transform="translate(60 108)" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif">
+    <g id="understand">
+      <rect width="250" height="220" rx="18" fill="#fffdf9" stroke="#dfdbd3"/>
+      <text x="22" y="38" fill="#d97757" font-size="16" font-weight="800">01 · 明确任务</text>
+      <text x="22" y="72" fill="#25231f" font-size="24" font-weight="720">明确任务范围</text>
+      <text x="22" y="101" fill="#716d66" font-size="17">清单、结构与待确认问题</text>
+      <path d="M23 128h204" stroke="#ebe7df"/>
+      <text x="22" y="158" fill="#55514b" font-size="16">登记每一个源文件</text>
+      <text x="22" y="185" fill="#55514b" font-size="16">遇到开放问题时暂停</text>
+    </g>
+
+    <g id="extract" transform="translate(275 0)">
+      <rect width="250" height="220" rx="18" fill="#fffdf9" stroke="#dfdbd3"/>
+      <text x="22" y="38" fill="#8d88ad" font-size="16" font-weight="800">02 · 结构化抽取</text>
+      <text x="22" y="72" fill="#25231f" font-size="24" font-weight="720">Claude Code</text>
+      <text x="22" y="101" fill="#716d66" font-size="17">生成带证据的结构化提案</text>
+      <path d="M23 128h204" stroke="#ebe7df"/>
+      <text x="22" y="158" fill="#55514b" font-size="16">检查源文件和业务规则</text>
+      <text x="22" y="185" fill="#55514b" font-size="16">返回符合结构约束的 JSON</text>
+    </g>
+
+    <g id="verify" transform="translate(550 0)">
+      <rect width="250" height="220" rx="18" fill="#282723"/>
+      <text x="22" y="38" fill="#e58a6e" font-size="16" font-weight="800">03 · 验证复核</text>
+      <text x="22" y="72" fill="#fffdf9" font-size="24" font-weight="720">写入，再复核</text>
+      <text x="22" y="101" fill="#aaa69e" font-size="17">确定性写入与独立质量检查</text>
+      <path d="M23 128h204" stroke="#45423d"/>
+      <text x="22" y="158" fill="#d9d5cc" font-size="16">Python 控制每一次修改</text>
+      <text x="22" y="185" fill="#d9d5cc" font-size="16">Codex 在只读环境中复核</text>
+    </g>
+
+    <g id="deliver" transform="translate(825 0)">
+      <rect width="250" height="220" rx="18" fill="#fffdf9" stroke="#cfd9d1"/>
+      <text x="22" y="38" fill="#5f806b" font-size="16" font-weight="800">04 · 交付</text>
+      <text x="22" y="72" fill="#25231f" font-size="24" font-weight="720">解释每个单元格</text>
+      <text x="22" y="101" fill="#716d66" font-size="17">交付工作簿、证据和审计记录</text>
+      <path d="M23 128h204" stroke="#e3e9e4"/>
+      <text x="22" y="158" fill="#55514b" font-size="16">最终工作簿与证据账本</text>
+      <text x="22" y="185" fill="#55514b" font-size="16">未解决的问题进入人审</text>
+    </g>
+  </g>
+
+  <g fill="none" stroke="#a9a59d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M316 218h13"/><path d="M324 211l8 7-8 7"/>
+    <path d="M591 218h13"/><path d="M599 211l8 7-8 7"/>
+    <path d="M866 218h13"/><path d="M874 211l8 7-8 7"/>
+  </g>
+
+  <text x="60" y="356" fill="#8d8982" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="17">明确任务 → 结构化提案 → 白名单写入 → 跨模型复核 → 最终工作簿</text>
+</svg>
