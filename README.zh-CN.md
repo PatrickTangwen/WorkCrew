@@ -199,9 +199,6 @@ pnpm build
 | [`project_plan_v3.md`](./project_plan_v3.md) | 权威工作流与架构方案 |
 
 ## 准确说明项目边界
-
-- WorkCrew 把 **Claude Code CLI 和 Codex CLI 封装为非交互 Agent Runtime**，
-  并未使用 Claude 或 Codex Agent SDK 包。
 - 外层工作流是一张有意保持固定的 LangGraph 状态图。CLI runtime 内部可能自行
   使用原生 subagent，但 WorkCrew 不依赖、也不承诺这种行为一定发生。
 - WorkCrew 是本地应用，不是托管式文档处理服务。链接中的 GitHub Pages 页面
