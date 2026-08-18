@@ -218,8 +218,6 @@ default `pytest` run.
 
 ## Scope, stated precisely
 
-- WorkCrew wraps **Claude Code CLI and Codex CLI as non-interactive agent
-  runtimes**. It does not use Claude or Codex Agent SDK packages.
 - The outer workflow is a deliberate, fixed LangGraph state machine. Native CLI
   subagents may be used internally by a runtime, but they are not required or
   promised by WorkCrew.
